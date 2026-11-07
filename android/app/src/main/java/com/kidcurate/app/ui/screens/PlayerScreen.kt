@@ -795,11 +795,16 @@ fun OptimizedVideoPlayer(
         (function() {
             try {
                 if (typeof player !== 'undefined' && player) {
-                    if (player.setPlaybackQuality) {
-                        player.setPlaybackQuality('$qualityKey');
-                    }
-                    if (player.setPlaybackQualityRange) {
-                        player.setPlaybackQualityRange('$qualityKey', '$qualityKey');
+                    var q = '$qualityKey';
+                    if (q === 'highres') {
+                        if (player.setPlaybackQualityRange) player.setPlaybackQualityRange('highres', 'highres');
+                        if (player.setPlaybackQuality) {
+                            player.setPlaybackQuality('hd2160');
+                            player.setPlaybackQuality('highres');
+                        }
+                    } else {
+                        if (player.setPlaybackQuality) player.setPlaybackQuality(q);
+                        if (player.setPlaybackQualityRange) player.setPlaybackQualityRange(q, q);
                     }
                 }
             } catch(e) {}
@@ -808,7 +813,7 @@ fun OptimizedVideoPlayer(
         webViewRef?.post {
             webViewRef?.evaluateJavascript(script, null)
         }
-        toastMessage = "Video Quality: $qualityLabel"
+        toastMessage = "Quality: $qualityLabel"
         showQualityDialog = false
     }
 
@@ -1242,6 +1247,8 @@ fun OptimizedVideoPlayer(
 
                         val qualityOptions = listOf(
                             "default" to "Auto (Recommended)",
+                            "highres" to "4K Ultra HD / 8K (Max Quality)",
+                            "hd1440" to "2K Quad HD (1440p)",
                             "hd1080" to "1080p (Full HD)",
                             "hd720" to "720p (HD)",
                             "large" to "480p (Standard)",
