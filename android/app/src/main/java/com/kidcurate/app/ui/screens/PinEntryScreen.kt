@@ -74,6 +74,7 @@ fun PinEntryScreen(
         ) {
             ThematicAvatar(
                 name = childName,
+                avatar = childAvatar,
                 size = 84.dp,
                 iconSize = 42.dp,
             )

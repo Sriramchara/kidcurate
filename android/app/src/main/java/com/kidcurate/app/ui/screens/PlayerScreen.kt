@@ -188,19 +188,17 @@ fun PlayerScreen(
                         },
                         onToggleFullscreen = { isFullscreen = !isFullscreen },
                         onVideoEnded = { _ ->
-                            showEndCelebration = true
+                            if (currentIndex + 1 < videos.size) {
+                                showEndCelebration = true
+                            } else {
+                                if (currentVideo != null) onVideoCompleted(currentVideo, 60)
+                                onAllCompleted()
+                            }
                         },
                         onProgressUpdate = { second ->
                             val delta = second - lastRecordedSecond
                             if (delta in 1..5) {
                                 parentPrefs.addWatchedSeconds(delta)
-                                if (!parentOverrideActive) {
-                                    if (parentPrefs.isDailyLimitReached()) {
-                                        curfewOrLimitTriggered = "limit"
-                                    } else if (parentPrefs.isCurfewActive()) {
-                                        curfewOrLimitTriggered = "curfew"
-                                    }
-                                }
                             }
                             lastRecordedSecond = second
                             if (second > 0 && second % 30 == 0) {
@@ -682,58 +680,65 @@ fun PlayerScreen(
     }
 
     if (showEndCelebration && currentVideo != null) {
+        val nextVideo = if (currentIndex + 1 < videos.size) videos[currentIndex + 1] else null
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.88f)),
+                .background(Color.Black.copy(alpha = 0.85f)),
             contentAlignment = Alignment.Center,
         ) {
-            ConfettiCelebration(isActive = true)
             Surface(
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surface,
-                border = androidx.compose.foundation.BorderStroke(2.dp, BrandAccent),
-                shadowElevation = 10.dp,
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline),
+                shadowElevation = 8.dp,
                 modifier = Modifier
                     .padding(24.dp)
                     .fillMaxWidth(),
             ) {
                 Column(
-                    modifier = Modifier.padding(24.dp),
+                    modifier = Modifier.padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(64.dp)
+                            .size(54.dp)
                             .clip(CircleShape)
-                            .background(BrandAccentContainer),
+                            .background(BrandPrimary.copy(alpha = 0.12f)),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            Icons.Rounded.EmojiEvents,
-                            contentDescription = "Great Job",
-                            tint = BrandAccentDark,
-                            modifier = Modifier.size(36.dp),
+                            Icons.Filled.PlayArrow,
+                            contentDescription = "Up Next",
+                            tint = BrandPrimary,
+                            modifier = Modifier.size(32.dp),
                         )
                     }
 
                     Text(
-                        text = if (currentIndex + 1 < videos.size) "Story Finished! 🌟" else "All Done for Today! 🌟",
+                        text = if (nextVideo != null) "Up Next" else "Playlist Finished",
                         fontSize = 18.sp,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
 
-                    Text(
-                        text = if (currentIndex + 1 < videos.size)
-                            "Next story starting in ${celebrationCountdown}s..."
-                            else "You enjoyed pure, wholesome watch time today!",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (nextVideo != null) {
+                        Text(
+                            text = nextVideo.title,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                        Text(
+                            text = "Playing in ${celebrationCountdown}s...",
+                            fontSize = 12.sp,
+                            color = BrandPrimary,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
 
                     Button(
                         onClick = {
@@ -747,15 +752,11 @@ fun PlayerScreen(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp),
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                        shape = RoundedCornerShape(14.dp),
                     ) {
-                        Text(
-                            text = if (currentIndex + 1 < videos.size) "Play Next Story Now ▶️" else "Finish & Go Home 🏠",
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
+                        Text(if (nextVideo != null) "Play Now" else "Finish", fontWeight = FontWeight.Bold)
                     }
                 }
             }

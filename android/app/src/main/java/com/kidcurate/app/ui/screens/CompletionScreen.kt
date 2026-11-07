@@ -76,24 +76,24 @@ fun CompletionScreen(
                 )
             }
 
-            ThematicAvatar(name = childName, size = 56.dp, iconSize = 28.dp)
+            ThematicAvatar(name = childName, avatar = childAvatar, size = 64.dp, iconSize = 32.dp)
 
             Text(
-                text = "Outstanding, $childName!",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.ExtraBold,
+                text = "All Done, $childName!",
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold,
                 color = TextPrimary,
                 textAlign = TextAlign.Center,
             )
 
             Text(
-                text = "You finished today's awesome adventure\nand unlocked your Star Achievement! 🌟",
+                text = "You've finished all the videos in today's playlist.",
                 fontSize = 15.sp,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
             )
 
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
 
             // Stats row
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -110,30 +110,6 @@ fun CompletionScreen(
                     label = "Minutes",
                     tint = MaterialTheme.colorScheme.secondary,
                     container = MaterialTheme.colorScheme.secondaryContainer,
-                )
-                StatBadgeLight(
-                    icon = Icons.Rounded.Star,
-                    value = "+50",
-                    label = "XP Earned",
-                    tint = MaterialTheme.colorScheme.tertiary,
-                    container = MaterialTheme.colorScheme.tertiaryContainer,
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = BackgroundCard,
-                border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = "Offline Challenge: Try drawing, folding, or showing your parents the coolest thing you just watched!",
-                    fontSize = 13.sp,
-                    color = TextSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(14.dp),
                 )
             }
 

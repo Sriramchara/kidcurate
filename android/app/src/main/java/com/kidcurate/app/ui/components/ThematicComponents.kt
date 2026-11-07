@@ -50,28 +50,59 @@ fun ThematicAvatar(
     modifier: Modifier = Modifier,
 ) {
     val (icon, bgColors, ringColor) = remember(name, avatar) {
-        val combined = (name.trim().lowercase() + " " + avatar.trim().lowercase()).trim()
+        val rawAvatar = avatar.trim().lowercase()
+        val rawName = name.trim().lowercase()
         when {
-            combined.contains("aarav") || combined.contains("🦁") || combined.contains("compass") || combined.contains("explorer") ->
-                Triple(Icons.Rounded.Explore, listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A)), BrandAccent)
-            combined.contains("maya") || combined.contains("🦄") || combined.contains("sparkle") || combined.contains("magic") || combined.contains("🌟") ->
-                Triple(Icons.Rounded.AutoAwesome, listOf(Color(0xFFF3E8FF), Color(0xFFE9D5FF)), BrandViolet)
-            combined.contains("leo") || combined.contains("🚀") || combined.contains("rocket") || combined.contains("space") ->
-                Triple(Icons.Rounded.RocketLaunch, listOf(Color(0xFFE0F2FE), Color(0xFFBAE6FD)), BrandSky)
-            combined.contains("🐬") || combined.contains("ocean") || combined.contains("waves") ->
-                Triple(Icons.Rounded.Waves, listOf(Color(0xFFCCFBF1), Color(0xFF99F6E4)), Color(0xFF0D9488))
-            combined.contains("🦊") || combined.contains("flame") || combined.contains("blaze") ->
-                Triple(Icons.Rounded.LocalFireDepartment, listOf(Color(0xFFFFEDD5), Color(0xFFFED7AA)), Color(0xFFEA580C))
-            combined.contains("🐘") || combined.contains("shield") || combined.contains("guardian") ->
-                Triple(Icons.Rounded.Shield, listOf(Color(0xFFDCFCE7), Color(0xFFBBF7D0)), Color(0xFF16A34A))
-            combined.contains("🦋") || combined.contains("palette") || combined.contains("artist") ->
-                Triple(Icons.Rounded.Palette, listOf(Color(0xFFFFE4E6), Color(0xFFFECDD3)), Color(0xFFE11D48))
-            combined.contains("heart") || combined.contains("love") || combined.contains("kind") ->
+            rawAvatar.contains("compass") || rawAvatar.contains("explorer") || rawAvatar.contains("🦁") || rawAvatar.contains("🧭") ->
+                Triple(Icons.Rounded.Explore, listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A)), Color(0xFFD97706))
+            rawAvatar.contains("sparkle") || rawAvatar.contains("magic") || rawAvatar.contains("🦄") || rawAvatar.contains("✨") || rawAvatar.contains("🌟") ->
+                Triple(Icons.Rounded.AutoAwesome, listOf(Color(0xFFF3E8FF), Color(0xFFE9D5FF)), Color(0xFF8B5CF6))
+            rawAvatar.contains("rocket") || rawAvatar.contains("space") || rawAvatar.contains("🚀") ->
+                Triple(Icons.Rounded.RocketLaunch, listOf(Color(0xFFE0F2FE), Color(0xFFBAE6FD)), Color(0xFF0284C7))
+            rawAvatar.contains("heart") || rawAvatar.contains("love") || rawAvatar.contains("kind") || rawAvatar.contains("❤️") || rawAvatar.contains("💖") ->
                 Triple(Icons.Rounded.Favorite, listOf(Color(0xFFFFE4E6), Color(0xFFFECDD3)), Color(0xFFE11D48))
-            combined.contains("star") ->
+            rawAvatar.contains("waves") || rawAvatar.contains("ocean") || rawAvatar.contains("water") || rawAvatar.contains("🐬") || rawAvatar.contains("🌊") ->
+                Triple(Icons.Rounded.Waves, listOf(Color(0xFFCCFBF1), Color(0xFF99F6E4)), Color(0xFF0D9488))
+            rawAvatar.contains("flame") || rawAvatar.contains("fire") || rawAvatar.contains("blaze") || rawAvatar.contains("🦊") || rawAvatar.contains("🔥") ->
+                Triple(Icons.Rounded.LocalFireDepartment, listOf(Color(0xFFFFEDD5), Color(0xFFFED7AA)), Color(0xFFEA580C))
+            rawAvatar.contains("shield") || rawAvatar.contains("guardian") || rawAvatar.contains("safe") || rawAvatar.contains("🐘") || rawAvatar.contains("🛡️") ->
+                Triple(Icons.Rounded.Shield, listOf(Color(0xFFDCFCE7), Color(0xFFBBF7D0)), Color(0xFF16A34A))
+            rawAvatar.contains("palette") || rawAvatar.contains("artist") || rawAvatar.contains("paint") || rawAvatar.contains("🦋") || rawAvatar.contains("🎨") ->
+                Triple(Icons.Rounded.Palette, listOf(Color(0xFFF3E8FF), Color(0xFFE9D5FF)), Color(0xFF9333EA))
+            rawAvatar.contains("star") || rawAvatar.contains("⭐") ->
                 Triple(Icons.Rounded.Star, listOf(Color(0xFFFEF9C3), Color(0xFFFEF08A)), Color(0xFFCA8A04))
-            else ->
-                Triple(Icons.Rounded.SentimentSatisfiedAlt, listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A)), BrandAccent)
+            rawName.contains("compass") || rawName.contains("explorer") ->
+                Triple(Icons.Rounded.Explore, listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A)), Color(0xFFD97706))
+            rawName.contains("sparkle") ->
+                Triple(Icons.Rounded.AutoAwesome, listOf(Color(0xFFF3E8FF), Color(0xFFE9D5FF)), Color(0xFF8B5CF6))
+            rawName.contains("rocket") ->
+                Triple(Icons.Rounded.RocketLaunch, listOf(Color(0xFFE0F2FE), Color(0xFFBAE6FD)), Color(0xFF0284C7))
+            rawName.contains("heart") ->
+                Triple(Icons.Rounded.Favorite, listOf(Color(0xFFFFE4E6), Color(0xFFFECDD3)), Color(0xFFE11D48))
+            rawName.contains("waves") ->
+                Triple(Icons.Rounded.Waves, listOf(Color(0xFFCCFBF1), Color(0xFF99F6E4)), Color(0xFF0D9488))
+            rawName.contains("flame") ->
+                Triple(Icons.Rounded.LocalFireDepartment, listOf(Color(0xFFFFEDD5), Color(0xFFFED7AA)), Color(0xFFEA580C))
+            rawName.contains("shield") ->
+                Triple(Icons.Rounded.Shield, listOf(Color(0xFFDCFCE7), Color(0xFFBBF7D0)), Color(0xFF16A34A))
+            rawName.contains("palette") ->
+                Triple(Icons.Rounded.Palette, listOf(Color(0xFFF3E8FF), Color(0xFFE9D5FF)), Color(0xFF9333EA))
+            rawName.contains("star") ->
+                Triple(Icons.Rounded.Star, listOf(Color(0xFFFEF9C3), Color(0xFFFEF08A)), Color(0xFFCA8A04))
+            else -> {
+                val hash = kotlin.math.abs(rawName.hashCode()) % 9
+                when (hash) {
+                    0 -> Triple(Icons.Rounded.RocketLaunch, listOf(Color(0xFFE0F2FE), Color(0xFFBAE6FD)), Color(0xFF0284C7))
+                    1 -> Triple(Icons.Rounded.AutoAwesome, listOf(Color(0xFFF3E8FF), Color(0xFFE9D5FF)), Color(0xFF8B5CF6))
+                    2 -> Triple(Icons.Rounded.Explore, listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A)), Color(0xFFD97706))
+                    3 -> Triple(Icons.Rounded.Favorite, listOf(Color(0xFFFFE4E6), Color(0xFFFECDD3)), Color(0xFFE11D48))
+                    4 -> Triple(Icons.Rounded.Waves, listOf(Color(0xFFCCFBF1), Color(0xFF99F6E4)), Color(0xFF0D9488))
+                    5 -> Triple(Icons.Rounded.LocalFireDepartment, listOf(Color(0xFFFFEDD5), Color(0xFFFED7AA)), Color(0xFFEA580C))
+                    6 -> Triple(Icons.Rounded.Shield, listOf(Color(0xFFDCFCE7), Color(0xFFBBF7D0)), Color(0xFF16A34A))
+                    7 -> Triple(Icons.Rounded.Palette, listOf(Color(0xFFF3E8FF), Color(0xFFE9D5FF)), Color(0xFF9333EA))
+                    else -> Triple(Icons.Rounded.Star, listOf(Color(0xFFFEF9C3), Color(0xFFFEF08A)), Color(0xFFCA8A04))
+                }
+            }
         }
     }
 

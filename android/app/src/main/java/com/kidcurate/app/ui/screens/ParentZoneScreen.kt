@@ -1,4 +1,4 @@
-package com.kidcurate.app.ui.screens
+﻿package com.kidcurate.app.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -61,8 +61,7 @@ fun ParentZoneScreen(
     val parentPrefs = remember { ParentPreferences.get(context) }
 
     var selectedTabIndex by remember { mutableStateOf(0) }
-    val tabTitles = listOf("Quick Packs", "Added Videos", "Search & Add", "Profiles", "Security")
-    var applyingPackId by remember { mutableStateOf<String?>(null) }
+    val tabTitles = listOf("Videos", "Search & Add", "Profiles", "Settings")
 
     // Managed Children state
     var managedChildren by remember { mutableStateOf<List<ChildManageItem>>(emptyList()) }
@@ -290,8 +289,8 @@ fun ParentZoneScreen(
                 }
             }
 
-            // Child Selector Bar (for tabs 0, 1 and 2)
-            if (selectedTabIndex == 0 || selectedTabIndex == 1 || selectedTabIndex == 2) {
+            // Child Selector Bar (for tabs 0 and 1: Videos and Search & Add)
+            if (selectedTabIndex == 0 || selectedTabIndex == 1) {
                 Surface(
                     color = SurfaceCard,
                     modifier = Modifier.fillMaxWidth(),
@@ -330,7 +329,7 @@ fun ParentZoneScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     ) {
-                                        ThematicAvatar(name = child.name, size = 22.dp, iconSize = 12.dp)
+                                        ThematicAvatar(name = child.name, avatar = child.avatar, size = 22.dp, iconSize = 12.dp)
                                         Text(
                                             text = child.name,
                                             fontSize = 12.sp,
@@ -347,26 +346,7 @@ fun ParentZoneScreen(
 
             // Tab Content
             when (selectedTabIndex) {
-                0 -> ActivityPacksTab(
-                    childName = selectedChildName,
-                    onApplyPack = { packId, packTitle ->
-                        applyingPackId = packId
-                        scope.launch {
-                            try {
-                                ApiClient.api.applyActivityPack(selectedChildId, packId)
-                                statusMessage = "Applied '$packTitle' to $selectedChildName's today!"
-                                loadChildPlaylist(selectedChildId)
-                            } catch (e: Exception) {
-                                statusMessage = "Error applying pack: ${e.message}"
-                            } finally {
-                                applyingPackId = null
-                            }
-                        }
-                    },
-                    applyingPackId = applyingPackId,
-                )
-
-                1 -> ManagePlaylistTab(
+                0 -> ManagePlaylistTab(
                     childName = selectedChildName,
                     playlist = currentPlaylist,
                     isLoading = isLoadingPlaylist,
@@ -415,10 +395,10 @@ fun ParentZoneScreen(
                             }
                         }
                     },
-                    onNavigateToSearch = { selectedTabIndex = 2 },
+                    onNavigateToSearch = { selectedTabIndex = 1 },
                 )
 
-                2 -> SearchAndAddTab(
+                1 -> SearchAndAddTab(
                     selectedChildName = selectedChildName,
                     searchQuery = searchQuery,
                     onSearchQueryChange = { searchQuery = it },
@@ -447,14 +427,14 @@ fun ParentZoneScreen(
                     },
                 )
 
-                3 -> ChildProfilesTab(
+                2 -> ChildProfilesTab(
                     children = managedChildren,
                     onEditChild = { child -> showEditChildDialog = child },
                     onDeleteChild = { child -> showDeleteConfirmDialog = child },
                     onAddNewChild = { showAddChildDialog = true },
                 )
 
-                4 -> SecurityTab(
+                3 -> SecurityTab(
                     parentPrefs = parentPrefs,
                     onThemeChanged = onThemeChanged,
                 )
@@ -1219,7 +1199,7 @@ fun ChildProfilesTab(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        ThematicAvatar(name = child.name, size = 48.dp, iconSize = 24.dp)
+                        ThematicAvatar(name = child.name, avatar = child.avatar, size = 48.dp, iconSize = 24.dp)
                         Column {
                             Text(
                                 text = child.name,
@@ -1368,155 +1348,6 @@ fun SecurityTab(
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                 color = if (isSelected) MaterialTheme.colorScheme.primary else TextSecondary,
                             )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Screen Time & Bedtime Curfew Card
-        var dailyMinutes by remember { mutableStateOf(parentPrefs.dailyScreenTimeMinutes) }
-        var curfewEnabled by remember { mutableStateOf(parentPrefs.curfewEnabled) }
-        var todayWatched by remember { mutableStateOf(parentPrefs.todayWatchedSeconds) }
-
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface,
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            shadowElevation = 1.dp,
-        ) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Icon(Icons.Rounded.Schedule, contentDescription = null, tint = BrandPrimary)
-                    Text("Screen Time & Bedtime Curfew", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
-
-                Spacer(Modifier.height(8.dp))
-
-                Text(
-                    text = "Control daily watching quotas and lock the player during sleep hours to promote healthy habits.",
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
-                Spacer(Modifier.height(14.dp))
-
-                Text(
-                    text = "Daily Screen Time Limit:",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    listOf(
-                        15 to "15m",
-                        30 to "30m",
-                        45 to "45m",
-                        60 to "60m",
-                        0 to "Off ♾️"
-                    ).forEach { (mins, label) ->
-                        val isSelected = dailyMinutes == mins
-                        OutlinedButton(
-                            onClick = {
-                                dailyMinutes = mins
-                                parentPrefs.dailyScreenTimeMinutes = mins
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.5.dp,
-                                if (isSelected) BrandPrimary else MaterialTheme.colorScheme.outline,
-                            ),
-                            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp),
-                        ) {
-                            Text(
-                                text = label,
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(16.dp))
-
-                // Curfew toggle
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Bedtime Curfew (8 PM – 7 AM)",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = "Locks screen and pauses videos during bedtime hours",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(
-                        checked = curfewEnabled,
-                        onCheckedChange = {
-                            curfewEnabled = it
-                            parentPrefs.curfewEnabled = it
-                        },
-                    )
-                }
-
-                Spacer(Modifier.height(14.dp))
-
-                // Today's Usage
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column {
-                            val watchedMins = todayWatched / 60
-                            Text(
-                                text = "Today's Usage: $watchedMins min / ${if (dailyMinutes == 0) "Unlimited" else "$dailyMinutes min"}",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                            Text(
-                                text = if (parentPrefs.isDailyLimitReached()) "Daily limit reached for today" else "Within daily quota",
-                                fontSize = 11.sp,
-                                color = if (parentPrefs.isDailyLimitReached()) BrandCoral else BrandSuccess,
-                                fontWeight = FontWeight.Medium,
-                            )
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                parentPrefs.resetTodayWatched()
-                                todayWatched = 0
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        ) {
-                            Text("Reset", fontSize = 11.sp)
                         }
                     }
                 }
@@ -2246,387 +2077,3 @@ fun SecurityTab(
         }
     }
 }
-
-// ─── TAB: ACTIVITY PACKS (PARENT LIFESAVERS) ───────────────────────────────
-
-@Composable
-fun ActivityPacksTab(
-    childName: String,
-    onApplyPack: (String, String) -> Unit,
-    applyingPackId: String?,
-) {
-    val fallbackPacks = remember {
-        listOf(
-            ActivityPackItem(
-                id = "bedtime-calm",
-                title = "Bedtime Calm & Lullabies",
-                badgeIcon = "moon",
-                tagline = "Gentle acoustic lullabies & soothing calm to drift off peacefully.",
-                category = "Bedtime",
-                approxMinutes = 20,
-                videos = listOf(
-                    ActivityPackVideo("_7jhd4-o9gU", "Twinkle Twinkle Little Star & Sweet Dreams Lullabies", "Super Simple Songs", "https://img.youtube.com/vi/_7jhd4-o9gU/hqdefault.jpg", 360),
-                    ActivityPackVideo("yCjJyiqpAuU", "Brahms Lullaby Relaxing Instrumental", "Lullaby World", "https://img.youtube.com/vi/yCjJyiqpAuU/hqdefault.jpg", 480)
-                )
-            ),
-            ActivityPackItem(
-                id = "space-science",
-                title = "Solar System & Space Explorer",
-                badgeIcon = "rocket",
-                tagline = "Blast off into outer space to explore planets, the moon, and stars!",
-                category = "Science",
-                approxMinutes = 25,
-                videos = listOf(
-                    ActivityPackVideo("libKVRa0WV4", "The Solar System Song (Planets for Kids)", "Kids Learning Tube", "https://img.youtube.com/vi/libKVRa0WV4/hqdefault.jpg", 240),
-                    ActivityPackVideo("mQrlgH97v94", "All About the Sun & Solar System", "SciShow Kids", "https://img.youtube.com/vi/mQrlgH97v94/hqdefault.jpg", 300)
-                )
-            ),
-            ActivityPackItem(
-                id = "phonics-abc",
-                title = "Fun Phonics & ABC Reading",
-                badgeIcon = "book",
-                tagline = "Letter sounds, phonics songs, and word-building foundations.",
-                category = "Reading",
-                approxMinutes = 20,
-                videos = listOf(
-                    ActivityPackVideo("BELlZKpi1Zs", "Phonics Song with TWO Words - A For Apple", "ChuChu TV", "https://img.youtube.com/vi/BELlZKpi1Zs/hqdefault.jpg", 240),
-                    ActivityPackVideo("hq3yfQnllfQ", "Phonics Song for Kids - Alphabet Sounds", "Super Simple Songs", "https://img.youtube.com/vi/hq3yfQnllfQ/hqdefault.jpg", 240)
-                )
-            ),
-            ActivityPackItem(
-                id = "math-counting",
-                title = "Math Wonders & Number Magic",
-                badgeIcon = "calculator",
-                tagline = "Playful counting, shapes, and early addition made joyful.",
-                category = "Math",
-                approxMinutes = 20,
-                videos = listOf(
-                    ActivityPackVideo("D0Ajq682yrA", "Count to 20 Song for Kids", "Super Simple Songs", "https://img.youtube.com/vi/D0Ajq682yrA/hqdefault.jpg", 180),
-                    ActivityPackVideo("beTDz9HSKOM", "Shapes Song for Children", "The Singing Walrus", "https://img.youtube.com/vi/beTDz9HSKOM/hqdefault.jpg", 240)
-                )
-            ),
-            ActivityPackItem(
-                id = "moral-stories",
-                title = "Moral Stories & Wholesome Tales",
-                badgeIcon = "heart",
-                tagline = "Heartwarming fables about kindness, honesty, and courage.",
-                category = "Character",
-                approxMinutes = 25,
-                videos = listOf(
-                    ActivityPackVideo("kF8y5hB3P9U", "The Boy Who Cried Wolf & The Honest Woodcutter", "Geethanjali Kids", "https://img.youtube.com/vi/kF8y5hB3P9U/hqdefault.jpg", 360),
-                    ActivityPackVideo("Sg0BEPHn8dQ", "The Tortoise and the Hare - Moral Story", "Fairy Tales for Children", "https://img.youtube.com/vi/Sg0BEPHn8dQ/hqdefault.jpg", 420)
-                )
-            ),
-            ActivityPackItem(
-                id = "heidi-classic",
-                title = "Heidi & Mountain Adventure Tales",
-                badgeIcon = "star",
-                tagline = "Classic wholesome stories of friendship, nature, and animals.",
-                category = "Stories",
-                approxMinutes = 25,
-                videos = listOf(
-                    ActivityPackVideo("IWFILqQZkj0", "Heidi - Episode 1 Classic Adventures", "Heidi Classic Stories", "https://img.youtube.com/vi/IWFILqQZkj0/hqdefault.jpg", 600),
-                    ActivityPackVideo("C-SXqFQZky0", "Heidi - Episode 2 High in the Mountain Pastures", "Heidi Classic Stories", "https://img.youtube.com/vi/C-SXqFQZky0/hqdefault.jpg", 600)
-                )
-            )
-        )
-    }
-
-    var packs by remember { mutableStateOf<List<ActivityPackItem>>(fallbackPacks) }
-    var isLoading by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        try {
-            val remotePacks = ApiClient.api.getActivityPacks()
-            if (remotePacks.isNotEmpty()) {
-                packs = remotePacks
-            }
-        } catch (_: Exception) {}
-    }
-
-    if (isLoading) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = BrandPrimary)
-        }
-        return
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        item {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = BrandPrimary.copy(alpha = 0.08f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, BrandPrimary.copy(alpha = 0.25f)),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            Icons.Rounded.Bolt,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Parent Lifesavers (1-Click Packs)",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary,
-                        )
-                        Text(
-                            text = "Hand-picked for real daily parenting moments. Tap 'Schedule Now' to load 20-30 min of wholesome fun for $childName!",
-                            fontSize = 12.sp,
-                            color = TextSecondary,
-                        )
-                    }
-                }
-            }
-        }
-
-        items(packs) { pack ->
-            ActivityPackCard(
-                pack = pack,
-                childName = childName,
-                isApplying = applyingPackId == pack.id,
-                onApply = { onApplyPack(pack.id, pack.title) },
-            )
-        }
-    }
-}
-
-@Composable
-fun ActivityPackCard(
-    pack: ActivityPackItem,
-    childName: String,
-    isApplying: Boolean,
-    onApply: () -> Unit,
-) {
-    val packIcon = when (pack.id) {
-        "dinner_prep" -> Icons.Rounded.Restaurant
-        "crafts_diy" -> Icons.Rounded.Palette
-        "energy_burn" -> Icons.Rounded.DirectionsRun
-        "wow_science" -> Icons.Rounded.Science
-        "bedtime" -> Icons.Rounded.Nightlight
-        else -> Icons.Rounded.PlayCircle
-    }
-
-    val iconColor = when (pack.id) {
-        "dinner_prep" -> Color(0xFFE65100)
-        "crafts_diy" -> Color(0xFF7B1FA2)
-        "energy_burn" -> Color(0xFFD84315)
-        "wow_science" -> Color(0xFF00897B)
-        "bedtime" -> Color(0xFF3949AB)
-        else -> BrandPrimary
-    }
-
-    val iconBg = iconColor.copy(alpha = 0.12f)
-
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = BackgroundCard,
-        border = androidx.compose.foundation.BorderStroke(1.5.dp, SurfaceCardBorder),
-        shadowElevation = 3.dp,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-        ) {
-            // Header: Category pill + Time pill
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = iconBg,
-                ) {
-                    Text(
-                        text = pack.category,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = iconColor,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    )
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Icon(
-                        Icons.Rounded.AccessTime,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = TextSecondary,
-                    )
-                    Text(
-                        text = "~${pack.approxMinutes} mins",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextSecondary,
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            // Title with Icon
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(iconBg),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        packIcon,
-                        contentDescription = null,
-                        tint = iconColor,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-                Column {
-                    Text(
-                        text = pack.title,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                    )
-                    Text(
-                        text = pack.tagline,
-                        fontSize = 12.sp,
-                        color = TextSecondary,
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(14.dp))
-
-            // Horizontal preview strip of videos
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                items(pack.videos) { video ->
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
-                        modifier = Modifier.width(170.dp),
-                    ) {
-                        Column(modifier = Modifier.padding(6.dp)) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(95.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.Black.copy(alpha = 0.1f)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                AsyncImage(
-                                    model = video.thumbnailUrl,
-                                    contentDescription = video.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                                val mins = video.durationSeconds / 60
-                                val secs = video.durationSeconds % 60
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = Color.Black.copy(alpha = 0.75f),
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(4.dp),
-                                ) {
-                                    Text(
-                                        text = "$mins:${"%02d".format(secs)}",
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                text = video.title,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = video.channelName,
-                                fontSize = 10.sp,
-                                color = TextSecondary,
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(14.dp))
-
-            // Action Button
-            Button(
-                onClick = onApply,
-                enabled = !isApplying,
-                colors = ButtonDefaults.buttonColors(containerColor = iconColor),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp),
-            ) {
-                if (isApplying) {
-                    CircularProgressIndicator(
-                        color = Color.White,
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Applying Pack...", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                } else {
-                    Icon(
-                        Icons.Rounded.PlayArrow,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "Schedule for $childName Now (1-Click)",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                    )
-                }
-            }
-        }
-    }
-}
-

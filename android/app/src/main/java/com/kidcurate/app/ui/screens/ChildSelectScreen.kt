@@ -191,6 +191,7 @@ fun ChildSelectScreen(
                             ) {
                                 ThematicAvatar(
                                     name = profile.name,
+                                    avatar = profile.avatar,
                                     size = 80.dp,
                                     iconSize = 40.dp,
                                 )
