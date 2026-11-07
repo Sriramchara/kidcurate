@@ -19,7 +19,9 @@ import {
   Settings,
   Mail,
   ShieldCheck,
-  KeyRound
+  KeyRound,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import api from '@/lib/api';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -490,6 +492,21 @@ function EditChildModal({ child, onClose, onUpdated }: { child: Child; onClose: 
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await api.deleteChild(child.id);
+      playPop();
+      onUpdated();
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete profile');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -618,6 +635,40 @@ function EditChildModal({ child, onClose, onUpdated }: { child: Child; onClose: 
               {loading ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
+
+          {confirmDelete ? (
+            <div className="mt-4 pt-3 border-t border-[var(--border-subtle)] bg-rose-500/10 p-3 rounded-xl border border-rose-500/20">
+              <p className="text-xs text-rose-400 font-semibold mb-2">Delete {child.name}'s profile and all playlists?</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  className="flex-1 btn-secondary text-xs py-1"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={handleDelete}
+                  className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs py-1 transition-colors"
+                >
+                  {deleting ? 'Deleting...' : 'Yes, Delete'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 pt-3 border-t border-[var(--border-subtle)] flex justify-end">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="text-xs text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Profile</span>
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>
@@ -642,6 +693,22 @@ function AccountSettingsModal({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const router = useRouter();
+
+  async function handleDeleteAccount() {
+    setDeletingAccount(true);
+    try {
+      await api.deleteAccount();
+      localStorage.removeItem('kc_token');
+      localStorage.removeItem('kc_user');
+      router.push('/');
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete account.');
+      setDeletingAccount(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -851,6 +918,49 @@ function AccountSettingsModal({
               <span>{loading ? 'Saving...' : 'Save Profile Changes'}</span>
             </button>
           </div>
+
+          {confirmDeleteAccount ? (
+            <div className="mt-5 pt-4 border-t border-rose-500/20 bg-rose-500/10 p-4 rounded-xl border border-rose-500/30">
+              <p className="text-xs text-rose-400 font-bold mb-1 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-rose-500" />
+                <span>Permanently Delete Entire Account?</span>
+              </p>
+              <p className="text-xs text-[var(--text-muted)] mb-3">
+                This will permanently delete your account, all child profiles, playlists, and watch history. This cannot be undone.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteAccount(false)}
+                  className="flex-1 btn-secondary text-xs py-1.5"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={deletingAccount}
+                  onClick={handleDeleteAccount}
+                  className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs py-1.5 transition-colors"
+                >
+                  {deletingAccount ? 'Deleting Everything...' : 'Delete My Account'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-5 pt-4 border-t border-[var(--border-subtle)] flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-rose-400">Delete Account</p>
+                <p className="text-[11px] text-[var(--text-muted)]">Permanently erase your account and all children data</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteAccount(true)}
+                className="text-xs text-rose-400 hover:text-rose-300 font-semibold px-3 py-1.5 rounded-lg border border-rose-500/30 hover:bg-rose-500/10 transition-colors cursor-pointer"
+              >
+                Delete Account
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>

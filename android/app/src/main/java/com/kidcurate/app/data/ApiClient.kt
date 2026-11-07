@@ -60,6 +60,9 @@ interface KidCurateApi {
     @DELETE("api/children/manage/{child_id}")
     suspend fun deleteChild(@Path("child_id") childId: String): Map<String, Any>
 
+    @DELETE("api/auth/account")
+    suspend fun deleteAccount(): Map<String, Any>
+
     @GET("api/playlists/activity-packs")
     suspend fun getActivityPacks(): List<ActivityPackItem>
 

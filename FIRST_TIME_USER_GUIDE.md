@@ -62,3 +62,4 @@ You can also manage everything conveniently from your laptop or PC:
 - **Parent Gate**: Any attempt to leave the child player or open settings requires the Parent Password.
 - **AI Safety Scoring**: Every video is analyzed across multiple metrics: educational depth, language safety, cognitive engagement, and age suitability.
 - **Cross-Device Sync**: Any video added on the web portal appears on the child's mobile app instantly.
+

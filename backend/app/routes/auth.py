@@ -199,6 +199,25 @@ async def update_profile(
     )
 
 
+@router.delete("/account")
+async def delete_account(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Permanently delete the authenticated parent's account and all associated
+    child profiles, playlists, and watch history.
+    Complies with Google Play Data Safety, GDPR, and COPPA account deletion mandates.
+    """
+    user_email = current_user.email
+    await db.delete(current_user)
+    await db.commit()
+    return {
+        "status": "ok",
+        "message": f"Account for {user_email} and all associated child profiles have been permanently deleted.",
+    }
+
+
 @router.post("/forgot-password", response_model=ForgotPasswordResponse)
 async def forgot_password(data: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == data.email.lower().strip()))

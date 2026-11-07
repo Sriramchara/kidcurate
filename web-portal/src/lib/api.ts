@@ -62,6 +62,11 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  deleteAccount: () =>
+    apiFetch('/api/auth/account', {
+      method: 'DELETE',
+    }),
+
   forgotPassword: (email: string) =>
     apiFetch('/api/auth/forgot-password', {
       method: 'POST',

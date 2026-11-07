@@ -76,7 +76,7 @@ class Child(Base):
     # Relationships
     parent = relationship("User", back_populates="children")
     playlists = relationship("Playlist", back_populates="child", cascade="all, delete-orphan")
-    watch_progress = relationship("WatchProgress", back_populates="child")
+    watch_progress = relationship("WatchProgress", back_populates="child", cascade="all, delete-orphan")
 
 
 class Video(Base):

@@ -1513,6 +1513,9 @@ fun SecurityTab(
         var forgotErrorMessage by remember { mutableStateOf<String?>(null) }
         var isForgotLoading by remember { mutableStateOf(false) }
 
+        var showDeleteAccountDialog by remember { mutableStateOf(false) }
+        var isDeletingAccount by remember { mutableStateOf(false) }
+
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -1544,37 +1547,62 @@ fun SecurityTab(
                         color = MaterialTheme.colorScheme.primaryContainer,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Signed in as:",
-                                    fontSize = 12.sp,
-                                    color = BrandPrimary,
-                                )
-                                Text(
-                                    text = parentPrefs.parentEmail.ifBlank { "Parent Account" },
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = BrandPrimary,
-                                )
-                            }
-                            Button(
-                                onClick = {
-                                    parentPrefs.parentAuthToken = ""
-                                    parentPrefs.parentEmail = ""
-                                    currentToken = ""
-                                    com.kidcurate.app.data.ApiClient.authToken = ""
-                                    accountStatusMessage = "Signed out of cloud account."
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = BrandCoral),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("Sign Out", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Signed in as:",
+                                        fontSize = 12.sp,
+                                        color = BrandPrimary,
+                                    )
+                                    Text(
+                                        text = parentPrefs.parentEmail.ifBlank { "Parent Account" },
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrandPrimary,
+                                    )
+                                }
+                                Button(
+                                    onClick = {
+                                        parentPrefs.parentAuthToken = ""
+                                        parentPrefs.parentEmail = ""
+                                        currentToken = ""
+                                        com.kidcurate.app.data.ApiClient.authToken = ""
+                                        accountStatusMessage = "Signed out of cloud account."
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandCoral),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                ) {
+                                    Text("Sign Out", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+                            HorizontalDivider(color = BrandPrimary.copy(alpha = 0.2f))
+                            Spacer(Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = "Delete account & cloud data",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                TextButton(
+                                    onClick = { showDeleteAccountDialog = true },
+                                    colors = ButtonDefaults.textButtonColors(contentColor = BrandCoral),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                ) {
+                                    Text("Delete Account", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -1926,6 +1954,66 @@ fun SecurityTab(
                     }
                 }
             }
+        }
+
+        // Delete Parent Account Confirmation Dialog
+        if (showDeleteAccountDialog) {
+            AlertDialog(
+                onDismissRequest = { if (!isDeletingAccount) showDeleteAccountDialog = false },
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(Icons.Rounded.DeleteForever, contentDescription = null, tint = BrandCoral)
+                        Text("Delete Account & All Data?", fontWeight = FontWeight.Bold, color = BrandCoral)
+                    }
+                },
+                text = {
+                    Text(
+                        "Are you sure you want to permanently delete your parent account? This will erase all child profiles, playlists, watch history, and cloud data. This action cannot be undone.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isDeletingAccount = true
+                                try {
+                                    com.kidcurate.app.data.ApiClient.api.deleteAccount()
+                                    parentPrefs.parentAuthToken = ""
+                                    parentPrefs.parentEmail = ""
+                                    currentToken = ""
+                                    com.kidcurate.app.data.ApiClient.authToken = ""
+                                    accountStatusMessage = "Account and all data deleted permanently."
+                                    showDeleteAccountDialog = false
+                                } catch (e: Exception) {
+                                    accountStatusMessage = "Failed to delete account: ${e.message}"
+                                    showDeleteAccountDialog = false
+                                } finally {
+                                    isDeletingAccount = false
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandCoral),
+                        shape = RoundedCornerShape(10.dp),
+                        enabled = !isDeletingAccount,
+                    ) {
+                        Text(if (isDeletingAccount) "Deleting..." else "Yes, Delete Everything", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = { showDeleteAccountDialog = false },
+                        shape = RoundedCornerShape(10.dp),
+                        enabled = !isDeletingAccount,
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
 
         // Backend Server API URL Card
