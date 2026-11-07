@@ -34,7 +34,26 @@ export default function RootLayout({
                 document.documentElement.classList.remove('light', 'dark');
                 document.documentElement.classList.add(t);
                 document.documentElement.style.colorScheme = t;
+
+                // Dismiss Netlify HUD / Badge permanently
+                localStorage.setItem('nl-hud:public:v1', 'hidden');
+                localStorage.setItem('nl-hud:owner-private:v1', 'hidden');
               } catch (e) {}
+
+              // Auto-remove any injected badge frames
+              if (typeof window !== 'undefined') {
+                const stripBadges = () => {
+                  ['nl-badge-frame', 'nl-hud-frame'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.remove();
+                  });
+                  document.querySelectorAll('iframe[title*="Netlify"]').forEach(el => el.remove());
+                };
+                window.addEventListener('DOMContentLoaded', stripBadges);
+                window.addEventListener('load', stripBadges);
+                const obs = new MutationObserver(stripBadges);
+                obs.observe(document.documentElement, { childList: true, subtree: true });
+              }
             `,
           }}
         />

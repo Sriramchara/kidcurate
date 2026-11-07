@@ -297,3 +297,22 @@ input:-webkit-autofill:active {
     transform: translateY(0);
   }
 }
+
+/* Suppress third-party badges and injected overlays */
+#nl-badge-frame,
+#nl-hud-frame,
+iframe[title="Powered by Netlify"],
+iframe[title="Netlify"],
+iframe[src*="netlify"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  clip: rect(0, 0, 0, 0) !important;
+  position: absolute !important;
+  top: -9999px !important;
+  left: -9999px !important;
+  z-index: -9999 !important;
+}
