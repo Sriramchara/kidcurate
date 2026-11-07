@@ -1,4 +1,4 @@
-﻿package com.kidcurate.app.ui.screens
+package com.kidcurate.app.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background

@@ -79,24 +79,27 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 _state.value = _state.value.copy(isLoading = true, error = null)
             }
 
-            // 2. Fetch live profiles with intelligent fallback across configured base URL and localhost
+            // 2. Fetch live profiles with intelligent fallback across Render cloud, local Wi-Fi, and localhost
             var fetchedProfiles: List<ChildProfileItem>? = null
             val candidateUrls = listOf(
-                ApiClient.getBaseUrl(),
-                "http://localhost:8000/",
-                "http://10.0.2.2:8000/"
-            ).distinct()
+                com.kidcurate.app.BuildConfig.API_BASE_URL,
+                parentPrefs.serverUrl,
+                "http://192.168.1.112:8000/",
+                "http://10.0.2.2:8000/",
+                "http://localhost:8000/"
+            ).filter { it.isNotBlank() }
+             .map { if (it.endsWith("/")) it else "$it/" }
+             .distinct()
 
             for (url in candidateUrls) {
                 try {
                     val candidateApi = ApiClient.buildApi(url)
                     val result = candidateApi.getPublicProfiles()
-                    if (result.isNotEmpty() || candidateUrls.indexOf(url) == 0) {
-                        fetchedProfiles = result
-                        ApiClient.updateBaseUrl(url)
-                        parentPrefs.serverUrl = url
-                        break
-                    }
+                    // If getPublicProfiles succeeds without network exception, connection is confirmed!
+                    fetchedProfiles = result
+                    ApiClient.updateBaseUrl(url)
+                    parentPrefs.serverUrl = url
+                    break
                 } catch (_: Exception) {
                     continue
                 }

@@ -23,7 +23,15 @@ class ParentPreferences(context: Context) {
         set(value) = prefs.edit().putString(KEY_APP_THEME, value).apply()
 
     var serverUrl: String
-        get() = prefs.getString(KEY_SERVER_URL, "http://localhost:8000") ?: "http://localhost:8000"
+        get() {
+            val url = prefs.getString(KEY_SERVER_URL, "") ?: ""
+            if (url.isBlank() || url.contains("localhost") || url.contains("127.0.0.1")) {
+                val defaultUrl = com.kidcurate.app.BuildConfig.API_BASE_URL
+                prefs.edit().putString(KEY_SERVER_URL, defaultUrl).apply()
+                return defaultUrl
+            }
+            return url
+        }
         set(value) = prefs.edit().putString(KEY_SERVER_URL, value).apply()
 
     var parentAuthToken: String

@@ -97,6 +97,9 @@ object ApiClient {
     var authToken: String = ""
 
     private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
         .addInterceptor { chain ->
             val orig = chain.request()
             val token = authToken
