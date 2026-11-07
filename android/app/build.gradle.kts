@@ -15,7 +15,7 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        val apiUrl = (project.findProperty("API_BASE_URL") as? String) ?: "http://localhost:8000"
+        val apiUrl = (project.findProperty("API_BASE_URL") as? String) ?: "https://kidcurate-api.onrender.com"
         buildConfigField("String", "API_BASE_URL", "\"$apiUrl\"")
     }
 
