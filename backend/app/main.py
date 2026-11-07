@@ -13,7 +13,11 @@ logger = logging.getLogger("uvicorn.error")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: create DB tables
-    await create_tables()
+    try:
+        await create_tables()
+        logger.info("Database initialized successfully.")
+    except Exception as e:
+        logger.error(f"Database table creation deferred: {e}")
     yield
     # Shutdown: nothing special needed
 

@@ -14,7 +14,7 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         pass
 
 # Normalize Render/Heroku postgres:// URLs to asyncpg
-db_url = settings.DATABASE_URL
+db_url = (settings.DATABASE_URL or "sqlite+aiosqlite:///kidcurate.db").strip()
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
 elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+asyncpg://"):
