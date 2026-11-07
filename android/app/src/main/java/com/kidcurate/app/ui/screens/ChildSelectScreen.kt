@@ -119,34 +119,51 @@ fun ChildSelectScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(28.dp),
                     ) {
+                        val isError = errorMessage != null
                         Icon(
-                            Icons.Rounded.CloudOff,
+                            if (isError) Icons.Rounded.CloudOff else Icons.Rounded.RocketLaunch,
                             contentDescription = null,
                             tint = BrandPrimary,
-                            modifier = Modifier.size(48.dp),
+                            modifier = Modifier.size(52.dp),
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
                         Text(
-                            text = errorMessage ?: "No child profiles found.",
+                            text = if (isError) "Connection Notice" else "Welcome to KidCurate! 🎉",
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
+                            fontSize = 18.sp,
                             textAlign = TextAlign.Center,
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Add profiles in the Parent Zone or check connection.",
+                            text = if (isError) {
+                                errorMessage ?: "Could not reach server. Check your connection."
+                            } else {
+                                "You haven't added any child profiles yet. Tap below to create your child's profile and start curating fun educational adventures!"
+                            },
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp,
                             textAlign = TextAlign.Center,
                         )
                         Spacer(modifier = Modifier.height(20.dp))
-                        Button(
-                            onClick = onRetry,
-                            colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                            shape = RoundedCornerShape(14.dp),
-                        ) {
-                            Text("Retry Connection", fontWeight = FontWeight.Bold)
+                        if (isError) {
+                            Button(
+                                onClick = onRetry,
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                                shape = RoundedCornerShape(14.dp),
+                            ) {
+                                Text("Retry Connection", fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            Button(
+                                onClick = { showParentGate = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                                shape = RoundedCornerShape(14.dp),
+                            ) {
+                                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Create First Profile", fontWeight = FontWeight.Bold)
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -163,7 +180,7 @@ fun ChildSelectScreen(
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                "Server Address / Wi-Fi IP",
+                                "Server Address",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface,
