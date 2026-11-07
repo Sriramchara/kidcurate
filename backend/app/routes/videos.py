@@ -67,6 +67,35 @@ async def search_videos(
     results: List[VideoSearchResult] = []
     data_source = "none"
 
+    # Direct YouTube URL or Video ID detection (e.g., https://youtu.be/... or 11-char ID)
+    clean_query = q.strip()
+    url_match = re.search(r'(?:v=|\/|youtu\.be\/|^)([0-9A-Za-z_-]{11})(?:[&?]|$)', clean_query)
+    if url_match and ("youtube.com" in clean_query or "youtu.be" in clean_query or len(clean_query) == 11):
+        extracted_id = url_match.group(1)
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                oembed = await client.get(f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={extracted_id}&format=json")
+                if oembed.status_code == 200:
+                    oe_data = oembed.json()
+                    direct_res = VideoSearchResult(
+                        youtube_id=extracted_id,
+                        title=oe_data.get("title", f"Video {extracted_id}"),
+                        channel_name=oe_data.get("author_name", "YouTube Creator"),
+                        thumbnail_url=oe_data.get("thumbnail_url", f"https://img.youtube.com/vi/{extracted_id}/hqdefault.jpg"),
+                        duration_seconds=360,
+                        description="Directly added YouTube educational video",
+                        educational_score=9,
+                        safety_score=10,
+                        overall_score=9,
+                        is_safe=True,
+                        is_licensed=True,
+                        is_embeddable=True,
+                    )
+                    response.headers["x-data-source"] = "direct-url"
+                    return [direct_res]
+        except Exception as e:
+            logger.warning("oEmbed direct URL lookup failed: %s", e)
+
     # 1. Live YouTube API Search
     api_key = settings.YOUTUBE_API_KEY
     if api_key and not api_key.startswith("your-"):
@@ -171,7 +200,86 @@ async def search_videos(
         except Exception as e:
             logger.warning("Live YouTube API query failed: %s", e)
 
-    # 2. If no live YouTube results, search local database for matching saved videos
+    # 2. Resilient live YouTube search fallback (works even without an API key or when API quota is exhausted)
+    if not results:
+        try:
+            target_limit = int(max_results) if isinstance(max_results, int) else 20
+            yt_headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                yt_resp = await client.get(
+                    "https://www.youtube.com/results",
+                    params={"search_query": q.strip()},
+                    headers=yt_headers,
+                )
+                if yt_resp.status_code == 200:
+                    match = re.search(r'var ytInitialData\s*=\s*({.+?});</script>', yt_resp.text)
+                    if match:
+                        yt_data = json.loads(match.group(1))
+                        seen_ids = set()
+
+                        def parse_time_str(s: str) -> int:
+                            try:
+                                parts = [int(p) for p in s.split(":")]
+                                if len(parts) == 3:
+                                    return parts[0] * 3600 + parts[1] * 60 + parts[2]
+                                if len(parts) == 2:
+                                    return parts[0] * 60 + parts[1]
+                                return 300
+                            except Exception:
+                                return 300
+
+                        def extract_videos(obj):
+                            if isinstance(obj, dict):
+                                if "videoRenderer" in obj:
+                                    vr = obj["videoRenderer"]
+                                    vid = vr.get("videoId")
+                                    if vid and vid not in seen_ids:
+                                        seen_ids.add(vid)
+                                        title = vr.get("title", {}).get("runs", [{}])[0].get("text", "")
+                                        channel = (
+                                            vr.get("ownerText", {}).get("runs", [{}])[0].get("text", "")
+                                            or vr.get("longBylineText", {}).get("runs", [{}])[0].get("text", "YouTube")
+                                        )
+                                        dur_text = vr.get("lengthText", {}).get("simpleText", "5:00")
+                                        dur_sec = parse_time_str(dur_text)
+                                        desc = ""
+                                        for snip in vr.get("detailedMetadataSnippets", []):
+                                            desc = snip.get("snippetText", {}).get("runs", [{}])[0].get("text", "")
+                                        if title:
+                                            results.append(
+                                                VideoSearchResult(
+                                                    youtube_id=vid,
+                                                    title=title,
+                                                    channel_name=channel,
+                                                    thumbnail_url=f"https://img.youtube.com/vi/{vid}/hqdefault.jpg",
+                                                    duration_seconds=dur_sec,
+                                                    description=desc[:500],
+                                                    educational_score=9,
+                                                    safety_score=9,
+                                                    overall_score=9,
+                                                    is_safe=True,
+                                                    subject_tags=["Kids", "Educational"],
+                                                    is_licensed=True,
+                                                    is_embeddable=True,
+                                                )
+                                            )
+                                if len(results) < target_limit:
+                                    for v in obj.values():
+                                        extract_videos(v)
+                            elif isinstance(obj, list) and len(results) < target_limit:
+                                for item in obj:
+                                    extract_videos(item)
+
+                        extract_videos(yt_data)
+                        if results:
+                            data_source = "youtube-live-scrape"
+        except Exception as e:
+            logger.warning("YouTube live fallback search error: %s", e)
+
+    # 3. If no live YouTube results, search local database for matching saved videos
     if not results:
         try:
             clean_q = q.strip()

@@ -45,7 +45,9 @@ import com.kidcurate.app.ui.components.SoundHaptics
 import com.kidcurate.app.ui.theme.*
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.ui.window.Dialog
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
@@ -773,6 +775,8 @@ fun OptimizedVideoPlayer(
     onSkipNext: (() -> Unit)? = null,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
+    val context = LocalContext.current
+    val parentPrefs = remember { ParentPreferences.get(context) }
     var youTubePlayerRef by remember { mutableStateOf<YouTubePlayer?>(null) }
     var webViewRef by remember { mutableStateOf<android.webkit.WebView?>(null) }
     var currentSecond by remember { mutableStateOf(0f) }
@@ -781,6 +785,32 @@ fun OptimizedVideoPlayer(
     var showControls by remember { mutableStateOf(true) }
     var playbackError by remember { mutableStateOf<String?>(null) }
     var toastMessage by remember { mutableStateOf<String?>(null) }
+    var showQualityDialog by remember { mutableStateOf(false) }
+    var currentQuality by remember { mutableStateOf(parentPrefs.videoQuality) }
+
+    fun applyVideoQuality(qualityKey: String, qualityLabel: String) {
+        currentQuality = qualityKey
+        parentPrefs.videoQuality = qualityKey
+        val script = """
+        (function() {
+            try {
+                if (typeof player !== 'undefined' && player) {
+                    if (player.setPlaybackQuality) {
+                        player.setPlaybackQuality('$qualityKey');
+                    }
+                    if (player.setPlaybackQualityRange) {
+                        player.setPlaybackQualityRange('$qualityKey', '$qualityKey');
+                    }
+                }
+            } catch(e) {}
+        })();
+        """.trimIndent()
+        webViewRef?.post {
+            webViewRef?.evaluateJavascript(script, null)
+        }
+        toastMessage = "Video Quality: $qualityLabel"
+        showQualityDialog = false
+    }
 
     fun applySubtitles(enabled: Boolean) {
         val script = if (enabled) {
@@ -1143,6 +1173,27 @@ fun OptimizedVideoPlayer(
                     }
 
                     Spacer(modifier = Modifier.width(4.dp))
+
+                    // Video Resolution / Quality button
+                    IconButton(
+                        onClick = { showQualityDialog = true },
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (currentQuality != "auto" && currentQuality != "default") BrandPrimary.copy(alpha = 0.9f)
+                                else Color.White.copy(alpha = 0.2f)
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.HighQuality,
+                            contentDescription = "Video Quality / Resolution",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
                     
                     // Fullscreen toggle button
                     IconButton(
@@ -1155,6 +1206,93 @@ fun OptimizedVideoPlayer(
                             tint = Color.White,
                             modifier = Modifier.size(22.dp)
                         )
+                    }
+                }
+            }
+        }
+
+        // Video Resolution / Quality Dialog
+        if (showQualityDialog) {
+            Dialog(onDismissRequest = { showQualityDialog = false }) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(Icons.Rounded.HighQuality, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(36.dp))
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Video Resolution / Quality",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Choose preferred playback resolution",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(16.dp))
+
+                        val qualityOptions = listOf(
+                            "default" to "Auto (Recommended)",
+                            "hd1080" to "1080p (Full HD)",
+                            "hd720" to "720p (HD)",
+                            "large" to "480p (Standard)",
+                            "medium" to "360p (Data Saver)",
+                        )
+
+                        qualityOptions.forEach { (key, label) ->
+                            val isSelected = currentQuality == key
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isSelected) BrandPrimary else Color.Transparent
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { applyVideoQuality(key, label) }
+                                    .padding(vertical = 4.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) BrandPrimary else MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Rounded.CheckCircle,
+                                            contentDescription = null,
+                                            tint = BrandPrimary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { showQualityDialog = false },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Close")
+                        }
                     }
                 }
             }

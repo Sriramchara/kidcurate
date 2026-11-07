@@ -165,27 +165,6 @@ fun ChildSelectScreen(
                                 Text("Create First Profile", fontWeight = FontWeight.Bold)
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = { showServerDialog = true },
-                            shape = RoundedCornerShape(14.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        ) {
-                            Icon(
-                                Icons.Rounded.SettingsEthernet,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = BrandPrimary,
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                "Server Address",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
                     }
                 }
             } else {

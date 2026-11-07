@@ -10,6 +10,14 @@ class ParentPreferences(context: Context) {
         get() = prefs.getBoolean(KEY_SUBTITLES_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_SUBTITLES_ENABLED, value).apply()
 
+    var videoQuality: String
+        get() = prefs.getString(KEY_VIDEO_QUALITY, "auto") ?: "auto"
+        set(value) = prefs.edit().putString(KEY_VIDEO_QUALITY, value).apply()
+
+    var parentPin: String
+        get() = prefs.getString(KEY_PARENT_PIN, "1234") ?: "1234"
+        set(value) = prefs.edit().putString(KEY_PARENT_PIN, value).apply()
+
     var appTheme: String
         get() = prefs.getString(KEY_APP_THEME, "light") ?: "light"
         set(value) = prefs.edit().putString(KEY_APP_THEME, value).apply()
@@ -103,6 +111,8 @@ class ParentPreferences(context: Context) {
 
     companion object {
         private const val KEY_SUBTITLES_ENABLED = "subtitles_enabled"
+        private const val KEY_VIDEO_QUALITY = "video_quality"
+        private const val KEY_PARENT_PIN = "parent_pin"
         private const val KEY_APP_THEME = "app_theme"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_PARENT_AUTH_TOKEN = "parent_auth_token"

@@ -1014,7 +1014,7 @@ fun SearchAndAddTab(
 
             // Quick Topic Chips
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val topics = listOf("AI & Coding", "Space & Planets", "Math Fun", "SciShow Kids", "History for Kids")
+                val topics = listOf("Heidi Cartoons", "Moral Stories", "Space & Planets", "Math Fun", "Phonics ABC", "SciShow Kids")
                 items(topics) { topic ->
                     Surface(
                         shape = RoundedCornerShape(12.dp),
@@ -1045,6 +1045,36 @@ fun SearchAndAddTab(
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator(color = BrandPrimary)
+                }
+            }
+        } else if (searchResults.isEmpty()) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(Icons.Rounded.Search, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(40.dp))
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = if (searchQuery.isNotBlank()) "No videos found for \"$searchQuery\"" else "Search Safe YouTube Videos",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Tip: You can search topics like 'Heidi cartoon', 'Phonics', 'Solar system' or paste ANY direct YouTube video link to add it instantly!",
+                            fontSize = 12.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         } else {
@@ -2016,9 +2046,12 @@ fun SecurityTab(
             )
         }
 
-        // Backend Server API URL Card
-        var currentServerInput by remember { mutableStateOf(parentPrefs.serverUrl) }
-        var serverMessage by remember { mutableStateOf<String?>(null) }
+        // Parent Security & PIN Control Card
+        var showChangeParentPinDialog by remember { mutableStateOf(false) }
+        var newPinInput by remember { mutableStateOf("") }
+        var confirmPinInput by remember { mutableStateOf("") }
+        var pinErrorMessage by remember { mutableStateOf<String?>(null) }
+        var pinSuccessMessage by remember { mutableStateOf<String?>(null) }
 
         Surface(
             shape = RoundedCornerShape(16.dp),
@@ -2031,69 +2064,183 @@ fun SecurityTab(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(Icons.Rounded.SettingsEthernet, contentDescription = null, tint = BrandPrimary)
-                    Text("Backend Server API URL", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Icon(Icons.Rounded.Lock, contentDescription = null, tint = BrandPrimary)
+                    Text("Security & PIN Control", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(Modifier.height(8.dp))
 
                 Text(
-                    text = "Configures the API server endpoint for your KidCurate cloud or local backend.",
+                    text = "KidCurate provides dual-layer security for parent controls and individual child profiles:",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
                 Spacer(Modifier.height(12.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = { currentServerInput = com.kidcurate.app.BuildConfig.API_BASE_URL },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp),
-                    ) {
-                        Text("Default Server", fontSize = 11.sp)
-                    }
-                    OutlinedButton(
-                        onClick = { currentServerInput = "http://localhost:8000" },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp),
-                    ) {
-                        Text("Localhost (USB)", fontSize = 11.sp)
-                    }
-                }
-
-                Spacer(Modifier.height(10.dp))
-
-                OutlinedTextField(
-                    value = currentServerInput,
-                    onValueChange = { currentServerInput = it },
-                    label = { Text("Server URL") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                // Child Profile PIN
+                Surface(
                     shape = RoundedCornerShape(12.dp),
-                )
-
-                if (serverMessage != null) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(serverMessage!!, color = BrandSuccess, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                Button(
-                    onClick = {
-                        val trimmed = currentServerInput.trim().trimEnd('/')
-                        if (trimmed.isNotBlank()) {
-                            parentPrefs.serverUrl = trimmed
-                            com.kidcurate.app.data.ApiClient.updateBaseUrl(trimmed)
-                            serverMessage = "Server URL saved to $trimmed!"
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
                 ) {
-                    Text("Save Server URL", fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(Icons.Rounded.Face, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(24.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Child Profile PINs", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                "To change a child's PIN, go to the 'Profiles' tab and tap 'Edit' on the child.",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Parent Master PIN
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(Icons.Rounded.Shield, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(24.dp))
+                            Column {
+                                Text("Parent Master PIN", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Used for quick offline Parent Zone access: ••••",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                newPinInput = ""
+                                confirmPinInput = ""
+                                pinErrorMessage = null
+                                pinSuccessMessage = null
+                                showChangeParentPinDialog = true
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        ) {
+                            Text("Change PIN", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                if (pinSuccessMessage != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(pinSuccessMessage!!, color = BrandSuccess, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // Change Parent PIN Dialog
+        if (showChangeParentPinDialog) {
+            Dialog(onDismissRequest = { showChangeParentPinDialog = false }) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(Icons.Rounded.LockReset, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(36.dp))
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Change Parent Master PIN",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Set a 4-digit PIN for quick Parent Zone entry.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                        Spacer(Modifier.height(14.dp))
+
+                        OutlinedTextField(
+                            value = newPinInput,
+                            onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) newPinInput = it },
+                            label = { Text("New 4-digit PIN") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = confirmPinInput,
+                            onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) confirmPinInput = it },
+                            label = { Text("Confirm New PIN") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+
+                        if (pinErrorMessage != null) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(pinErrorMessage!!, color = BrandCoral, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { showChangeParentPinDialog = false },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                            ) {
+                                Text("Cancel")
+                            }
+                            Button(
+                                onClick = {
+                                    if (newPinInput.length != 4) {
+                                        pinErrorMessage = "PIN must be exactly 4 digits."
+                                        return@Button
+                                    }
+                                    if (newPinInput != confirmPinInput) {
+                                        pinErrorMessage = "PINs do not match."
+                                        return@Button
+                                    }
+                                    parentPrefs.parentPin = newPinInput
+                                    pinSuccessMessage = "Parent Master PIN changed successfully!"
+                                    showChangeParentPinDialog = false
+                                    onPinUpdated()
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                            ) {
+                                Text("Save PIN", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2108,16 +2255,93 @@ fun ActivityPacksTab(
     onApplyPack: (String, String) -> Unit,
     applyingPackId: String?,
 ) {
-    var packs by remember { mutableStateOf<List<ActivityPackItem>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    val fallbackPacks = remember {
+        listOf(
+            ActivityPackItem(
+                id = "bedtime-calm",
+                title = "Bedtime Calm & Lullabies",
+                badgeIcon = "moon",
+                tagline = "Gentle acoustic lullabies & soothing calm to drift off peacefully.",
+                category = "Bedtime",
+                approxMinutes = 20,
+                videos = listOf(
+                    ActivityPackVideo("_7jhd4-o9gU", "Twinkle Twinkle Little Star & Sweet Dreams Lullabies", "Super Simple Songs", "https://img.youtube.com/vi/_7jhd4-o9gU/hqdefault.jpg", 360),
+                    ActivityPackVideo("yCjJyiqpAuU", "Brahms Lullaby Relaxing Instrumental", "Lullaby World", "https://img.youtube.com/vi/yCjJyiqpAuU/hqdefault.jpg", 480)
+                )
+            ),
+            ActivityPackItem(
+                id = "space-science",
+                title = "Solar System & Space Explorer",
+                badgeIcon = "rocket",
+                tagline = "Blast off into outer space to explore planets, the moon, and stars!",
+                category = "Science",
+                approxMinutes = 25,
+                videos = listOf(
+                    ActivityPackVideo("libKVRa0WV4", "The Solar System Song (Planets for Kids)", "Kids Learning Tube", "https://img.youtube.com/vi/libKVRa0WV4/hqdefault.jpg", 240),
+                    ActivityPackVideo("mQrlgH97v94", "All About the Sun & Solar System", "SciShow Kids", "https://img.youtube.com/vi/mQrlgH97v94/hqdefault.jpg", 300)
+                )
+            ),
+            ActivityPackItem(
+                id = "phonics-abc",
+                title = "Fun Phonics & ABC Reading",
+                badgeIcon = "book",
+                tagline = "Letter sounds, phonics songs, and word-building foundations.",
+                category = "Reading",
+                approxMinutes = 20,
+                videos = listOf(
+                    ActivityPackVideo("BELlZKpi1Zs", "Phonics Song with TWO Words - A For Apple", "ChuChu TV", "https://img.youtube.com/vi/BELlZKpi1Zs/hqdefault.jpg", 240),
+                    ActivityPackVideo("hq3yfQnllfQ", "Phonics Song for Kids - Alphabet Sounds", "Super Simple Songs", "https://img.youtube.com/vi/hq3yfQnllfQ/hqdefault.jpg", 240)
+                )
+            ),
+            ActivityPackItem(
+                id = "math-counting",
+                title = "Math Wonders & Number Magic",
+                badgeIcon = "calculator",
+                tagline = "Playful counting, shapes, and early addition made joyful.",
+                category = "Math",
+                approxMinutes = 20,
+                videos = listOf(
+                    ActivityPackVideo("D0Ajq682yrA", "Count to 20 Song for Kids", "Super Simple Songs", "https://img.youtube.com/vi/D0Ajq682yrA/hqdefault.jpg", 180),
+                    ActivityPackVideo("beTDz9HSKOM", "Shapes Song for Children", "The Singing Walrus", "https://img.youtube.com/vi/beTDz9HSKOM/hqdefault.jpg", 240)
+                )
+            ),
+            ActivityPackItem(
+                id = "moral-stories",
+                title = "Moral Stories & Wholesome Tales",
+                badgeIcon = "heart",
+                tagline = "Heartwarming fables about kindness, honesty, and courage.",
+                category = "Character",
+                approxMinutes = 25,
+                videos = listOf(
+                    ActivityPackVideo("kF8y5hB3P9U", "The Boy Who Cried Wolf & The Honest Woodcutter", "Geethanjali Kids", "https://img.youtube.com/vi/kF8y5hB3P9U/hqdefault.jpg", 360),
+                    ActivityPackVideo("Sg0BEPHn8dQ", "The Tortoise and the Hare - Moral Story", "Fairy Tales for Children", "https://img.youtube.com/vi/Sg0BEPHn8dQ/hqdefault.jpg", 420)
+                )
+            ),
+            ActivityPackItem(
+                id = "heidi-classic",
+                title = "Heidi & Mountain Adventure Tales",
+                badgeIcon = "star",
+                tagline = "Classic wholesome stories of friendship, nature, and animals.",
+                category = "Stories",
+                approxMinutes = 25,
+                videos = listOf(
+                    ActivityPackVideo("IWFILqQZkj0", "Heidi - Episode 1 Classic Adventures", "Heidi Classic Stories", "https://img.youtube.com/vi/IWFILqQZkj0/hqdefault.jpg", 600),
+                    ActivityPackVideo("C-SXqFQZky0", "Heidi - Episode 2 High in the Mountain Pastures", "Heidi Classic Stories", "https://img.youtube.com/vi/C-SXqFQZky0/hqdefault.jpg", 600)
+                )
+            )
+        )
+    }
+
+    var packs by remember { mutableStateOf<List<ActivityPackItem>>(fallbackPacks) }
+    var isLoading by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         try {
-            packs = ApiClient.api.getActivityPacks()
+            val remotePacks = ApiClient.api.getActivityPacks()
+            if (remotePacks.isNotEmpty()) {
+                packs = remotePacks
+            }
         } catch (_: Exception) {}
-        finally {
-            isLoading = false
-        }
     }
 
     if (isLoading) {

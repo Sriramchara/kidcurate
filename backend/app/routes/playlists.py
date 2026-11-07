@@ -49,6 +49,207 @@ class PlaylistUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
+class ActivityPackVideo(BaseModel):
+    youtube_id: str
+    title: str
+    channel_name: str
+    thumbnail_url: str
+    duration_seconds: int
+
+
+class ActivityPackItem(BaseModel):
+    id: str
+    title: str
+    badge_icon: str
+    tagline: str
+    category: str
+    approx_minutes: int
+    videos: List[ActivityPackVideo]
+
+
+CURATED_ACTIVITY_PACKS: List[ActivityPackItem] = [
+    ActivityPackItem(
+        id="bedtime-calm",
+        title="Bedtime Calm & Lullabies",
+        badge_icon="moon",
+        tagline="Gentle acoustic lullabies & soothing calm to drift off peacefully.",
+        category="Bedtime",
+        approx_minutes=20,
+        videos=[
+            ActivityPackVideo(
+                youtube_id="_7jhd4-o9gU",
+                title="Twinkle Twinkle Little Star & Sweet Dreams Lullabies",
+                channel_name="Super Simple Songs",
+                thumbnail_url="https://img.youtube.com/vi/_7jhd4-o9gU/hqdefault.jpg",
+                duration_seconds=360,
+            ),
+            ActivityPackVideo(
+                youtube_id="yCjJyiqpAuU",
+                title="Brahms Lullaby Relaxing Instrumental",
+                channel_name="Lullaby World",
+                thumbnail_url="https://img.youtube.com/vi/yCjJyiqpAuU/hqdefault.jpg",
+                duration_seconds=480,
+            ),
+            ActivityPackVideo(
+                youtube_id="1GDFa-nEzlg",
+                title="Rock-a-bye Baby Soothing Night Songs",
+                channel_name="Dave and Ava",
+                thumbnail_url="https://img.youtube.com/vi/1GDFa-nEzlg/hqdefault.jpg",
+                duration_seconds=360,
+            ),
+        ],
+    ),
+    ActivityPackItem(
+        id="space-science",
+        title="Solar System & Space Explorer",
+        badge_icon="rocket",
+        tagline="Blast off into outer space to explore planets, the moon, and stars!",
+        category="Science",
+        approx_minutes=25,
+        videos=[
+            ActivityPackVideo(
+                youtube_id="libKVRa0WV4",
+                title="The Solar System Song (Planets for Kids)",
+                channel_name="Kids Learning Tube",
+                thumbnail_url="https://img.youtube.com/vi/libKVRa0WV4/hqdefault.jpg",
+                duration_seconds=240,
+            ),
+            ActivityPackVideo(
+                youtube_id="mQrlgH97v94",
+                title="All About the Sun & Solar System",
+                channel_name="SciShow Kids",
+                thumbnail_url="https://img.youtube.com/vi/mQrlgH97v94/hqdefault.jpg",
+                duration_seconds=300,
+            ),
+            ActivityPackVideo(
+                youtube_id="F2prtmPEjOc",
+                title="How the Moon Moves & Lunar Phases",
+                channel_name="Peekaboo Kidz",
+                thumbnail_url="https://img.youtube.com/vi/F2prtmPEjOc/hqdefault.jpg",
+                duration_seconds=360,
+            ),
+        ],
+    ),
+    ActivityPackItem(
+        id="phonics-abc",
+        title="Fun Phonics & ABC Reading",
+        badge_icon="book",
+        tagline="Letter sounds, phonics songs, and word-building foundations.",
+        category="Reading",
+        approx_minutes=20,
+        videos=[
+            ActivityPackVideo(
+                youtube_id="BELlZKpi1Zs",
+                title="Phonics Song with TWO Words - A For Apple",
+                channel_name="ChuChu TV",
+                thumbnail_url="https://img.youtube.com/vi/BELlZKpi1Zs/hqdefault.jpg",
+                duration_seconds=240,
+            ),
+            ActivityPackVideo(
+                youtube_id="hq3yfQnllfQ",
+                title="Phonics Song for Kids - Alphabet Sounds",
+                channel_name="Super Simple Songs",
+                thumbnail_url="https://img.youtube.com/vi/hq3yfQnllfQ/hqdefault.jpg",
+                duration_seconds=240,
+            ),
+            ActivityPackVideo(
+                youtube_id="v_h_XmF1r-w",
+                title="Sight Words Foundation for Early Readers",
+                channel_name="Jack Hartmann",
+                thumbnail_url="https://img.youtube.com/vi/v_h_XmF1r-w/hqdefault.jpg",
+                duration_seconds=300,
+            ),
+        ],
+    ),
+    ActivityPackItem(
+        id="math-counting",
+        title="Math Wonders & Number Magic",
+        badge_icon="calculator",
+        tagline="Playful counting, shapes, and early addition made joyful.",
+        category="Math",
+        approx_minutes=20,
+        videos=[
+            ActivityPackVideo(
+                youtube_id="D0Ajq682yrA",
+                title="Count to 20 Song for Kids",
+                channel_name="Super Simple Songs",
+                thumbnail_url="https://img.youtube.com/vi/D0Ajq682yrA/hqdefault.jpg",
+                duration_seconds=180,
+            ),
+            ActivityPackVideo(
+                youtube_id="beTDz9HSKOM",
+                title="Shapes Song for Children",
+                channel_name="The Singing Walrus",
+                thumbnail_url="https://img.youtube.com/vi/beTDz9HSKOM/hqdefault.jpg",
+                duration_seconds=240,
+            ),
+            ActivityPackVideo(
+                youtube_id="2N3eOq30T-s",
+                title="Basic Addition for Kindergarten",
+                channel_name="Math & Learning Videos",
+                thumbnail_url="https://img.youtube.com/vi/2N3eOq30T-s/hqdefault.jpg",
+                duration_seconds=360,
+            ),
+        ],
+    ),
+    ActivityPackItem(
+        id="moral-stories",
+        title="Moral Stories & Wholesome Tales",
+        badge_icon="heart",
+        tagline="Heartwarming fables about kindness, honesty, and courage.",
+        category="Character",
+        approx_minutes=25,
+        videos=[
+            ActivityPackVideo(
+                youtube_id="kF8y5hB3P9U",
+                title="The Boy Who Cried Wolf & The Honest Woodcutter",
+                channel_name="Geethanjali Kids",
+                thumbnail_url="https://img.youtube.com/vi/kF8y5hB3P9U/hqdefault.jpg",
+                duration_seconds=360,
+            ),
+            ActivityPackVideo(
+                youtube_id="Sg0BEPHn8dQ",
+                title="The Tortoise and the Hare - Moral Story",
+                channel_name="Fairy Tales for Children",
+                thumbnail_url="https://img.youtube.com/vi/Sg0BEPHn8dQ/hqdefault.jpg",
+                duration_seconds=420,
+            ),
+            ActivityPackVideo(
+                youtube_id="JgH-4k9oN3E",
+                title="The Ant and the Grasshopper Tale",
+                channel_name="Kids Cartoon Stories",
+                thumbnail_url="https://img.youtube.com/vi/JgH-4k9oN3E/hqdefault.jpg",
+                duration_seconds=360,
+            ),
+        ],
+    ),
+    ActivityPackItem(
+        id="heidi-classic",
+        title="Heidi & Mountain Adventure Tales",
+        badge_icon="star",
+        tagline="Classic wholesome stories of friendship, nature, and animals.",
+        category="Stories",
+        approx_minutes=25,
+        videos=[
+            ActivityPackVideo(
+                youtube_id="IWFILqQZkj0",
+                title="Heidi - Episode 1 Classic Adventures",
+                channel_name="Heidi Classic Stories",
+                thumbnail_url="https://img.youtube.com/vi/IWFILqQZkj0/hqdefault.jpg",
+                duration_seconds=600,
+            ),
+            ActivityPackVideo(
+                youtube_id="C-SXqFQZky0",
+                title="Heidi - Episode 2 High in the Mountain Pastures",
+                channel_name="Heidi Classic Stories",
+                thumbnail_url="https://img.youtube.com/vi/C-SXqFQZky0/hqdefault.jpg",
+                duration_seconds=600,
+            ),
+        ],
+    ),
+]
+
+
 class PlaylistItemAdd(BaseModel):
     youtube_id: str
     title: str
@@ -142,6 +343,99 @@ def playlist_to_response(playlist: Playlist) -> PlaylistResponse:
 
 
 # ─── Routes ─────────────────────────────────────────────────────────────────
+
+@router.get("/activity-packs", response_model=List[ActivityPackItem])
+async def get_activity_packs():
+    """Returns pre-curated 1-click activity packs for parents."""
+    return CURATED_ACTIVITY_PACKS
+
+
+@router.post("/child/{child_id}/apply-pack/{pack_id}")
+async def apply_activity_pack(
+    child_id: str,
+    pack_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Applies a curated 1-click pack directly to the child's playlist for today."""
+    target_pack = next((p for p in CURATED_ACTIVITY_PACKS if p.id == pack_id), None)
+    if not target_pack:
+        raise HTTPException(status_code=404, detail="Activity pack not found")
+
+    # Verify child exists
+    child_result = await db.execute(select(Child).where(Child.id == child_id))
+    child = child_result.scalar_one_or_none()
+    if not child:
+        raise HTTPException(status_code=404, detail="Child not found")
+
+    # Get or create today's playlist for the child
+    today = date.today()
+    pl_result = await db.execute(
+        select(Playlist).where(Playlist.child_id == child_id, Playlist.scheduled_date == today)
+    )
+    playlist = pl_result.scalar_one_or_none()
+    if not playlist:
+        playlist = Playlist(
+            child_id=child_id,
+            title=f"Today's Learning ({today.strftime('%b %d')})",
+            scheduled_date=today,
+            is_active=True,
+        )
+        db.add(playlist)
+        await db.commit()
+        await db.refresh(playlist)
+
+    # Get max existing order index
+    items_result = await db.execute(
+        select(PlaylistItem).where(PlaylistItem.playlist_id == playlist.id).order_by(PlaylistItem.order_index.desc())
+    )
+    existing_items = items_result.scalars().all()
+    next_order = (existing_items[0].order_index + 1) if existing_items else 0
+    existing_yt_ids = set()
+    for it in existing_items:
+        await db.refresh(it, ["video"])
+        if it.video:
+            existing_yt_ids.add(it.video.youtube_id)
+
+    added_count = 0
+    for v in target_pack.videos:
+        if v.youtube_id in existing_yt_ids:
+            continue
+        # Get or create Video record
+        vid_res = await db.execute(select(Video).where(Video.youtube_id == v.youtube_id))
+        vid = vid_res.scalar_one_or_none()
+        if not vid:
+            vid = Video(
+                youtube_id=v.youtube_id,
+                title=v.title,
+                channel_name=v.channel_name,
+                thumbnail_url=v.thumbnail_url,
+                duration_seconds=v.duration_seconds,
+                educational_score=9.0,
+                safety_score=9.5,
+                overall_score=9.2,
+                is_safe=True,
+            )
+            db.add(vid)
+            await db.commit()
+            await db.refresh(vid)
+
+        # Add item
+        item = PlaylistItem(
+            playlist_id=playlist.id,
+            video_id=vid.id,
+            order_index=next_order,
+        )
+        db.add(item)
+        next_order += 1
+        added_count += 1
+
+    await db.commit()
+    return {
+        "status": "ok",
+        "message": f"Added {added_count} videos from '{target_pack.title}' to today's playlist!",
+        "added_count": added_count,
+    }
+
 
 @router.get("/", response_model=List[PlaylistResponse])
 async def list_playlists(
