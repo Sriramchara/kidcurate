@@ -1,0 +1,12 @@
+{
+  "name": "kidcurate",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix web-portal run dev",
+    "build": "npm --prefix web-portal run build",
+    "start": "npm --prefix web-portal start",
+    "lint": "npm --prefix web-portal run lint"
+  }
+}
+

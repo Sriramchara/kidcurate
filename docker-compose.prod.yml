@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kidcurate-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kidcurate_db
+      POSTGRES_USER: kidcurate
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-kidcurate_secret_pass_2026}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kidcurate -d kidcurate_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kidcurate-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://kidcurate:${DB_PASSWORD:-kidcurate_secret_pass_2026}@postgres:5432/kidcurate_db
+      - SECRET_KEY=${SECRET_KEY:-kidcurate-production-secret-key-min-32-chars-2026}
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=10080
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - CORS_ORIGINS=["https://app.kidcurate.com","http://localhost:3000"]
+      - DEBUG=false
+    ports:
+      - "8000:8000"
+
+  web-portal:
+    build:
+      context: ./web-portal
+      dockerfile: Dockerfile
+    container_name: kidcurate-web-portal
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://backend:8000}
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
+
