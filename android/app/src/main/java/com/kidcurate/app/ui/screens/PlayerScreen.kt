@@ -342,7 +342,7 @@ fun PlayerScreen(
                         }
                     }
 
-                    // Upcoming Wholesome Stories Carousel
+                    // Up Next Video Queue
                     if (videos.size > 1) {
                         Spacer(Modifier.height(16.dp))
                         Row(
@@ -351,13 +351,13 @@ fun PlayerScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                text = "Today's Story Queue",
-                                fontSize = 14.sp,
+                                text = "Up Next",
+                                fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onBackground,
                             )
                             Text(
-                                text = "${videos.size} Stories",
+                                text = "${videos.size} Videos",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = BrandPrimary,
@@ -463,71 +463,26 @@ fun PlayerScreen(
                             onClick = { currentIndex++ },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp),
+                                .height(50.dp),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                         ) {
                             Icon(Icons.Filled.SkipNext, contentDescription = null, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Play Next Story ▶️", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Play Next Video ▶️", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                     } else {
                         Button(
                             onClick = { onAllCompleted() },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp),
+                                .height(50.dp),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = BrandSuccess),
                         ) {
                             Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("All Done for Today! 🌟", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
-                    }
-
-                    Spacer(Modifier.height(14.dp))
-
-                    // Vulgarity-Free Guarantee & Safe Sanctuary Badge
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        shadowElevation = 2.dp,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(BrandSuccessContainer),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Rounded.VerifiedUser,
-                                    contentDescription = null,
-                                    tint = BrandSuccess,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = "100% Vulgarity-Free & Safe",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onBackground,
-                                )
-                                Text(
-                                    text = "Filtered from bad language, adult themes & brainrot",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+                            Text("All Caught Up! 🌟", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                     }
                 }
@@ -1043,7 +998,7 @@ fun OptimizedVideoPlayer(
                                 colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                                 shape = RoundedCornerShape(12.dp),
                             ) {
-                                Text("Next Story ▶️", fontWeight = FontWeight.Bold)
+                                Text("Next Video ▶️", fontWeight = FontWeight.Bold)
                             }
                         }
                         if (isStuckUnplayable && playbackError == null) {
@@ -1163,7 +1118,7 @@ fun OptimizedVideoPlayer(
                             toastMessage = if (!subtitlesEnabled) "Subtitles ON (English)" else "Subtitles OFF"
                         },
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(38.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(
                                 if (subtitlesEnabled) BrandPrimary.copy(alpha = 0.9f)
@@ -1178,13 +1133,13 @@ fun OptimizedVideoPlayer(
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
 
                     // Video Resolution / Quality button
                     IconButton(
                         onClick = { showQualityDialog = true },
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(38.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(
                                 if (currentQuality != "auto" && currentQuality != "default") BrandPrimary.copy(alpha = 0.9f)
@@ -1199,12 +1154,15 @@ fun OptimizedVideoPlayer(
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     
                     // Fullscreen toggle button
                     IconButton(
                         onClick = onToggleFullscreen,
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.2f))
                     ) {
                         Icon(
                             imageVector = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,

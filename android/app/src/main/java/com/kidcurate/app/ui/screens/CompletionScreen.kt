@@ -128,7 +128,7 @@ fun CompletionScreen(
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp),
             ) {
                 Text(
-                    text = "Back to Adventures",
+                    text = "Back to Home",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,

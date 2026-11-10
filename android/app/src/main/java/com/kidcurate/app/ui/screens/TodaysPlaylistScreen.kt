@@ -181,6 +181,7 @@ fun FilledPlaylistLightView(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(
+                        modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
@@ -190,20 +191,26 @@ fun FilledPlaylistLightView(
                             size = 48.dp,
                             iconSize = 24.dp
                         )
-                        Column {
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
                             Text(
                                 text = "Hi $childName!",
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onBackground,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                             Text(
                                 text = "Choose a video to watch",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }
+
+                    Spacer(Modifier.width(8.dp))
 
                     // Action buttons: Child Lock + Switch Profile
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
