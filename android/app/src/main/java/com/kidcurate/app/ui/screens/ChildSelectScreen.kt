@@ -139,12 +139,35 @@ fun ChildSelectScreen(
                             text = if (isError) {
                                 errorMessage ?: "Could not reach server. Check your connection."
                             } else {
-                                "You haven't added any child profiles yet. Tap below to create your child's profile and start curating fun educational adventures!"
+                                "Welcome! KidCurate is a safe, ad-free video player for kids. Create a profile, pick safe YouTube videos, and hand over the device with complete peace of mind."
                             },
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp,
                             textAlign = TextAlign.Center,
                         )
+                        if (!isError) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    ThematicAvatar(name = "rocket", avatar = "rocket", size = 40.dp, iconSize = 20.dp)
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("1. Profile", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                                }
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    ThematicAvatar(name = "palette", avatar = "palette", size = 40.dp, iconSize = 20.dp)
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("2. Add Videos", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                                }
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    ThematicAvatar(name = "star", avatar = "star", size = 40.dp, iconSize = 20.dp)
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("3. Safe Play", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
                         Spacer(modifier = Modifier.height(20.dp))
                         if (isError) {
                             Button(
@@ -275,7 +298,7 @@ fun ChildSelectScreen(
     if (showParentGate) {
         ParentPasswordDialog(
             title = "Parent Verification",
-            subtitle = "Enter parent account password to manage settings",
+            subtitle = "Enter parent password or Master PIN (default: 1234)",
             onSuccess = {
                 showParentGate = false
                 onOpenParentZone()

@@ -79,11 +79,11 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 _state.value = _state.value.copy(isLoading = true, error = null)
             }
 
-            // 2. Fetch live profiles with intelligent fallback across Render cloud, local Wi-Fi, and localhost
+            // 2. Fetch live profiles with intelligent fallback across saved URL, Render cloud, local Wi-Fi, and localhost
             var fetchedProfiles: List<ChildProfileItem>? = null
             val candidateUrls = listOf(
-                com.kidcurate.app.BuildConfig.API_BASE_URL,
                 parentPrefs.serverUrl,
+                com.kidcurate.app.BuildConfig.API_BASE_URL,
                 "http://192.168.1.112:8000/",
                 "http://10.0.2.2:8000/",
                 "http://localhost:8000/"
@@ -150,34 +150,57 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun verifyPin(childId: String, pin: String): Unit {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
-            try {
-                val response = ApiClient.api.verifyPin(
-                    ChildVerifyRequest(childId = childId, pin = pin)
-                )
-                if (response.verified) {
-                    _state.value = _state.value.copy(
+    suspend fun verifyPin(childId: String, pin: String): Boolean {
+        _state.value = _state.value.copy(isLoading = true, error = null)
+        return try {
+            val response = ApiClient.api.verifyPin(
+                ChildVerifyRequest(childId = childId, pin = pin)
+            )
+            if (response.verified) {
+                _state.value = _state.value.copy(
+                    childId = response.childId,
+                    childName = response.name,
+                    childAvatar = response.avatar,
+                    screen = AppScreen.Playlist(
                         childId = response.childId,
                         childName = response.name,
                         childAvatar = response.avatar,
-                        screen = AppScreen.Playlist(
-                            childId = response.childId,
-                            childName = response.name,
-                            childAvatar = response.avatar,
-                        ),
-                        isLoading = false,
-                    )
-                    loadTodaysPlaylist(response.childId)
-                }
-            } catch (e: Exception) {
+                    ),
+                    isLoading = false,
+                    error = null,
+                )
+                loadTodaysPlaylist(response.childId)
+                true
+            } else {
                 _state.value = _state.value.copy(
                     isLoading = false,
                     error = "Incorrect PIN. Please try again.",
                 )
+                false
             }
+        } catch (e: Exception) {
+            _state.value = _state.value.copy(
+                isLoading = false,
+                error = "Incorrect PIN. Please try again.",
+            )
+            false
         }
+    }
+
+    fun unlockChildDirectly(childId: String, name: String, avatar: String) {
+        _state.value = _state.value.copy(
+            childId = childId,
+            childName = name,
+            childAvatar = avatar,
+            screen = AppScreen.Playlist(
+                childId = childId,
+                childName = name,
+                childAvatar = avatar,
+            ),
+            isLoading = false,
+            error = null,
+        )
+        loadTodaysPlaylist(childId)
     }
 
     fun loadTodaysPlaylist(childId: String) {

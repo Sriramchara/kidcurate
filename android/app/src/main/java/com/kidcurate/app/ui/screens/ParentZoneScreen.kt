@@ -61,7 +61,7 @@ fun ParentZoneScreen(
     val parentPrefs = remember { ParentPreferences.get(context) }
 
     var selectedTabIndex by remember { mutableStateOf(0) }
-    val tabTitles = listOf("Videos", "Search & Add", "Profiles", "Settings")
+    val tabTitles = listOf("Videos", "Search", "Profiles", "Settings")
 
     // Managed Children state
     var managedChildren by remember { mutableStateOf<List<ChildManageItem>>(emptyList()) }
@@ -140,6 +140,14 @@ fun ParentZoneScreen(
     LaunchedEffect(selectedChildId) {
         if (selectedChildId.isNotEmpty()) {
             loadChildPlaylist(selectedChildId)
+        }
+    }
+
+    LaunchedEffect(searchQuery) {
+        val q = searchQuery.trim()
+        if (q.length >= 3 && q != "solar system science for kids") {
+            kotlinx.coroutines.delay(850)
+            performSearch(q)
         }
     }
 
@@ -226,6 +234,15 @@ fun ParentZoneScreen(
                             Tab(
                                 selected = selectedTabIndex == index,
                                 onClick = { selectedTabIndex = index },
+                                icon = {
+                                    val icon = when (index) {
+                                        0 -> Icons.Rounded.PlayCircle
+                                        1 -> Icons.Rounded.Search
+                                        2 -> Icons.Rounded.Face
+                                        else -> Icons.Rounded.Settings
+                                    }
+                                    Icon(icon, contentDescription = title, modifier = Modifier.size(18.dp))
+                                },
                                 text = {
                                     Text(
                                         text = title,
@@ -482,32 +499,48 @@ fun ParentZoneScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Text("Select Character Badge:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
-                    Row(
+                    Text("Select Character Avatar:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                    LazyRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp),
                     ) {
-                        avatarChoices.forEach { av ->
+                        items(avatarChoices) { av ->
                             val isSelected = avatarInput == av
-                            Box(
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
-                                    .padding(2.dp)
-                                    .clip(CircleShape)
-                                    .border(
-                                        2.dp,
-                                        if (isSelected) BrandPrimary else Color.Transparent,
-                                        CircleShape
-                                    )
+                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable {
                                         SoundHaptics.playPop(view, haptic)
                                         avatarInput = av
                                     }
+                                    .padding(4.dp)
                             ) {
-                                ThematicAvatar(
-                                    name = av,
-                                    avatar = av,
-                                    size = 36.dp,
-                                    iconSize = 18.dp
+                                Box(
+                                    modifier = Modifier
+                                        .size(46.dp)
+                                        .clip(CircleShape)
+                                        .border(
+                                            2.5.dp,
+                                            if (isSelected) BrandPrimary else Color.Transparent,
+                                            CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    ThematicAvatar(
+                                        name = av,
+                                        avatar = av,
+                                        size = 40.dp,
+                                        iconSize = 20.dp
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = av.replaceFirstChar { it.uppercase() },
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) BrandPrimary else TextSecondary,
                                 )
                             }
                         }
@@ -590,32 +623,48 @@ fun ParentZoneScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Text("Select Character Badge:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
-                    Row(
+                    Text("Select Character Avatar:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                    LazyRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp),
                     ) {
-                        avatarChoices.forEach { av ->
+                        items(avatarChoices) { av ->
                             val isSelected = avatarInput == av
-                            Box(
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
-                                    .padding(2.dp)
-                                    .clip(CircleShape)
-                                    .border(
-                                        2.dp,
-                                        if (isSelected) BrandPrimary else Color.Transparent,
-                                        CircleShape
-                                    )
+                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable {
                                         SoundHaptics.playPop(view, haptic)
                                         avatarInput = av
                                     }
+                                    .padding(4.dp)
                             ) {
-                                ThematicAvatar(
-                                    name = av,
-                                    avatar = av,
-                                    size = 36.dp,
-                                    iconSize = 18.dp
+                                Box(
+                                    modifier = Modifier
+                                        .size(46.dp)
+                                        .clip(CircleShape)
+                                        .border(
+                                            2.5.dp,
+                                            if (isSelected) BrandPrimary else Color.Transparent,
+                                            CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    ThematicAvatar(
+                                        name = av,
+                                        avatar = av,
+                                        size = 40.dp,
+                                        iconSize = 20.dp
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = av.replaceFirstChar { it.uppercase() },
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) BrandPrimary else TextSecondary,
                                 )
                             }
                         }
@@ -979,12 +1028,19 @@ fun SearchAndAddTab(
                         singleLine = true,
                     )
                     if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = onPerformSearch) {
+                        Button(
+                            onClick = onPerformSearch,
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        ) {
                             Icon(
-                                Icons.Rounded.ArrowForward,
-                                contentDescription = "Submit Search",
-                                tint = BrandPrimary,
+                                Icons.Rounded.Search,
+                                contentDescription = "Search",
+                                modifier = Modifier.size(16.dp),
                             )
+                            Spacer(Modifier.width(4.dp))
+                            Text("Search", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1018,13 +1074,25 @@ fun SearchAndAddTab(
 
         if (isSearching) {
             item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center,
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                 ) {
-                    CircularProgressIndicator(color = BrandPrimary)
+                    Row(
+                        modifier = Modifier.padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        CircularProgressIndicator(color = BrandPrimary, modifier = Modifier.size(22.dp), strokeWidth = 2.5.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            text = "Searching safe YouTube videos for \"$searchQuery\"...",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = BrandPrimary,
+                        )
+                    }
                 }
             }
         } else if (searchResults.isEmpty()) {
@@ -1293,6 +1361,79 @@ fun SecurityTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        // Parent Guide & FAQs Card
+        var showGuideDetails by remember { mutableStateOf(false) }
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = BackgroundCard,
+            border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
+            shadowElevation = 1.dp,
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showGuideDetails = !showGuideDetails },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(Icons.Rounded.HelpOutline, contentDescription = null, tint = BrandPrimary)
+                        Text("Parent Guide: How It Works", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Icon(
+                        if (showGuideDetails) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                        contentDescription = null,
+                        tint = TextSecondary,
+                    )
+                }
+
+                if (showGuideDetails) {
+                    Spacer(Modifier.height(12.dp))
+                    HorizontalDivider(color = SurfaceCardBorder)
+                    Spacer(Modifier.height(12.dp))
+
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("1.", fontWeight = FontWeight.Bold, color = BrandPrimary, fontSize = 13.sp)
+                            Text(
+                                "Child Profiles: Go to 'Profiles' tab to add or edit children, change their character avatar, and view or change their 4-digit PIN.",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("2.", fontWeight = FontWeight.Bold, color = BrandPrimary, fontSize = 13.sp)
+                            Text(
+                                "Add YouTube Videos: Go to 'Search' tab to find safe educational videos or paste ANY YouTube link to add it directly.",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("3.", fontWeight = FontWeight.Bold, color = BrandPrimary, fontSize = 13.sp)
+                            Text(
+                                "Manage Playlist: Go to 'Videos' tab to reorder videos with Up/Down buttons or delete unwanted videos.",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("4.", fontWeight = FontWeight.Bold, color = BrandPrimary, fontSize = 13.sp)
+                            Text(
+                                "Parent Master PIN: Default is '1234'. Use it anytime for quick offline Parent Zone access or to bypass a forgotten child PIN.",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // App Theme Selector Card
         Surface(
             shape = RoundedCornerShape(16.dp),

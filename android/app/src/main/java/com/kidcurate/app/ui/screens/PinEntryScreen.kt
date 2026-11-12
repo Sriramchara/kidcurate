@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kidcurate.app.ui.components.ParentPasswordDialog
 import com.kidcurate.app.ui.components.SoundHaptics
 import com.kidcurate.app.ui.components.ThematicAvatar
 import com.kidcurate.app.ui.theme.*
@@ -34,6 +35,7 @@ fun PinEntryScreen(
     childAvatar: String = "",
     onPinVerified: (String, String, String) -> Unit,
     onVerifyPin: suspend (String, String) -> Boolean,
+    onParentUnlock: () -> Unit = {},
     isLoading: Boolean,
     errorMessage: String?,
     onBack: () -> Unit = {},
@@ -41,6 +43,7 @@ fun PinEntryScreen(
     BackHandler(onBack = onBack)
 
     var pin by remember { mutableStateOf("") }
+    var showParentGate by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -147,14 +150,39 @@ fun PinEntryScreen(
                 },
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            if (isLoading) {
-                CircularProgressIndicator(
+            TextButton(
+                onClick = { showParentGate = true },
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    text = "Forgot PIN? (Parent Unlock)",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
                     color = BrandPrimary,
-                    modifier = Modifier.size(32.dp),
                 )
             }
+
+            if (isLoading) {
+                Spacer(modifier = Modifier.height(8.dp))
+                CircularProgressIndicator(
+                    color = BrandPrimary,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+        }
+
+        if (showParentGate) {
+            ParentPasswordDialog(
+                title = "Parent Unlock",
+                subtitle = "Enter parent password or Master PIN (default: 1234) to unlock ${if (childName.isNotBlank()) "$childName's" else "this"} playlist",
+                onSuccess = {
+                    showParentGate = false
+                    onParentUnlock()
+                },
+                onDismiss = { showParentGate = false },
+            )
         }
     }
 

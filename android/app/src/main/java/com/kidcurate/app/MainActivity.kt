@@ -113,7 +113,9 @@ fun KidApp(
                     onPinVerified = { _, _, _ -> },
                     onVerifyPin = { id, pin ->
                         viewModel.verifyPin(id, pin)
-                        !state.error.isNullOrEmpty().not()
+                    },
+                    onParentUnlock = {
+                        viewModel.unlockChildDirectly(screen.childId, screen.childName, screen.childAvatar)
                     },
                     isLoading = state.isLoading,
                     errorMessage = state.error,
