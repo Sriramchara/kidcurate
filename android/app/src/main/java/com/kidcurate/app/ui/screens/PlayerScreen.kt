@@ -96,9 +96,6 @@ fun PlayerScreen(
     var isChildLockActive by remember { mutableStateOf(false) }
     var showParentPasswordDialog by remember { mutableStateOf(false) }
 
-    var parentOverrideActive by remember { mutableStateOf(false) }
-    var curfewOrLimitTriggered by remember { mutableStateOf<String?>(null) }
-    var showCurfewPasswordDialog by remember { mutableStateOf(false) }
     var lastRecordedSecond by remember { mutableStateOf(0) }
     var showEndCelebration by remember { mutableStateOf(false) }
     var celebrationCountdown by remember { mutableStateOf(4) }
@@ -562,77 +559,6 @@ fun PlayerScreen(
         )
     }
 
-    if (curfewOrLimitTriggered != null) {
-        Surface(
-            color = Color(0xFF111827).copy(alpha = 0.96f),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Icon(
-                    imageVector = if (curfewOrLimitTriggered == "curfew") Icons.Filled.Bedtime else Icons.Filled.HourglassBottom,
-                    contentDescription = null,
-                    tint = Color(0xFFFBBF24),
-                    modifier = Modifier.size(64.dp),
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text = if (curfewOrLimitTriggered == "curfew") "Bedtime Curfew Active" else "Daily Screen Time Reached",
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = if (curfewOrLimitTriggered == "curfew")
-                        "KidCurate rests between ${parentPrefs.curfewStartHour}:00 PM and ${parentPrefs.curfewEndHour}:00 AM for healthy sleep."
-                    else
-                        "You have reached your daily screen time limit of ${parentPrefs.dailyScreenTimeMinutes} minutes for today.",
-                    color = Color.White.copy(alpha = 0.85f),
-                    fontSize = 14.sp,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
-                Spacer(Modifier.height(24.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(
-                        onClick = { showCurfewPasswordDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Parent Unlock", fontWeight = FontWeight.Bold)
-                    }
-                    OutlinedButton(
-                        onClick = onBack,
-                        shape = RoundedCornerShape(12.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.6f)),
-                    ) {
-                        Text("Exit Player", color = Color.White)
-                    }
-                }
-            }
-        }
-    }
-
-    if (showCurfewPasswordDialog) {
-        ParentPasswordDialog(
-            title = "Parent Unlock",
-            subtitle = "Enter parent account password to bypass screen time limit or curfew",
-            onSuccess = {
-                showCurfewPasswordDialog = false
-                parentOverrideActive = true
-                curfewOrLimitTriggered = null
-            },
-            onDismiss = { showCurfewPasswordDialog = false },
-        )
-    }
 
     if (showEndCelebration && currentVideo != null) {
         val nextVideo = if (currentIndex + 1 < videos.size) videos[currentIndex + 1] else null
