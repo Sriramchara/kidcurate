@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, Field
+from app.config import settings
 from app.database import get_db
 from app.models import User
 from app.auth import hash_password, verify_password, create_access_token, get_current_user
@@ -20,7 +21,7 @@ PASSWORD_RESET_STORE: Dict[str, Dict[str, Any]] = {}
 class RegisterRequest(BaseModel):
     name: str
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=8, description="Minimum 8 characters")
 
 
 class TokenResponse(BaseModel):
@@ -65,7 +66,7 @@ class ForgotPasswordResponse(BaseModel):
 class ResetPasswordRequest(BaseModel):
     email: EmailStr
     code: str
-    new_password: str
+    new_password: str = Field(..., min_length=8, description="Minimum 8 characters")
 
 
 class VerifyParentPasswordRequest(BaseModel):
@@ -223,19 +224,32 @@ class GoogleLoginRequest(BaseModel):
 
 @router.post("/google", response_model=TokenResponse)
 async def google_login(data: GoogleLoginRequest, db: AsyncSession = Depends(get_db)):
-    """Authenticate or register a parent account using a Google ID token."""
+    """Authenticate or register a parent account using a Google ID token with audience verification."""
     from google.oauth2 import id_token
     from google.auth.transport import requests
+    import logging
+    logger = logging.getLogger("uvicorn.error")
+
     try:
-        id_info = id_token.verify_oauth2_token(data.id_token, requests.Request())
+        target_audience = getattr(settings, "GOOGLE_CLIENT_ID", None) or None
+        id_info = id_token.verify_oauth2_token(data.id_token, requests.Request(), audience=target_audience)
+        
+        # Verify issuer
+        if id_info.get("iss") not in ["accounts.google.com", "https://accounts.google.com"]:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token issuer")
+
         email = id_info.get("email", "").lower().strip()
+        email_verified = id_info.get("email_verified", False)
+        if not email or not email_verified:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verified Google email required")
         name = id_info.get("name") or (email.split("@")[0] if email else "Parent")
-        if not email:
-            raise HTTPException(status_code=400, detail="Invalid Google token: email address missing")
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.warning(f"Google token verification failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Google authentication failed: {str(e)}"
+            detail="Google authentication failed. Please check your credentials."
         )
 
     result = await db.execute(select(User).where(User.email == email))
@@ -286,9 +300,9 @@ async def forgot_password(data: ForgotPasswordRequest, db: AsyncSession = Depend
         "created_at": datetime.now(timezone.utc),
     }
     
-    # In production, dispatch code via secure email provider. Log securely server-side for development.
+    # Security: never log the raw verification code in server logs
     import logging
-    logging.getLogger("uvicorn.error").info(f"Password reset code generated for {clean_email}: {code}")
+    logging.getLogger("uvicorn.error").info(f"Password reset verification initiated for {clean_email}")
 
     return generic_response
 

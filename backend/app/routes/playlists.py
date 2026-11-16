@@ -637,11 +637,20 @@ async def reorder_playlist(
 # ─── Android App Endpoint ────────────────────────────────────────────────────
 
 @router.get("/child/{child_id}/today")
-async def get_todays_playlist(child_id: str, db: AsyncSession = Depends(get_db)):
+async def get_todays_playlist(
+    child_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Android app endpoint: returns today's active playlist for a child.
-    No auth required — child identified by their PIN verification.
+    Requires authenticated parent whose account owns the child profile.
     """
+    # Verify child exists and belongs to this parent
+    child_res = await db.execute(select(Child).where(Child.id == child_id, Child.parent_id == current_user.id))
+    if not child_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
+
     today = date.today()
     result = await db.execute(
         select(Playlist).where(

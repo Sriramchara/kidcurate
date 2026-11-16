@@ -47,9 +47,10 @@ async def create_ai_curriculum(
 @router.get("/quiz/{youtube_id}")
 async def get_video_quiz(
     youtube_id: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Get or generate an AI quiz for a specific video."""
+    """Get or generate an AI quiz for a specific video. Requires authenticated parent/user session."""
     # Check if video exists and has cached quiz
     db_vid = await db.execute(select(Video).where(Video.youtube_id == youtube_id))
     video = db_vid.scalar_one_or_none()
