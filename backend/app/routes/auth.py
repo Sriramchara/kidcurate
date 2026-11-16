@@ -218,6 +218,48 @@ async def delete_account(
     }
 
 
+class GoogleLoginRequest(BaseModel):
+    id_token: str
+
+
+@router.post("/google", response_model=TokenResponse)
+async def google_login(data: GoogleLoginRequest, db: AsyncSession = Depends(get_db)):
+    """Authenticate or register a parent account using a Google ID token."""
+    from google.oauth2 import id_token
+    from google.auth.transport import requests
+    try:
+        id_info = id_token.verify_oauth2_token(data.id_token, requests.Request())
+        email = id_info.get("email", "").lower().strip()
+        name = id_info.get("name") or (email.split("@")[0] if email else "Parent")
+        if not email:
+            raise HTTPException(status_code=400, detail="Invalid Google token: email address missing")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Google authentication failed: {str(e)}"
+        )
+
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    if not user:
+        user = User(
+            name=name,
+            email=email,
+            password_hash=hash_password(secrets.token_urlsafe(32)),
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+    token = create_access_token({"sub": str(user.id), "email": user.email})
+    return TokenResponse(
+        access_token=token,
+        user_id=str(user.id),
+        name=user.name,
+        email=user.email,
+    )
+
+
 @router.post("/forgot-password", response_model=ForgotPasswordResponse)
 async def forgot_password(data: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == data.email.lower().strip()))

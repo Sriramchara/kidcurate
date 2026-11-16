@@ -586,16 +586,13 @@ fun PlayerScreen(
             }
         }
 
-        // Floating Back button and Lock toggle OVER the player (hidden in fullscreen)
+        // Floating Back button over the player (hidden in fullscreen)
         if (!isFullscreen) {
-            Row(
+            Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
+                    .align(Alignment.TopStart)
                     .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 IconButton(
                     onClick = { attemptBack() },
@@ -610,39 +607,6 @@ fun PlayerScreen(
                         tint = Color.White,
                         modifier = Modifier.size(22.dp),
                     )
-                }
-
-                // Lock indicator / toggle
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (isChildLockActive) BrandPrimary.copy(alpha = 0.9f) else Color.Black.copy(alpha = 0.65f),
-                    modifier = Modifier.clickable {
-                        if (isChildLockActive) {
-                            showParentPasswordDialog = true
-                        } else {
-                            isChildLockActive = true
-                            try { activity?.startLockTask() } catch (_: Exception) {}
-                        }
-                    },
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Icon(
-                            if (isChildLockActive) Icons.Filled.Lock else Icons.Filled.LockOpen,
-                            contentDescription = "Child Lock",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Text(
-                            text = if (isChildLockActive) "Locked" else "Lock",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                        )
-                    }
                 }
             }
         }
@@ -774,6 +738,39 @@ fun OptimizedVideoPlayer(
     var toastMessage by remember { mutableStateOf<String?>(null) }
     var showQualityDialog by remember { mutableStateOf(false) }
     var currentQuality by remember { mutableStateOf(parentPrefs.videoQuality) }
+    var availableQualities by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    fun queryAvailableQualities() {
+        val script = """
+        (function() {
+            try {
+                if (typeof player !== 'undefined' && player && player.getAvailableQualityLevels) {
+                    var levels = player.getAvailableQualityLevels();
+                    if (levels && levels.length > 0) return JSON.stringify(levels);
+                }
+            } catch(e) {}
+            return "[]";
+        })();
+        """.trimIndent()
+        webViewRef?.post {
+            webViewRef?.evaluateJavascript(script) { resultJson ->
+                try {
+                    if (!resultJson.isNullOrBlank() && resultJson != "null" && resultJson != "\"[]\"") {
+                        val cleaned = resultJson.trim().removeSurrounding("\"").replace("\\\"", "\"")
+                        val parsed = org.json.JSONArray(cleaned)
+                        val list = mutableListOf<String>()
+                        for (i in 0 until parsed.length()) {
+                            val q = parsed.optString(i)
+                            if (q.isNotBlank()) list.add(q)
+                        }
+                        if (list.isNotEmpty()) {
+                            availableQualities = list
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
 
     fun applyVideoQuality(qualityKey: String, qualityLabel: String) {
         currentQuality = qualityKey
@@ -917,6 +914,7 @@ fun OptimizedVideoPlayer(
                             playerState = state
                             if (state == PlayerConstants.PlayerState.PLAYING) {
                                 applySubtitles(subtitlesEnabled)
+                                queryAvailableQualities()
                             }
                             if (state == PlayerConstants.PlayerState.ENDED) {
                                 onVideoEnded(currentSecond.toInt())
@@ -1221,7 +1219,10 @@ fun OptimizedVideoPlayer(
                                         if (currentQuality != "auto" && currentQuality != "default") BrandPrimary.copy(alpha = 0.9f)
                                         else Color.White.copy(alpha = 0.2f)
                                     )
-                                    .clickable { showQualityDialog = true },
+                                    .clickable {
+                                        queryAvailableQualities()
+                                        showQualityDialog = true
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -1283,15 +1284,36 @@ fun OptimizedVideoPlayer(
                         )
                         Spacer(Modifier.height(16.dp))
 
-                        val qualityOptions = listOf(
-                            "default" to "Auto (Recommended)",
-                            "highres" to "4K Ultra HD / 8K (Max Quality)",
+                        val qualityLabelsMap = mapOf(
+                            "highres" to "4K Ultra HD (2160p)",
                             "hd1440" to "2K Quad HD (1440p)",
                             "hd1080" to "1080p (Full HD)",
                             "hd720" to "720p (HD)",
                             "large" to "480p (Standard)",
                             "medium" to "360p (Data Saver)",
+                            "small" to "240p",
+                            "tiny" to "144p",
                         )
+
+                        val qualityOptions = if (availableQualities.isNotEmpty()) {
+                            buildList {
+                                add("default" to "Auto (Recommended)")
+                                availableQualities.forEach { qKey ->
+                                    if (qKey != "auto" && qKey != "default") {
+                                        val label = qualityLabelsMap[qKey] ?: qKey.uppercase()
+                                        add(qKey to label)
+                                    }
+                                }
+                            }
+                        } else {
+                            listOf(
+                                "default" to "Auto (Recommended)",
+                                "hd1080" to "1080p (Full HD)",
+                                "hd720" to "720p (HD)",
+                                "large" to "480p (Standard)",
+                                "medium" to "360p (Data Saver)",
+                            )
+                        }
 
                         qualityOptions.forEach { (key, label) ->
                             val isSelected = currentQuality == key

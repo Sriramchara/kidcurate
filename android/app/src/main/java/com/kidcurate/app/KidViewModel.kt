@@ -61,6 +61,12 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadProfiles() {
         viewModelScope.launch {
+            if (parentPrefs.parentAuthToken.isNotBlank()) {
+                ApiClient.authToken = parentPrefs.parentAuthToken
+            }
+            if (parentPrefs.serverUrl.isNotBlank()) {
+                ApiClient.updateBaseUrl(parentPrefs.serverUrl)
+            }
             // 1. Immediately restore cached profiles if available for instant offline / startup UI
             if (parentPrefs.cachedProfilesJson.isNotBlank()) {
                 try {
@@ -105,13 +111,27 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             if (fetchedProfiles != null) {
-                parentPrefs.cachedProfilesJson = gson.toJson(fetchedProfiles)
-                _state.value = _state.value.copy(
-                    availableProfiles = fetchedProfiles,
-                    isLoading = false,
-                    error = null,
-                    screen = AppScreen.ChildSelect,
-                )
+                if (fetchedProfiles.isNotEmpty()) {
+                    parentPrefs.cachedProfilesJson = gson.toJson(fetchedProfiles)
+                    _state.value = _state.value.copy(
+                        availableProfiles = fetchedProfiles,
+                        isLoading = false,
+                        error = null,
+                        screen = AppScreen.ChildSelect,
+                    )
+                } else {
+                    if (_state.value.availableProfiles.isEmpty()) {
+                        parentPrefs.cachedProfilesJson = ""
+                        _state.value = _state.value.copy(
+                            availableProfiles = emptyList(),
+                            isLoading = false,
+                            error = null,
+                            screen = AppScreen.ChildSelect,
+                        )
+                    } else {
+                        _state.value = _state.value.copy(isLoading = false, error = null)
+                    }
+                }
             } else {
                 // If network failed but we have cached profiles, do NOT show blocking error screen!
                 if (_state.value.availableProfiles.isEmpty()) {

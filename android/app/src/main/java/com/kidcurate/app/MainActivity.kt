@@ -22,17 +22,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val prefs = ParentPreferences.get(this)
+        if (prefs.serverUrl.isNotBlank()) {
+            com.kidcurate.app.data.ApiClient.updateBaseUrl(prefs.serverUrl)
+        }
+        if (prefs.parentAuthToken.isNotBlank()) {
+            com.kidcurate.app.data.ApiClient.authToken = prefs.parentAuthToken
+        }
         setContent {
             val context = LocalContext.current
             val parentPrefs = remember { ParentPreferences.get(context) }
-            LaunchedEffect(Unit) {
-                if (parentPrefs.serverUrl.isNotBlank()) {
-                    com.kidcurate.app.data.ApiClient.updateBaseUrl(parentPrefs.serverUrl)
-                }
-                if (parentPrefs.parentAuthToken.isNotBlank()) {
-                    com.kidcurate.app.data.ApiClient.authToken = parentPrefs.parentAuthToken
-                }
-            }
             var currentTheme by remember { mutableStateOf(parentPrefs.appTheme) }
             val systemDark = isSystemInDarkTheme()
             val isDark = when (currentTheme) {

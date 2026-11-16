@@ -86,6 +86,9 @@ interface KidCurateApi {
 
     @POST("api/auth/reset-password")
     suspend fun resetPassword(@Body request: Map<String, String>): Map<String, Any>
+
+    @POST("api/auth/google")
+    suspend fun googleLogin(@Body request: Map<String, String>): Map<String, Any>
 }
 
 object ApiClient {
