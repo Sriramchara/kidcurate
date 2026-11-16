@@ -2124,6 +2124,81 @@ fun SecurityTab(
             }
         }
 
+        // Legal & YouTube API Disclosures Card
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            shadowElevation = 1.dp,
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(Icons.Rounded.Gavel, contentDescription = null, tint = BrandPrimary)
+                    Text("Legal & YouTube Disclosures", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    text = "KidCurate uses YouTube API Services to provide safe, parent-curated educational videos. By using this app, you agree to the YouTube Terms of Service and acknowledge Google's Privacy Policy.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 16.sp,
+                )
+
+                Spacer(Modifier.height(14.dp))
+
+                val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            try {
+                                uriHandler.openUri("https://kidcurate-api.onrender.com/privacy")
+                            } catch (_: Exception) {}
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                    ) {
+                        Text("Privacy Policy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            try {
+                                uriHandler.openUri("https://www.youtube.com/t/terms")
+                            } catch (_: Exception) {}
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                    ) {
+                        Text("YouTube ToS", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            try {
+                                uriHandler.openUri("https://policies.google.com/privacy")
+                            } catch (_: Exception) {}
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                    ) {
+                        Text("Google Privacy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
         // Change Parent PIN Dialog
         if (showChangeParentPinDialog) {
             Dialog(onDismissRequest = { showChangeParentPinDialog = false }) {
