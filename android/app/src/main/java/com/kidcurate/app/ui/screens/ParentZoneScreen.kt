@@ -1,6 +1,9 @@
 package com.kidcurate.app.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,6 +41,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 import com.kidcurate.app.data.*
 import com.kidcurate.app.ui.components.GlassBackgroundAura
 import com.kidcurate.app.ui.components.SoundHaptics
@@ -55,10 +61,10 @@ fun ParentZoneScreen(
     BackHandler(onBack = onBackToChildMode)
 
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
+    val appContext = LocalContext.current
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
-    val parentPrefs = remember { ParentPreferences.get(context) }
+    val parentPrefs = remember { ParentPreferences.get(appContext) }
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val tabTitles = listOf("Videos", "Search", "Profiles", "Settings")
@@ -1466,6 +1472,7 @@ fun SecurityTab(
     onPinUpdated: () -> Unit = {},
     onThemeChanged: (String) -> Unit = {},
 ) {
+    val appContext = LocalContext.current
     var selectedTheme by remember { mutableStateOf(parentPrefs.appTheme) }
 
     Column(
@@ -1609,33 +1616,58 @@ fun SecurityTab(
             }
         }
 
-        // Parent Cloud Account Card
+        // Parent Cloud Account Card (Google Sign-In)
         val scope = rememberCoroutineScope()
-        var isCreateAccountMode by remember { mutableStateOf(false) }
-        var parentNameInput by remember { mutableStateOf("") }
-        var parentEmailInput by remember { mutableStateOf(parentPrefs.parentEmail) }
-        var parentPasswordInput by remember { mutableStateOf("") }
-        var isCloudPasswordVisible by remember { mutableStateOf(false) }
         var accountStatusMessage by remember { mutableStateOf<String?>(null) }
         var isAccountLoading by remember { mutableStateOf(false) }
         var currentToken by remember { mutableStateOf(parentPrefs.parentAuthToken) }
-
-        var showForgotPasswordDialog by remember { mutableStateOf(false) }
-        var forgotEmailInput by remember { mutableStateOf(parentPrefs.parentEmail) }
-        var forgotCodeInput by remember { mutableStateOf("") }
-        var forgotNewPasswordInput by remember { mutableStateOf("") }
-        var forgotStage by remember { mutableStateOf(1) } // 1 = request, 2 = reset
-        var forgotStatusMessage by remember { mutableStateOf<String?>(null) }
-        var forgotErrorMessage by remember { mutableStateOf<String?>(null) }
-        var isForgotLoading by remember { mutableStateOf(false) }
+        var showGoogleConfigDialog by remember { mutableStateOf(false) }
+        var googleClientIdInput by remember { mutableStateOf(parentPrefs.googleClientId) }
 
         var showDeleteAccountDialog by remember { mutableStateOf(false) }
         var isDeletingAccount by remember { mutableStateOf(false) }
 
+        val googleLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                val account = task.getResult(ApiException::class.java)
+                val idToken = account?.idToken
+                if (!idToken.isNullOrBlank()) {
+                    isAccountLoading = true
+                    accountStatusMessage = null
+                    scope.launch {
+                        try {
+                            val resp = ApiClient.api.googleLogin(mapOf("id_token" to idToken))
+                            val token = resp["access_token"] as? String ?: ""
+                            if (token.isNotBlank()) {
+                                parentPrefs.parentAuthToken = token
+                                parentPrefs.parentEmail = account.email ?: ""
+                                currentToken = token
+                                ApiClient.authToken = token
+                                accountStatusMessage = "Successfully connected with Google account (${account.email})"
+                            } else {
+                                accountStatusMessage = "Server did not return an access token."
+                            }
+                        } catch (e: Exception) {
+                            accountStatusMessage = "Login failed: ${e.message}"
+                        } finally {
+                            isAccountLoading = false
+                        }
+                    }
+                } else {
+                    accountStatusMessage = "Google Sign-In succeeded, but no ID token was received."
+                }
+            } catch (e: ApiException) {
+                accountStatusMessage = "Google Sign-In failed (${e.statusCode}): ${e.message}"
+            }
+        }
+
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
             shadowElevation = 1.dp,
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
@@ -1650,7 +1682,7 @@ fun SecurityTab(
                 Spacer(Modifier.height(8.dp))
 
                 Text(
-                    text = "Sign in to synchronize child profiles, playlists, and analytics with the cloud server.",
+                    text = "Sign in with your Google account to automatically synchronize child profiles, playlists, and settings across your devices.",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1669,26 +1701,39 @@ fun SecurityTab(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Signed in as:",
-                                        fontSize = 12.sp,
-                                        color = BrandPrimary,
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.AccountCircle,
+                                        contentDescription = null,
+                                        tint = BrandPrimary,
+                                        modifier = Modifier.size(32.dp),
                                     )
-                                    Text(
-                                        text = parentPrefs.parentEmail.ifBlank { "Parent Account" },
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = BrandPrimary,
-                                    )
+                                    Column {
+                                        Text(
+                                            text = "Connected Google Account",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = BrandPrimary,
+                                        )
+                                        Text(
+                                            text = parentPrefs.parentEmail.ifBlank { "Parent Account" },
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = BrandPrimary,
+                                        )
+                                    }
                                 }
                                 Button(
                                     onClick = {
                                         parentPrefs.parentAuthToken = ""
                                         parentPrefs.parentEmail = ""
                                         currentToken = ""
-                                        com.kidcurate.app.data.ApiClient.authToken = ""
-                                        accountStatusMessage = "Signed out of cloud account."
+                                        ApiClient.authToken = ""
+                                        accountStatusMessage = "Signed out of Google account."
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = BrandCoral),
                                     shape = RoundedCornerShape(10.dp),
@@ -1723,186 +1768,66 @@ fun SecurityTab(
                         }
                     }
                 } else {
-                    // Mode toggle tabs
-                    Row(
+                    // Google Sign-In Primary Action
+                    OutlinedButton(
+                        onClick = {
+                            val clientId = parentPrefs.googleClientId.trim()
+                            if (clientId.isBlank()) {
+                                showGoogleConfigDialog = true
+                                return@OutlinedButton
+                            }
+                            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                .requestIdToken(clientId)
+                                .requestEmail()
+                                .build()
+                            val client = GoogleSignIn.getClient(appContext, gso)
+                            googleLauncher.launch(client.signInIntent)
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(3.dp),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (!isCreateAccountMode) MaterialTheme.colorScheme.surface else Color.Transparent)
-                                .clickable {
-                                    isCreateAccountMode = false
-                                    accountStatusMessage = null
-                                }
-                                .padding(vertical = 6.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "Sign In",
-                                fontSize = 12.sp,
-                                fontWeight = if (!isCreateAccountMode) FontWeight.Bold else FontWeight.Normal,
-                                color = if (!isCreateAccountMode) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isCreateAccountMode) MaterialTheme.colorScheme.surface else Color.Transparent)
-                                .clickable {
-                                    isCreateAccountMode = true
-                                    accountStatusMessage = null
-                                }
-                                .padding(vertical = 6.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "Create Account",
-                                fontSize = 12.sp,
-                                fontWeight = if (isCreateAccountMode) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isCreateAccountMode) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    if (isCreateAccountMode) {
-                        OutlinedTextField(
-                            value = parentNameInput,
-                            onValueChange = { parentNameInput = it },
-                            label = { Text("Parent Name") },
-                            placeholder = { Text("e.g. Sriram") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                        )
-                        Spacer(Modifier.height(8.dp))
-                    }
-
-                    OutlinedTextField(
-                        value = parentEmailInput,
-                        onValueChange = { parentEmailInput = it },
-                        label = { Text("Parent Email") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                            .height(48.dp),
                         shape = RoundedCornerShape(12.dp),
-                    )
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                        ),
+                        enabled = !isAccountLoading,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(
+                                Icons.Rounded.AccountCircle,
+                                contentDescription = null,
+                                tint = BrandPrimary,
+                                modifier = Modifier.size(22.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = if (isAccountLoading) "Connecting to Google..." else "Sign in with Google",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
 
                     Spacer(Modifier.height(8.dp))
 
-                    OutlinedTextField(
-                        value = parentPasswordInput,
-                        onValueChange = { parentPasswordInput = it },
-                        label = { Text(if (isCreateAccountMode) "Create Password" else "Password") },
-                        placeholder = { Text(if (isCreateAccountMode) "At least 6 characters" else "••••••••") },
-                        singleLine = true,
-                        visualTransformation = if (isCloudPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        trailingIcon = {
-                            IconButton(onClick = { isCloudPasswordVisible = !isCloudPasswordVisible }) {
-                                Icon(
-                                    if (isCloudPasswordVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                                    contentDescription = if (isCloudPasswordVisible) "Hide Password" else "Show Password",
-                                    tint = TextSecondary,
-                                )
-                            }
-                        },
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                    )
-
-                    if (!isCreateAccountMode) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
-                        ) {
-                            TextButton(
-                                onClick = {
-                                    forgotEmailInput = parentEmailInput.trim()
-                                    forgotStage = 1
-                                    forgotCodeInput = ""
-                                    forgotNewPasswordInput = ""
-                                    forgotStatusMessage = null
-                                    forgotErrorMessage = null
-                                    showForgotPasswordDialog = true
-                                }
-                            ) {
-                                Text(
-                                    "Forgot Password?",
-                                    fontSize = 12.sp,
-                                    color = BrandPrimary,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(if (!isCreateAccountMode) 4.dp else 12.dp))
-
-                    Button(
-                        onClick = {
-                            if (isCreateAccountMode && parentNameInput.isBlank()) {
-                                accountStatusMessage = "Please enter your name."
-                                return@Button
-                            }
-                            if (isCreateAccountMode && parentPasswordInput.length < 6) {
-                                accountStatusMessage = "Password must be at least 6 characters."
-                                return@Button
-                            }
-                            isAccountLoading = true
-                            accountStatusMessage = null
-                            scope.launch {
-                                try {
-                                    val resp = if (isCreateAccountMode) {
-                                        com.kidcurate.app.data.ApiClient.api.registerParent(
-                                            mapOf(
-                                                "name" to parentNameInput.trim(),
-                                                "email" to parentEmailInput.trim(),
-                                                "password" to parentPasswordInput.trim()
-                                            )
-                                        )
-                                    } else {
-                                        com.kidcurate.app.data.ApiClient.api.loginParent(
-                                            mapOf(
-                                                "email" to parentEmailInput.trim(),
-                                                "password" to parentPasswordInput.trim()
-                                            )
-                                        )
-                                    }
-                                    val token = resp["access_token"] as? String ?: ""
-                                    if (token.isNotBlank()) {
-                                        parentPrefs.parentAuthToken = token
-                                        parentPrefs.parentEmail = parentEmailInput.trim()
-                                        currentToken = token
-                                        com.kidcurate.app.data.ApiClient.authToken = token
-                                        accountStatusMessage = if (isCreateAccountMode) "Account created successfully!" else "Successfully connected to cloud!"
-                                    } else {
-                                        accountStatusMessage = "Response missing authorization token."
-                                    }
-                                } catch (e: Exception) {
-                                    accountStatusMessage = "Operation failed: ${e.message}"
-                                } finally {
-                                    isAccountLoading = false
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        enabled = !isAccountLoading && parentEmailInput.isNotBlank() && parentPasswordInput.isNotBlank() && (!isCreateAccountMode || parentNameInput.isNotBlank()),
+                        horizontalArrangement = Arrangement.Center,
                     ) {
-                        if (isAccountLoading) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White)
-                        } else {
-                            Text(if (isCreateAccountMode) "Create Parent Account" else "Sign In to Cloud Account", fontWeight = FontWeight.Bold)
+                        TextButton(
+                            onClick = {
+                                googleClientIdInput = parentPrefs.googleClientId
+                                showGoogleConfigDialog = true
+                            }
+                        ) {
+                            Icon(Icons.Rounded.Settings, contentDescription = null, modifier = Modifier.size(14.dp), tint = TextSecondary)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Google OAuth Settings", fontSize = 11.sp, color = TextSecondary)
                         }
                     }
                 }
@@ -1919,157 +1844,67 @@ fun SecurityTab(
             }
         }
 
-        // Forgot / Reset Password Dialog
-        if (showForgotPasswordDialog) {
-            Dialog(onDismissRequest = { showForgotPasswordDialog = false }) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
+        if (showGoogleConfigDialog) {
+            AlertDialog(
+                onDismissRequest = { showGoogleConfigDialog = false },
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Icon(Icons.Rounded.Key, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(36.dp))
+                        Icon(Icons.Rounded.AccountCircle, contentDescription = null, tint = BrandPrimary)
+                        Text("Google OAuth Configuration", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                },
+                text = {
+                    Column {
+                        Text(
+                            text = "To enable Google Sign-In, enter your Google Cloud OAuth 2.0 Web Client ID:",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = googleClientIdInput,
+                            onValueChange = { googleClientIdInput = it },
+                            label = { Text("Web Client ID") },
+                            placeholder = { Text("xxxx.apps.googleusercontent.com") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = if (forgotStage == 1) "Forgot Password" else "Enter Verification Code",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = if (forgotStage == 1)
-                                "Enter your parent email to generate a password reset code."
-                            else
-                                "Enter the 6-digit code and choose a new password.",
-                            fontSize = 12.sp,
+                            text = "Package: com.kidcurate.app\nSHA-1: 7C:10:7E:FC:54:0D:3C:F6:80:50:66:55:61:76:43:D2:E1:F1:15:3B",
+                            fontSize = 10.sp,
                             color = TextSecondary,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )
-                        Spacer(Modifier.height(14.dp))
-
-                        if (forgotStage == 1) {
-                            OutlinedTextField(
-                                value = forgotEmailInput,
-                                onValueChange = { forgotEmailInput = it },
-                                label = { Text("Parent Email") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        } else {
-                            OutlinedTextField(
-                                value = forgotCodeInput,
-                                onValueChange = { if (it.length <= 6) forgotCodeInput = it },
-                                label = { Text("6-Digit Code") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = forgotNewPasswordInput,
-                                onValueChange = { forgotNewPasswordInput = it },
-                                label = { Text("New Password (min 6 chars)") },
-                                singleLine = true,
-                                visualTransformation = PasswordVisualTransformation(),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-
-                        if (forgotErrorMessage != null) {
-                            Spacer(Modifier.height(8.dp))
-                            Text(forgotErrorMessage!!, color = BrandCoral, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                        if (forgotStatusMessage != null) {
-                            Spacer(Modifier.height(8.dp))
-                            Text(forgotStatusMessage!!, color = BrandSuccess, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            OutlinedButton(
-                                onClick = { showForgotPasswordDialog = false },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp),
-                            ) {
-                                Text("Cancel")
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            parentPrefs.googleClientId = googleClientIdInput.trim()
+                            showGoogleConfigDialog = false
+                            if (googleClientIdInput.isNotBlank()) {
+                                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                    .requestIdToken(googleClientIdInput.trim())
+                                    .requestEmail()
+                                    .build()
+                                val client = GoogleSignIn.getClient(appContext, gso)
+                                googleLauncher.launch(client.signInIntent)
                             }
-
-                            Button(
-                                onClick = {
-                                    if (forgotStage == 1) {
-                                        if (forgotEmailInput.isBlank()) {
-                                            forgotErrorMessage = "Please enter your email."
-                                            return@Button
-                                        }
-                                        isForgotLoading = true
-                                        forgotErrorMessage = null
-                                        forgotStatusMessage = null
-                                        scope.launch {
-                                            try {
-                                                val res = ApiClient.api.forgotPassword(mapOf("email" to forgotEmailInput.trim()))
-                                                val code = res["reset_code"] as? String ?: ""
-                                                if (code.isNotBlank()) {
-                                                    forgotCodeInput = code
-                                                }
-                                                forgotStatusMessage = "Code generated! Enter code and new password."
-                                                forgotStage = 2
-                                            } catch (e: Exception) {
-                                                forgotErrorMessage = "Account not found or error connecting."
-                                            } finally {
-                                                isForgotLoading = false
-                                            }
-                                        }
-                                    } else {
-                                        if (forgotCodeInput.length != 6) {
-                                            forgotErrorMessage = "Code must be 6 digits."
-                                            return@Button
-                                        }
-                                        if (forgotNewPasswordInput.length < 6) {
-                                            forgotErrorMessage = "Password must be at least 6 characters."
-                                            return@Button
-                                        }
-                                        isForgotLoading = true
-                                        forgotErrorMessage = null
-                                        scope.launch {
-                                            try {
-                                                ApiClient.api.resetPassword(
-                                                    mapOf(
-                                                        "email" to forgotEmailInput.trim(),
-                                                        "code" to forgotCodeInput.trim(),
-                                                        "new_password" to forgotNewPasswordInput.trim()
-                                                    )
-                                                )
-                                                parentPasswordInput = forgotNewPasswordInput
-                                                accountStatusMessage = "Password reset! You can now log in."
-                                                showForgotPasswordDialog = false
-                                            } catch (e: Exception) {
-                                                forgotErrorMessage = "Invalid code or failed to reset."
-                                            } finally {
-                                                isForgotLoading = false
-                                            }
-                                        }
-                                    }
-                                },
-                                enabled = !isForgotLoading,
-                                modifier = Modifier.weight(1.5f),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                            ) {
-                                Text(if (isForgotLoading) "Please wait..." else if (forgotStage == 1) "Get Code" else "Reset Password")
-                            }
-                        }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                    ) {
+                        Text("Save & Sign In")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showGoogleConfigDialog = false }) {
+                        Text("Cancel")
                     }
                 }
-            }
+            )
         }
 
         // Delete Parent Account Confirmation Dialog

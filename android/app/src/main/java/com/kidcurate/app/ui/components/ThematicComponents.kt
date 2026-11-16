@@ -36,6 +36,12 @@ import retrofit2.HttpException
 import com.kidcurate.app.data.ApiClient
 import com.kidcurate.app.data.ParentPreferences
 import com.kidcurate.app.ui.theme.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 
 /**
  * Clean, thematic character avatar without raw emojis.
@@ -280,21 +286,56 @@ fun GlassCard(
  */
 @Composable
 fun ParentPasswordDialog(
-    title: String = "Parent Gate",
-    subtitle: String = "Enter parent account password",
+    title: String = "Parent Verification",
+    subtitle: String = "Sign in with Google or enter your 4-digit Parent PIN",
     onSuccess: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val context = LocalContext.current
+    val appContext = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val parentPrefs = remember { ParentPreferences(context) }
-    var isRegisterMode by remember { mutableStateOf(false) }
-    var parentNameInput by remember { mutableStateOf("") }
-    var parentEmailInput by remember { mutableStateOf(parentPrefs.parentEmail) }
-    var parentPasswordInput by remember { mutableStateOf("") }
-    var isPasswordVisible by remember { mutableStateOf(false) }
+    val parentPrefs = remember { ParentPreferences(appContext) }
+    var pinInput by remember { mutableStateOf("") }
     var isVerifying by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showGoogleConfigDialog by remember { mutableStateOf(false) }
+    var googleClientIdInput by remember { mutableStateOf(parentPrefs.googleClientId) }
+
+    val googleLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            val idToken = account?.idToken
+            if (!idToken.isNullOrBlank()) {
+                isVerifying = true
+                errorMessage = null
+                coroutineScope.launch {
+                    try {
+                        val resp = ApiClient.api.googleLogin(mapOf("id_token" to idToken))
+                        val token = resp["access_token"] as? String ?: ""
+                        if (token.isNotBlank()) {
+                            parentPrefs.parentAuthToken = token
+                            parentPrefs.parentEmail = account.email ?: ""
+                            ApiClient.authToken = token
+                            isVerifying = false
+                            onSuccess()
+                        } else {
+                            isVerifying = false
+                            errorMessage = "Google authentication did not return a session token."
+                        }
+                    } catch (e: Exception) {
+                        isVerifying = false
+                        errorMessage = "Server error during Google login: ${e.message}"
+                    }
+                }
+            } else {
+                errorMessage = "Google sign-in succeeded but did not provide an ID token."
+            }
+        } catch (e: ApiException) {
+            errorMessage = "Google Sign-In failed (${e.statusCode}): ${e.message}"
+        }
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         GlassCard(
@@ -325,145 +366,108 @@ fun ParentPasswordDialog(
                 Spacer(Modifier.height(14.dp))
 
                 Text(
-                    text = if (isRegisterMode) "Create Parent Account" else title,
+                    text = title,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
                 )
 
                 Text(
-                    text = if (isRegisterMode) "Set up your parent account to manage your children" else subtitle,
+                    text = subtitle,
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
+                    modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
                 )
 
-                if (parentPrefs.parentEmail.isBlank()) {
-                    // Sign In vs Create Account Toggle Tabs
+                // Continue with Google Button
+                OutlinedButton(
+                    onClick = {
+                        val clientId = parentPrefs.googleClientId.trim()
+                        if (clientId.isBlank()) {
+                            showGoogleConfigDialog = true
+                            return@OutlinedButton
+                        }
+                        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                            .requestIdToken(clientId)
+                            .requestEmail()
+                            .build()
+                        val client = GoogleSignIn.getClient(appContext, gso)
+                        googleLauncher.launch(client.signInIntent)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    ),
+                    enabled = !isVerifying,
+                ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (!isRegisterMode) MaterialTheme.colorScheme.surface else Color.Transparent)
-                                .clickable {
-                                    isRegisterMode = false
-                                    errorMessage = null
-                                }
-                                .padding(vertical = 6.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "Sign In",
-                                fontSize = 12.sp,
-                                fontWeight = if (!isRegisterMode) FontWeight.Bold else FontWeight.Normal,
-                                color = if (!isRegisterMode) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isRegisterMode) MaterialTheme.colorScheme.surface else Color.Transparent)
-                                .clickable {
-                                    isRegisterMode = true
-                                    errorMessage = null
-                                }
-                                .padding(vertical = 6.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "Create Account",
-                                fontSize = 12.sp,
-                                fontWeight = if (isRegisterMode) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isRegisterMode) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    if (isRegisterMode) {
-                        OutlinedTextField(
-                            value = parentNameInput,
-                            onValueChange = {
-                                parentNameInput = it
-                                errorMessage = null
-                            },
-                            label = { Text("Parent Name") },
-                            placeholder = { Text("e.g. Sriram") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
+                        Icon(
+                            Icons.Rounded.AccountCircle,
+                            contentDescription = null,
+                            tint = BrandPrimary,
+                            modifier = Modifier.size(22.dp),
                         )
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = if (isVerifying) "Verifying with Google..." else "Continue with Google",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
                     }
+                }
 
-                    OutlinedTextField(
-                        value = parentEmailInput,
-                        onValueChange = {
-                            parentEmailInput = it
-                            errorMessage = null
-                        },
-                        label = { Text("Parent Account Email") },
-                        placeholder = { Text("Enter account email") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                Spacer(Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                    Text(
+                        text = "OR USE 4-DIGIT PIN",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp),
                     )
-                    Spacer(Modifier.height(8.dp))
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
                 }
 
                 OutlinedTextField(
-                    value = parentPasswordInput,
+                    value = pinInput,
                     onValueChange = {
-                        parentPasswordInput = it
-                        errorMessage = null
-                    },
-                    label = { Text(if (isRegisterMode) "Create Password" else "Parent Account Password") },
-                    placeholder = { Text(if (isRegisterMode) "At least 6 characters" else "Enter password") },
-                    visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
-                            Icon(
-                                if (isPasswordVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                                contentDescription = if (isPasswordVisible) "Hide password" else "Show password",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                        if (it.length <= 4 && it.all { char -> char.isDigit() }) {
+                            pinInput = it
+                            errorMessage = null
+                            if (it.length == 4) {
+                                val expectedPin = parentPrefs.parentPin.ifBlank { "0000" }
+                                if (it == expectedPin) {
+                                    onSuccess()
+                                } else {
+                                    errorMessage = "Incorrect 4-digit PIN."
+                                }
+                            }
                         }
                     },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    label = { Text("Parent PIN") },
+                    placeholder = { Text("••••") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
                 )
-
-                if (parentPrefs.parentEmail.isNotBlank()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        TextButton(
-                            onClick = {
-                                parentPrefs.parentEmail = ""
-                                parentPrefs.parentAuthToken = ""
-                                ApiClient.authToken = ""
-                                parentEmailInput = ""
-                                isRegisterMode = false
-                                errorMessage = null
-                            },
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                        ) {
-                            Text("Switch Account", fontSize = 11.sp, color = BrandPrimary)
-                        }
-                    }
-                }
 
                 if (errorMessage != null) {
                     Spacer(Modifier.height(8.dp))
@@ -492,106 +496,70 @@ fun ParentPasswordDialog(
 
                     Button(
                         onClick = {
-                            val enteredPass = parentPasswordInput.trim()
-
-                            // Master PIN local offline unlock (if configured)
-                            if (!isRegisterMode && parentPrefs.parentPin.isNotBlank() && enteredPass == parentPrefs.parentPin) {
+                            val expectedPin = parentPrefs.parentPin.ifBlank { "0000" }
+                            if (pinInput == expectedPin) {
                                 onSuccess()
-                                return@Button
-                            }
-
-                            val emailToVerify = if (parentPrefs.parentEmail.isNotBlank()) {
-                                parentPrefs.parentEmail.trim()
                             } else {
-                                parentEmailInput.trim()
-                            }
-
-                            if (isRegisterMode && parentNameInput.isBlank()) {
-                                errorMessage = "Please enter your name."
-                                return@Button
-                            }
-                            if (emailToVerify.isBlank()) {
-                                errorMessage = "Please enter parent email."
-                                return@Button
-                            }
-                            if (parentPasswordInput.isBlank()) {
-                                errorMessage = "Please enter your password."
-                                return@Button
-                            }
-                            if (isRegisterMode && parentPasswordInput.length < 6) {
-                                errorMessage = "Password must be at least 6 characters."
-                                return@Button
-                            }
-
-                            isVerifying = true
-                            errorMessage = null
-                            coroutineScope.launch {
-                                try {
-                                    if (isRegisterMode) {
-                                        // Register new parent account
-                                        val resp = ApiClient.api.registerParent(
-                                            mapOf(
-                                                "name" to parentNameInput.trim(),
-                                                "email" to emailToVerify,
-                                                "password" to parentPasswordInput.trim(),
-                                            )
-                                        )
-                                        val token = resp["access_token"] as? String ?: ""
-                                        if (token.isNotBlank()) {
-                                            parentPrefs.parentAuthToken = token
-                                            parentPrefs.parentEmail = emailToVerify
-                                            ApiClient.authToken = token
-                                            isVerifying = false
-                                            onSuccess()
-                                        } else {
-                                            isVerifying = false
-                                            errorMessage = "Registration completed. Please sign in."
-                                        }
-                                    } else {
-                                        // Verify existing parent password
-                                        val resp = ApiClient.api.verifyParentPassword(
-                                            mapOf("email" to emailToVerify, "password" to parentPasswordInput.trim())
-                                        )
-                                        if (parentPrefs.parentEmail.isBlank()) {
-                                            parentPrefs.parentEmail = emailToVerify
-                                        }
-                                        val token = resp["access_token"] as? String ?: ""
-                                        if (token.isNotBlank()) {
-                                            parentPrefs.parentAuthToken = token
-                                            ApiClient.authToken = token
-                                        }
-                                        isVerifying = false
-                                        onSuccess()
-                                    }
-                                } catch (e: HttpException) {
-                                    isVerifying = false
-                                    if (e.code() == 400) {
-                                        errorMessage = "Email already registered. Switch to Sign In."
-                                    } else if (e.code() == 401) {
-                                        errorMessage = "Incorrect password. Please try again."
-                                    } else {
-                                        errorMessage = "Request failed (HTTP ${e.code()})."
-                                    }
-                                } catch (e: Exception) {
-                                    isVerifying = false
-                                    errorMessage = "Offline or server unreachable. Please check your network connection."
-                                }
+                                errorMessage = "Incorrect 4-digit PIN."
                             }
                         },
-                        enabled = !isVerifying && parentPasswordInput.isNotBlank(),
-                        modifier = Modifier.weight(1.5f),
+                        enabled = pinInput.length == 4,
+                        modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                     ) {
-                        Text(
-                            if (isVerifying) "Processing..."
-                            else if (isRegisterMode) "Create Account"
-                            else "Unlock"
-                        )
+                        Text("Unlock")
                     }
                 }
             }
         }
+    }
+
+    if (showGoogleConfigDialog) {
+        AlertDialog(
+            onDismissRequest = { showGoogleConfigDialog = false },
+            title = { Text("Google OAuth Client ID", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(
+                        "Enter your Google Cloud OAuth 2.0 Web Client ID to enable Google Sign-In:",
+                        fontSize = 12.sp,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = googleClientIdInput,
+                        onValueChange = { googleClientIdInput = it },
+                        label = { Text("Web Client ID") },
+                        placeholder = { Text("xxxx.apps.googleusercontent.com") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        parentPrefs.googleClientId = googleClientIdInput.trim()
+                        showGoogleConfigDialog = false
+                        if (googleClientIdInput.isNotBlank()) {
+                            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                .requestIdToken(googleClientIdInput.trim())
+                                .requestEmail()
+                                .build()
+                            val client = GoogleSignIn.getClient(appContext, gso)
+                            googleLauncher.launch(client.signInIntent)
+                        }
+                    }
+                ) {
+                    Text("Save & Sign In")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGoogleConfigDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

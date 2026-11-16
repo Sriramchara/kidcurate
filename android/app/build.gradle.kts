@@ -3,6 +3,9 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
+
+layout.buildDirectory.set(file("C:/tmp/kidcurate-build/app"))
+
 // Force IDE Sync prompt
 android {
     namespace = "com.kidcurate.app"
@@ -17,6 +20,9 @@ android {
 
         val apiUrl = (project.findProperty("API_BASE_URL") as? String) ?: "https://kidcurate-api.onrender.com"
         buildConfigField("String", "API_BASE_URL", "\"$apiUrl\"")
+
+        val googleClientId = (project.findProperty("GOOGLE_CLIENT_ID") as? String) ?: ""
+        buildConfigField("String", "GOOGLE_CLIENT_ID", "\"$googleClientId\"")
     }
 
     signingConfigs {
@@ -88,6 +94,9 @@ dependencies {
 
     // Encrypted SharedPreferences backed by Android Keystore
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // Google Sign-In SDK
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 
     // Image loading
     implementation("io.coil-kt:coil-compose:2.7.0")

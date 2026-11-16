@@ -47,3 +47,7 @@
 -keep class com.google.crypto.tink.** { *; }
 -keep class androidx.security.crypto.** { *; }
 
+# Google Sign-In SDK
+-keep class com.google.android.gms.auth.api.signin.** { *; }
+-keep class com.google.android.gms.common.api.** { *; }
+

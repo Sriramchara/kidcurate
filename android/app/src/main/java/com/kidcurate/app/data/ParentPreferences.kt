@@ -59,6 +59,13 @@ class ParentPreferences(context: Context) {
         get() = prefs.getString(KEY_PARENT_EMAIL, "") ?: ""
         set(value) = prefs.edit().putString(KEY_PARENT_EMAIL, value).apply()
 
+    var googleClientId: String
+        get() {
+            val id = prefs.getString("google_client_id", "") ?: ""
+            return if (id.isNotBlank()) id else com.kidcurate.app.BuildConfig.GOOGLE_CLIENT_ID
+        }
+        set(value) = prefs.edit().putString("google_client_id", value).apply()
+
     var dailyScreenTimeMinutes: Int
         get() = prefs.getInt(KEY_DAILY_SCREEN_TIME_MINUTES, 45) // 0 means unlimited
         set(value) = prefs.edit().putInt(KEY_DAILY_SCREEN_TIME_MINUTES, value).apply()
