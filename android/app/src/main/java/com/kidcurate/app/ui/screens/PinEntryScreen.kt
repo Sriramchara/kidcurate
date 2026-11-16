@@ -179,7 +179,7 @@ fun PinEntryScreen(
         if (showParentGate) {
             ParentPasswordDialog(
                 title = "Parent Unlock",
-                subtitle = "Enter parent password or Master PIN (default: 1234) to unlock ${if (childName.isNotBlank()) "$childName's" else "this"} playlist",
+                subtitle = "Enter parent password to unlock ${if (childName.isNotBlank()) "$childName's" else "this"} playlist",
                 onSuccess = {
                     showParentGate = false
                     onParentUnlock()

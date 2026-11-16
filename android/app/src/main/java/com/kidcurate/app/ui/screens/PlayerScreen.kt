@@ -103,6 +103,7 @@ fun PlayerScreen(
     var isCurrentVideoCompleted by remember(currentIndex) { mutableStateOf(false) }
     var currentVideoSeconds by remember(currentIndex) { mutableFloatStateOf(0f) }
     var currentVideoTotalDuration by remember(currentIndex) { mutableFloatStateOf(0f) }
+    var currentVideoHasError by remember(currentIndex) { mutableStateOf(false) }
 
     LaunchedEffect(showEndCelebration) {
         if (showEndCelebration) {
@@ -213,7 +214,11 @@ fun PlayerScreen(
                                 onProgressUpdate(currentVideo, secInt)
                             }
                         },
-                        onSkipNext = if (currentIndex + 1 < videos.size && isCurrentVideoCompleted) { { currentIndex++ } } else null,
+                        onSkipNext = if (currentIndex + 1 < videos.size && (isCurrentVideoCompleted || currentVideoHasError)) { { currentIndex++ } } else null,
+                        onFinishPlaylist = if (currentIndex + 1 >= videos.size) { { onAllCompleted() } } else null,
+                        onPlaybackError = { hasErr ->
+                            currentVideoHasError = hasErr
+                        },
                     )
                 }
             }
@@ -469,12 +474,12 @@ fun PlayerScreen(
 
                     Spacer(Modifier.height(16.dp))
 
-                    // Next button or All Caught Up (Requires completing current video)
-                    if (isCurrentVideoCompleted) {
+                    // Next button or All Caught Up (Requires completing current video or handling unplayable video)
+                    if (isCurrentVideoCompleted || currentVideoHasError) {
                         if (currentIndex + 1 < videos.size) {
                             Button(
                                 onClick = {
-                                    if (currentVideo != null) onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
+                                    if (currentVideo != null && isCurrentVideoCompleted) onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
                                     currentIndex++
                                 },
                                 modifier = Modifier
@@ -485,12 +490,12 @@ fun PlayerScreen(
                             ) {
                                 Icon(Icons.Filled.SkipNext, contentDescription = null, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Play Next Video", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text(if (currentVideoHasError) "Skip Unavailable Video" else "Play Next Video", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
                         } else {
                             Button(
                                 onClick = {
-                                    if (currentVideo != null) onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
+                                    if (currentVideo != null && isCurrentVideoCompleted) onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
                                     onAllCompleted()
                                 },
                                 modifier = Modifier
@@ -712,6 +717,8 @@ fun OptimizedVideoPlayer(
     onVideoEnded: (Int) -> Unit,
     onProgressUpdate: (Float, Float) -> Unit,
     onSkipNext: (() -> Unit)? = null,
+    onFinishPlaylist: (() -> Unit)? = null,
+    onPlaybackError: ((Boolean) -> Unit)? = null,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
@@ -890,6 +897,7 @@ fun OptimizedVideoPlayer(
                                     "HTML5 player error encountered."
                                 else -> "Video playback is currently unavailable. Please check your connection."
                             }
+                            onPlaybackError?.invoke(true)
                         }
                     }, options)
                 }
@@ -967,6 +975,7 @@ fun OptimizedVideoPlayer(
                         OutlinedButton(
                             onClick = {
                                 playbackError = null
+                                onPlaybackError?.invoke(false)
                                 youTubePlayerRef?.loadVideo(video.youtubeId, 0f)
                             },
                             shape = RoundedCornerShape(12.dp),
@@ -981,6 +990,14 @@ fun OptimizedVideoPlayer(
                                 shape = RoundedCornerShape(12.dp),
                             ) {
                                 Text("Next Video", fontWeight = FontWeight.Bold)
+                            }
+                        } else if (onFinishPlaylist != null) {
+                            Button(
+                                onClick = onFinishPlaylist,
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Text("Finish Playlist", fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -1089,7 +1106,7 @@ fun OptimizedVideoPlayer(
                 }
 
                 // Bottom bar: Progress, timestamps, Subtitle CC button, and Fullscreen toggle
-                Row(
+                Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
@@ -1099,94 +1116,97 @@ fun OptimizedVideoPlayer(
                                 .navigationBarsPadding()
                             else Modifier
                         )
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
                 ) {
-                    // Simple progress bar
+                    // Full-width scrubbing / progress indicator
                     LinearProgressIndicator(
-                        progress = { if (videoDuration > 0) currentSecond / videoDuration else 0f },
+                        progress = { if (videoDuration > 0) (currentSecond / videoDuration).coerceIn(0f, 1f) else 0f },
                         modifier = Modifier
-                            .weight(1f)
+                            .fillMaxWidth()
                             .height(4.dp)
                             .clip(RoundedCornerShape(2.dp)),
                         color = BrandPrimary,
                         trackColor = Color.White.copy(alpha = 0.3f)
                     )
-                    
-                    Spacer(modifier = Modifier.width(10.dp))
 
-                    // Time display e.g. 01:23 / 05:10
-                    Text(
-                        text = "${formatTime(currentSecond)} / ${formatTime(videoDuration)}",
-                        color = Color.White.copy(alpha = 0.85f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                    )
-
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        // Subtitle / Closed Caption (CC) toggle button
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(
-                                    if (subtitlesEnabled) BrandPrimary.copy(alpha = 0.9f)
-                                    else Color.White.copy(alpha = 0.2f)
-                                )
-                                .clickable {
-                                    onToggleSubtitles()
-                                    toastMessage = if (!subtitlesEnabled) "Subtitles ON (English)" else "Subtitles OFF"
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = if (subtitlesEnabled) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionDisabled,
-                                contentDescription = if (subtitlesEnabled) "Disable Subtitles" else "Enable Subtitles",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
+                        // Time display e.g. 01:23 / 05:10
+                        Text(
+                            text = "${formatTime(currentSecond)} / ${formatTime(videoDuration)}",
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
 
-                        // Video Resolution / Quality button
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(
-                                    if (currentQuality != "auto" && currentQuality != "default") BrandPrimary.copy(alpha = 0.9f)
-                                    else Color.White.copy(alpha = 0.2f)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Subtitle / Closed Caption (CC) toggle button
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        if (subtitlesEnabled) BrandPrimary.copy(alpha = 0.9f)
+                                        else Color.White.copy(alpha = 0.2f)
+                                    )
+                                    .clickable {
+                                        onToggleSubtitles()
+                                        toastMessage = if (!subtitlesEnabled) "Subtitles ON (English)" else "Subtitles OFF"
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (subtitlesEnabled) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionDisabled,
+                                    contentDescription = if (subtitlesEnabled) "Disable Subtitles" else "Enable Subtitles",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
                                 )
-                                .clickable { showQualityDialog = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.HighQuality,
-                                contentDescription = "Video Quality / Resolution",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
+                            }
 
-                        // Fullscreen toggle button
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color.White.copy(alpha = 0.2f))
-                                .clickable { onToggleFullscreen() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                                contentDescription = "Toggle Fullscreen",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
+                            // Video Resolution / Quality button
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        if (currentQuality != "auto" && currentQuality != "default") BrandPrimary.copy(alpha = 0.9f)
+                                        else Color.White.copy(alpha = 0.2f)
+                                    )
+                                    .clickable { showQualityDialog = true },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.HighQuality,
+                                    contentDescription = "Video Quality / Resolution",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            // Fullscreen toggle button
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.White.copy(alpha = 0.2f))
+                                    .clickable { onToggleFullscreen() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                                    contentDescription = "Toggle Fullscreen",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }

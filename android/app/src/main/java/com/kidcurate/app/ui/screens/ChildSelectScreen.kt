@@ -46,7 +46,6 @@ fun ChildSelectScreen(
     onUpdateServerUrl: (String) -> Unit = {},
 ) {
     var showParentGate by remember { mutableStateOf(false) }
-    var showServerDialog by remember { mutableStateOf(false) }
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
 
@@ -134,7 +133,7 @@ fun ChildSelectScreen(
                         )
                         Spacer(modifier = Modifier.height(14.dp))
                         Text(
-                            text = if (isError) "Connection Notice" else "Welcome to KidCurate",
+                            text = if (isError) "Unable to Connect" else "Welcome to KidCurate",
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
@@ -143,7 +142,7 @@ fun ChildSelectScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = if (isError) {
-                                errorMessage ?: "Could not reach server. Check your connection."
+                                "Please check your internet connection and try again."
                             } else {
                                 "Welcome! KidCurate is a safe, parent-controlled video player for kids. Create a profile, pick safe YouTube videos, and hand over the device with complete peace of mind."
                             },
@@ -176,29 +175,15 @@ fun ChildSelectScreen(
                         }
                         Spacer(modifier = Modifier.height(20.dp))
                         if (isError) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                            Button(
+                                onClick = onRetry,
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.height(48.dp),
                             ) {
-                                Button(
-                                    onClick = onRetry,
-                                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                                    shape = RoundedCornerShape(14.dp),
-                                    modifier = Modifier.height(48.dp),
-                                ) {
-                                    Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Retry", fontWeight = FontWeight.Bold)
-                                }
-                                OutlinedButton(
-                                    onClick = { showServerDialog = true },
-                                    shape = RoundedCornerShape(14.dp),
-                                    modifier = Modifier.height(48.dp),
-                                ) {
-                                    Icon(Icons.Rounded.SettingsEthernet, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Server URL")
-                                }
+                                Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Try Again", fontWeight = FontWeight.Bold)
                             }
                         } else {
                             Button(
@@ -322,7 +307,7 @@ fun ChildSelectScreen(
     if (showParentGate) {
         ParentPasswordDialog(
             title = "Parent Verification",
-            subtitle = "Enter parent password or Master PIN (default: 1234)",
+            subtitle = "Enter parent password to access Parent Control Center",
             onSuccess = {
                 showParentGate = false
                 onOpenParentZone()
@@ -330,118 +315,4 @@ fun ChildSelectScreen(
             onDismiss = { showParentGate = false },
         )
     }
-
-    if (showServerDialog) {
-        val context = LocalContext.current
-        val parentPrefs = remember { ParentPreferences.get(context) }
-        var currentInput by remember { mutableStateOf(parentPrefs.serverUrl) }
-
-        androidx.compose.ui.window.Dialog(onDismissRequest = { showServerDialog = false }) {
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                shadowElevation = 8.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(
-                            Icons.Rounded.SettingsEthernet,
-                            contentDescription = null,
-                            tint = BrandPrimary,
-                        )
-                        Text(
-                            text = "Server Connection",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                        )
-                    }
-
-                    Text(
-                        text = "Connect via USB port forward or directly over your home Wi-Fi network.",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-
-                    // Quick presets
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "Quick Presets:",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(
-                                onClick = { currentInput = com.kidcurate.app.BuildConfig.API_BASE_URL },
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
-                            ) {
-                                Text("Default Server", fontSize = 11.sp)
-                            }
-                            OutlinedButton(
-                                onClick = { currentInput = "http://localhost:8000" },
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
-                            ) {
-                                Text("Localhost (USB)", fontSize = 11.sp)
-                            }
-                        }
-                    }
-
-                    // Input field
-                    OutlinedTextField(
-                        value = currentInput,
-                        onValueChange = { currentInput = it },
-                        label = { Text("API Base URL") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        OutlinedButton(
-                            onClick = { showServerDialog = false },
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("Cancel")
-                        }
-                        Button(
-                            onClick = {
-                                val trimmed = currentInput.trim().trimEnd('/')
-                                if (trimmed.isNotBlank()) {
-                                    parentPrefs.serverUrl = trimmed
-                                    com.kidcurate.app.data.ApiClient.updateBaseUrl(trimmed)
-                                    onUpdateServerUrl(trimmed)
-                                    showServerDialog = false
-                                    onRetry()
-                                }
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                            modifier = Modifier.weight(1.5f),
-                        ) {
-                            Text("Save & Connect", fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-    }
-    }
+}

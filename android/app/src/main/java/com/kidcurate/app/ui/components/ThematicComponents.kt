@@ -281,7 +281,7 @@ fun GlassCard(
 @Composable
 fun ParentPasswordDialog(
     title: String = "Parent Gate",
-    subtitle: String = "Enter parent password or Master PIN (default: 1234)",
+    subtitle: String = "Enter parent account password",
     onSuccess: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -494,8 +494,8 @@ fun ParentPasswordDialog(
                         onClick = {
                             val enteredPass = parentPasswordInput.trim()
 
-                            // Master PIN instant local offline unlock
-                            if (!isRegisterMode && (enteredPass == parentPrefs.parentPin || enteredPass == "1234")) {
+                            // Master PIN local offline unlock (if configured)
+                            if (!isRegisterMode && parentPrefs.parentPin.isNotBlank() && enteredPass == parentPrefs.parentPin) {
                                 onSuccess()
                                 return@Button
                             }
@@ -511,11 +511,11 @@ fun ParentPasswordDialog(
                                 return@Button
                             }
                             if (emailToVerify.isBlank()) {
-                                errorMessage = "Please enter parent email or 4-digit Master PIN."
+                                errorMessage = "Please enter parent email."
                                 return@Button
                             }
                             if (parentPasswordInput.isBlank()) {
-                                errorMessage = "Please enter password or Master PIN."
+                                errorMessage = "Please enter your password."
                                 return@Button
                             }
                             if (isRegisterMode && parentPasswordInput.length < 6) {
@@ -568,13 +568,13 @@ fun ParentPasswordDialog(
                                     if (e.code() == 400) {
                                         errorMessage = "Email already registered. Switch to Sign In."
                                     } else if (e.code() == 401) {
-                                        errorMessage = "Incorrect password. (Tip: Use Master PIN 1234 to bypass)."
+                                        errorMessage = "Incorrect password. Please try again."
                                     } else {
                                         errorMessage = "Request failed (HTTP ${e.code()})."
                                     }
                                 } catch (e: Exception) {
                                     isVerifying = false
-                                    errorMessage = "Offline or server unreachable. You can unlock using Master PIN (default: 1234)."
+                                    errorMessage = "Offline or server unreachable. Please check your network connection."
                                 }
                             }
                         },

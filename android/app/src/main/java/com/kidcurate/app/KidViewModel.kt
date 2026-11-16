@@ -79,13 +79,12 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 _state.value = _state.value.copy(isLoading = true, error = null)
             }
 
-            // 2. Fetch live profiles with intelligent fallback across saved URL, Render cloud, local Wi-Fi, and localhost
+            // 2. Fetch live profiles: connect to production cloud server or saved server URL
             var fetchedProfiles: List<ChildProfileItem>? = null
+            val primaryUrl = parentPrefs.serverUrl.ifBlank { com.kidcurate.app.BuildConfig.API_BASE_URL }
             val candidateUrls = listOf(
-                parentPrefs.serverUrl,
+                primaryUrl,
                 com.kidcurate.app.BuildConfig.API_BASE_URL,
-                "http://192.168.1.112:8000/",
-                "http://10.0.2.2:8000/",
                 "http://localhost:8000/"
             ).filter { it.isNotBlank() }
              .map { if (it.endsWith("/")) it else "$it/" }
@@ -118,7 +117,7 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 if (_state.value.availableProfiles.isEmpty()) {
                     _state.value = _state.value.copy(
                         isLoading = false,
-                        error = "Could not connect to server. Check your Wi-Fi or API URL.",
+                        error = "Unable to connect to KidCurate. Please check your internet connection.",
                     )
                 } else {
                     _state.value = _state.value.copy(isLoading = false, error = null)

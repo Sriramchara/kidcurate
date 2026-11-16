@@ -471,6 +471,7 @@ fun ParentZoneScreen(
         var nameInput by remember { mutableStateOf(child.name) }
         var ageInput by remember { mutableStateOf(child.age.toString()) }
         var pinInput by remember { mutableStateOf(child.pin) }
+        var isPinVisible by remember { mutableStateOf(false) }
         var avatarInput by remember { mutableStateOf(child.avatar) }
         val avatarChoices = listOf("compass", "sparkles", "rocket", "heart", "waves", "flame", "shield", "palette", "star")
 
@@ -498,8 +499,17 @@ fun ParentZoneScreen(
                         value = pinInput,
                         onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) pinInput = it },
                         label = { Text("Child 4-digit PIN") },
-                        placeholder = { Text("••••") },
-                        visualTransformation = PasswordVisualTransformation(),
+                        placeholder = { Text("Enter 4-digit PIN") },
+                        visualTransformation = if (isPinVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { isPinVisible = !isPinVisible }) {
+                                Icon(
+                                    if (isPinVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                    contentDescription = if (isPinVisible) "Hide PIN" else "Show PIN",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -592,8 +602,9 @@ fun ParentZoneScreen(
     // Add Child Profile Dialog
     if (showAddChildDialog) {
         var nameInput by remember { mutableStateOf("") }
-        var ageInput by remember { mutableStateOf("7") }
-        var pinInput by remember { mutableStateOf("1234") }
+        var ageInput by remember { mutableStateOf("") }
+        var pinInput by remember { mutableStateOf("") }
+        var isPinVisible by remember { mutableStateOf(true) }
         var avatarInput by remember { mutableStateOf("compass") }
         val avatarChoices = listOf("compass", "sparkles", "rocket", "heart", "waves", "flame", "shield", "palette", "star")
 
@@ -614,6 +625,7 @@ fun ParentZoneScreen(
                         value = ageInput,
                         onValueChange = { if (it.all { ch -> ch.isDigit() }) ageInput = it },
                         label = { Text("Age (1-18)") },
+                        placeholder = { Text("e.g. 7") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -622,8 +634,17 @@ fun ParentZoneScreen(
                         value = pinInput,
                         onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) pinInput = it },
                         label = { Text("4-digit Login PIN") },
-                        placeholder = { Text("••••") },
-                        visualTransformation = PasswordVisualTransformation(),
+                        placeholder = { Text("Enter 4-digit PIN") },
+                        visualTransformation = if (isPinVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { isPinVisible = !isPinVisible }) {
+                                Icon(
+                                    if (isPinVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                    contentDescription = if (isPinVisible) "Hide PIN" else "Show PIN",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -700,7 +721,7 @@ fun ParentZoneScreen(
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                    enabled = nameInput.isNotBlank() && pinInput.length == 4,
+                    enabled = nameInput.isNotBlank() && pinInput.length == 4 && ageInput.toIntOrNull() != null,
                 ) {
                     Text("Create Profile")
                 }
@@ -1026,7 +1047,7 @@ fun SearchAndAddTab(
                     TextField(
                         value = searchQuery,
                         onValueChange = onSearchQueryChange,
-                        placeholder = { Text("Search YouTube for educational videos...") },
+                        placeholder = { Text("Search YouTube or tap a suggestion below...") },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
                             unfocusedContainerColor = Color.Transparent,
@@ -1039,6 +1060,18 @@ fun SearchAndAddTab(
                         singleLine = true,
                     )
                     if (searchQuery.isNotEmpty()) {
+                        IconButton(
+                            onClick = { onSearchQueryChange("") },
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Icon(
+                                Icons.Rounded.Close,
+                                contentDescription = "Clear search",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(4.dp))
                         Button(
                             onClick = onPerformSearch,
                             colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
@@ -1059,13 +1092,31 @@ fun SearchAndAddTab(
 
             Spacer(Modifier.height(10.dp))
 
-            // Quick Topic Chips
+            // Search suggestions (Type-ahead / predictive chips)
+            Text(
+                text = "Search Suggestions (tap to search):",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+            )
+
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val topics = listOf("Heidi Cartoons", "Moral Stories", "Space & Planets", "Math Fun", "Phonics ABC", "SciShow Kids")
+                val topics = listOf(
+                    "Space & Planets",
+                    "Moral Stories",
+                    "Heidi Cartoons",
+                    "Math Fun",
+                    "Phonics ABC",
+                    "Science Experiments",
+                    "Origami Crafts",
+                    "Dinosaurs for Kids"
+                )
                 items(topics) { topic ->
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = SurfaceCard,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
                         modifier = Modifier.clickable {
                             onSearchQueryChange(topic)
                             onPerformSearch()
@@ -1075,8 +1126,8 @@ fun SearchAndAddTab(
                             text = topic,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = TextSecondary,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            color = BrandPrimary,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                         )
                     }
                 }
@@ -1438,7 +1489,7 @@ fun SecurityTab(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("4.", fontWeight = FontWeight.Bold, color = BrandPrimary, fontSize = 13.sp)
                             Text(
-                                "Parent Master PIN: Default is '1234'. Use it anytime for quick offline Parent Zone access or to bypass a forgotten child PIN.",
+                                "Parent Master PIN: Set a 4-digit PIN for quick offline access or to bypass a forgotten child PIN.",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

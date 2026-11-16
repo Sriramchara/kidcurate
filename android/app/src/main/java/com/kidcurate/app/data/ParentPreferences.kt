@@ -15,7 +15,7 @@ class ParentPreferences(context: Context) {
         set(value) = prefs.edit().putString(KEY_VIDEO_QUALITY, value).apply()
 
     var parentPin: String
-        get() = prefs.getString(KEY_PARENT_PIN, "1234") ?: "1234"
+        get() = prefs.getString(KEY_PARENT_PIN, "") ?: ""
         set(value) = prefs.edit().putString(KEY_PARENT_PIN, value).apply()
 
     var appTheme: String
