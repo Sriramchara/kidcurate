@@ -62,7 +62,7 @@ class ParentPreferences(context: Context) {
     var googleClientId: String
         get() {
             val id = prefs.getString("google_client_id", "") ?: ""
-            return if (id.isNotBlank()) id else com.kidcurate.app.BuildConfig.GOOGLE_CLIENT_ID
+            return if (id.isNotBlank() && id.contains(".apps.googleusercontent.com")) id else com.kidcurate.app.BuildConfig.GOOGLE_CLIENT_ID
         }
         set(value) = prefs.edit().putString("google_client_id", value).apply()
 

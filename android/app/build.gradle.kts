@@ -21,7 +21,8 @@ android {
         val apiUrl = (project.findProperty("API_BASE_URL") as? String) ?: "https://kidcurate-api.onrender.com"
         buildConfigField("String", "API_BASE_URL", "\"$apiUrl\"")
 
-        val googleClientId = (project.findProperty("GOOGLE_CLIENT_ID") as? String) ?: ""
+        val googleClientId = (project.findProperty("GOOGLE_CLIENT_ID") as? String)
+            ?: "179684236627-d7j0s15cvkj6li430jku6easqma5q81l.apps.googleusercontent.com"
         buildConfigField("String", "GOOGLE_CLIENT_ID", "\"$googleClientId\"")
     }
 
