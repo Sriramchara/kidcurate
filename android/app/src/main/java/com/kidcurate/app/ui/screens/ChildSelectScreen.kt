@@ -72,7 +72,7 @@ fun ChildSelectScreen(
             // Brand Tag & Server Settings Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ThematicPill(
@@ -81,31 +81,6 @@ fun ChildSelectScreen(
                     tint = BrandPrimary,
                     background = MaterialTheme.colorScheme.primaryContainer,
                 )
-
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.clickable { showServerDialog = true }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Icon(
-                            Icons.Rounded.SettingsEthernet,
-                            contentDescription = "Server Settings",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Text(
-                            text = "Server",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -159,7 +134,7 @@ fun ChildSelectScreen(
                         )
                         Spacer(modifier = Modifier.height(14.dp))
                         Text(
-                            text = if (isError) "Connection Notice" else "Welcome to KidCurate! 🎉",
+                            text = if (isError) "Connection Notice" else "Welcome to KidCurate",
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,

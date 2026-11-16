@@ -73,7 +73,7 @@ fun ParentZoneScreen(
     var isLoadingPlaylist by remember { mutableStateOf(false) }
 
     // Search state
-    var searchQuery by remember { mutableStateOf("solar system science for kids") }
+    var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<VideoSearchResultItem>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
 
@@ -132,7 +132,7 @@ fun ParentZoneScreen(
         if (selectedChildId.isNotEmpty()) {
             loadChildPlaylist(selectedChildId)
         }
-        if (searchResults.isEmpty()) {
+        if (searchQuery.isNotBlank() && searchResults.isEmpty()) {
             performSearch(searchQuery)
         }
     }
@@ -145,7 +145,7 @@ fun ParentZoneScreen(
 
     LaunchedEffect(searchQuery) {
         val q = searchQuery.trim()
-        if (q.length >= 3 && q != "solar system science for kids") {
+        if (q.length >= 3) {
             kotlinx.coroutines.delay(850)
             performSearch(q)
         }
