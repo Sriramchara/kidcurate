@@ -25,7 +25,13 @@ interface KidCurateApi {
     suspend fun getQuiz(@Path("youtube_id") youtubeId: String): QuizData
 
     @GET("api/videos/search")
-    suspend fun searchVideos(@Query("q") query: String): List<VideoSearchResultItem>
+    suspend fun searchVideos(
+        @Query("q") query: String,
+        @Query("max_results") maxResults: Int = 30
+    ): List<VideoSearchResultItem>
+
+    @GET("api/videos/suggestions")
+    suspend fun getSearchSuggestions(@Query("q") query: String): List<String>
 
     @POST("api/playlists/child/{child_id}/add-video")
     suspend fun addVideoToChildPlaylist(

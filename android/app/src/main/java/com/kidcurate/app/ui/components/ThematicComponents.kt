@@ -284,17 +284,42 @@ fun GlassCard(
  * Parent Verification Dialog (Password Gate)
  * Allows parents to unlock child kiosk mode, exit, or manage playlists using their parent account password.
  */
+enum class ParentGateMode {
+    PIN_UNLOCK,
+    GOOGLE_LOGIN,
+    SET_PIN,
+}
+
+/**
+ * Parent Verification Dialog (PIN-First Gate)
+ * Uses quick 4-digit PIN unlock for authenticated sessions.
+ * Prompts Google Sign-In only once during initial setup or account recovery.
+ */
 @Composable
 fun ParentPasswordDialog(
     title: String = "Parent Verification",
-    subtitle: String = "Sign in with Google or enter your 4-digit Parent PIN",
+    subtitle: String = "Enter 4-digit Parent PIN",
     onSuccess: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val appContext = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val parentPrefs = remember { ParentPreferences(appContext) }
+
+    val initialMode = remember {
+        if (parentPrefs.isParentLoggedIn && parentPrefs.hasParentPin) {
+            ParentGateMode.PIN_UNLOCK
+        } else if (parentPrefs.isParentLoggedIn && !parentPrefs.hasParentPin) {
+            ParentGateMode.SET_PIN
+        } else {
+            ParentGateMode.GOOGLE_LOGIN
+        }
+    }
+
+    var currentMode by remember { mutableStateOf(initialMode) }
     var pinInput by remember { mutableStateOf("") }
+    var newPinInput by remember { mutableStateOf("") }
+    var confirmPinInput by remember { mutableStateOf("") }
     var isVerifying by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -321,7 +346,11 @@ fun ParentPasswordDialog(
                             ApiClient.authToken = token
                             parentPrefs.parentEmail = email
                             isVerifying = false
-                            onSuccess()
+                            if (parentPrefs.hasParentPin) {
+                                onSuccess()
+                            } else {
+                                currentMode = ParentGateMode.SET_PIN
+                            }
                         } else {
                             isVerifying = false
                             errorMessage = "Server did not issue a session token."
@@ -339,6 +368,17 @@ fun ParentPasswordDialog(
         }
     }
 
+    fun triggerGoogleSignIn() {
+        val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+        val clientId = parentPrefs.googleClientId.trim()
+        if (clientId.isNotBlank()) {
+            gsoBuilder.requestIdToken(clientId)
+        }
+        val client = GoogleSignIn.getClient(appContext, gsoBuilder.build())
+        googleLauncher.launch(client.signInIntent)
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         GlassCard(
             shape = RoundedCornerShape(28.dp),
@@ -350,6 +390,7 @@ fun ParentPasswordDialog(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                // Icon Header
                 Box(
                     modifier = Modifier
                         .size(56.dp)
@@ -358,7 +399,11 @@ fun ParentPasswordDialog(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        Icons.Rounded.Lock,
+                        when (currentMode) {
+                            ParentGateMode.PIN_UNLOCK -> Icons.Rounded.Lock
+                            ParentGateMode.SET_PIN -> Icons.Rounded.LockReset
+                            ParentGateMode.GOOGLE_LOGIN -> Icons.Rounded.AccountCircle
+                        },
                         contentDescription = "Parent Gate",
                         tint = BrandPrimary,
                         modifier = Modifier.size(28.dp),
@@ -367,106 +412,146 @@ fun ParentPasswordDialog(
 
                 Spacer(Modifier.height(14.dp))
 
+                // Title and Subtitle based on state
                 Text(
-                    text = title,
+                    text = when (currentMode) {
+                        ParentGateMode.PIN_UNLOCK -> "Enter Parent PIN"
+                        ParentGateMode.SET_PIN -> "Create 4-Digit Parent PIN"
+                        ParentGateMode.GOOGLE_LOGIN -> "Parent Sign In"
+                    },
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
                 )
 
                 Text(
-                    text = subtitle,
+                    text = when (currentMode) {
+                        ParentGateMode.PIN_UNLOCK -> "Enter your 4-digit PIN to access Parent Controls"
+                        ParentGateMode.SET_PIN -> "Choose a 4-digit PIN for quick 1-second Parent Zone access."
+                        ParentGateMode.GOOGLE_LOGIN -> "Sign in with your Google account to set up child profiles and safe playlists."
+                    },
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
                 )
 
-                // Continue with Google Button
-                OutlinedButton(
-                    onClick = {
-                        val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                            .requestEmail()
-                        val clientId = parentPrefs.googleClientId.trim()
-                        if (clientId.isNotBlank()) {
-                            gsoBuilder.requestIdToken(clientId)
-                        }
-                        val client = GoogleSignIn.getClient(appContext, gsoBuilder.build())
-                        googleLauncher.launch(client.signInIntent)
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                    ),
-                    enabled = !isVerifying,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        Icon(
-                            Icons.Rounded.AccountCircle,
-                            contentDescription = null,
-                            tint = BrandPrimary,
-                            modifier = Modifier.size(22.dp),
+                // Mode-specific content
+                when (currentMode) {
+                    ParentGateMode.PIN_UNLOCK -> {
+                        OutlinedTextField(
+                            value = pinInput,
+                            onValueChange = {
+                                if (it.length <= 4 && it.all { char -> char.isDigit() }) {
+                                    pinInput = it
+                                    errorMessage = null
+                                    if (it.length == 4) {
+                                        if (it == parentPrefs.parentPin) {
+                                            onSuccess()
+                                        } else {
+                                            errorMessage = "Incorrect 4-digit PIN."
+                                        }
+                                    }
+                                }
+                            },
+                            label = { Text("Parent PIN") },
+                            placeholder = { Text("••••") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
                         )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = if (isVerifying) "Verifying with Google..." else "Continue with Google",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface,
+
+                        Spacer(Modifier.height(10.dp))
+
+                        TextButton(
+                            onClick = {
+                                errorMessage = null
+                                triggerGoogleSignIn()
+                            },
+                        ) {
+                            Text(
+                                "Forgot PIN? Reset with Google",
+                                fontSize = 12.sp,
+                                color = BrandPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+
+                    ParentGateMode.SET_PIN -> {
+                        OutlinedTextField(
+                            value = newPinInput,
+                            onValueChange = {
+                                if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                                    newPinInput = it
+                                    errorMessage = null
+                                }
+                            },
+                            label = { Text("New 4-digit PIN") },
+                            placeholder = { Text("••••") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                        )
+
+                        Spacer(Modifier.height(10.dp))
+
+                        OutlinedTextField(
+                            value = confirmPinInput,
+                            onValueChange = {
+                                if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                                    confirmPinInput = it
+                                    errorMessage = null
+                                }
+                            },
+                            label = { Text("Confirm 4-digit PIN") },
+                            placeholder = { Text("••••") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
                         )
                     }
-                }
 
-                Spacer(Modifier.height(14.dp))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
-                    Text(
-                        text = "OR USE 4-DIGIT PIN",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                    )
-                    HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
-                }
-
-                OutlinedTextField(
-                    value = pinInput,
-                    onValueChange = {
-                        if (it.length <= 4 && it.all { char -> char.isDigit() }) {
-                            pinInput = it
-                            errorMessage = null
-                            if (it.length == 4) {
-                                val expectedPin = parentPrefs.parentPin.ifBlank { "0000" }
-                                if (it == expectedPin) {
-                                    onSuccess()
-                                } else {
-                                    errorMessage = "Incorrect 4-digit PIN."
-                                }
+                    ParentGateMode.GOOGLE_LOGIN -> {
+                        OutlinedButton(
+                            onClick = { triggerGoogleSignIn() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                            ),
+                            enabled = !isVerifying,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                Icon(
+                                    Icons.Rounded.AccountCircle,
+                                    contentDescription = null,
+                                    tint = BrandPrimary,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = if (isVerifying) "Verifying with Google..." else "Continue with Google",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
                             }
                         }
-                    },
-                    label = { Text("Parent PIN") },
-                    placeholder = { Text("••••") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                )
+                    }
+                }
 
                 if (errorMessage != null) {
                     Spacer(Modifier.height(8.dp))
@@ -481,6 +566,7 @@ fun ParentPasswordDialog(
 
                 Spacer(Modifier.height(16.dp))
 
+                // Bottom Action Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -493,21 +579,49 @@ fun ParentPasswordDialog(
                         Text("Cancel")
                     }
 
-                    Button(
-                        onClick = {
-                            val expectedPin = parentPrefs.parentPin.ifBlank { "0000" }
-                            if (pinInput == expectedPin) {
-                                onSuccess()
-                            } else {
-                                errorMessage = "Incorrect 4-digit PIN."
+                    when (currentMode) {
+                        ParentGateMode.PIN_UNLOCK -> {
+                            Button(
+                                onClick = {
+                                    if (pinInput == parentPrefs.parentPin) {
+                                        onSuccess()
+                                    } else {
+                                        errorMessage = "Incorrect 4-digit PIN."
+                                    }
+                                },
+                                enabled = pinInput.length == 4,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                            ) {
+                                Text("Unlock")
                             }
-                        },
-                        enabled = pinInput.length == 4,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                    ) {
-                        Text("Unlock")
+                        }
+
+                        ParentGateMode.SET_PIN -> {
+                            Button(
+                                onClick = {
+                                    if (newPinInput.length != 4) {
+                                        errorMessage = "PIN must be exactly 4 digits."
+                                    } else if (newPinInput != confirmPinInput) {
+                                        errorMessage = "PINs do not match."
+                                    } else {
+                                        parentPrefs.parentPin = newPinInput
+                                        onSuccess()
+                                    }
+                                },
+                                enabled = newPinInput.length == 4 && confirmPinInput.length == 4,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                            ) {
+                                Text("Save PIN")
+                            }
+                        }
+
+                        ParentGateMode.GOOGLE_LOGIN -> {
+                            // Cancel already covers dismissing
+                        }
                     }
                 }
             }

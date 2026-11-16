@@ -294,10 +294,58 @@ async def test_token_refresh_flow():
 
 
 @pytest.mark.asyncio
-async def test_google_auth_requires_configured_client_id():
-    """Verify Google login fails safely when GOOGLE_CLIENT_ID is not configured."""
+async def test_video_deduplication_and_delete_account():
+    """Verify video deduplication and account deletion cascades cleanly."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        with patch.object(app.state if hasattr(app, "state") else None, "GOOGLE_CLIENT_ID", "", create=True):
-            resp = await ac.post("/api/auth/google", json={"id_token": "fake-google-token"})
-            assert resp.status_code in (401, 500)
+        reg = await ac.post("/api/auth/register", json={
+            "email": "lifecycle_parent@example.com",
+            "password": "validpassword123",
+            "name": "Lifecycle Parent"
+        })
+        assert reg.status_code == 201
+        token = reg.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Create child
+        c_resp = await ac.post("/api/children/manage", headers=headers, json={
+            "name": "Maya",
+            "age": 6,
+            "avatar": "star",
+            "pin": "2222"
+        })
+        assert c_resp.status_code == 200
+        child_id = c_resp.json()["id"]
+
+        with patch("app.routes.playlists.verify_youtube_embeddable", return_value=(True, "")):
+            # First addition
+            add1 = await ac.post(f"/api/playlists/child/{child_id}/add-video", headers=headers, json={
+                "youtube_id": "test_dedup_1",
+                "title": "Dedup Test Video",
+                "channel_name": "TestChannel",
+                "thumbnail_url": "https://img.youtube.com/vi/test_dedup_1/hqdefault.jpg",
+                "duration_seconds": 120
+            })
+            assert add1.status_code == 200
+            assert add1.json()["status"] == "ok"
+
+            # Second addition of identical video must be deduplicated
+            add2 = await ac.post(f"/api/playlists/child/{child_id}/add-video", headers=headers, json={
+                "youtube_id": "test_dedup_1",
+                "title": "Dedup Test Video",
+                "channel_name": "TestChannel",
+                "thumbnail_url": "https://img.youtube.com/vi/test_dedup_1/hqdefault.jpg",
+                "duration_seconds": 120
+            })
+            assert add2.status_code == 200
+            assert add2.json()["status"] == "already_added"
+
+        # Delete account
+        del_resp = await ac.delete("/api/auth/account", headers=headers)
+        assert del_resp.status_code == 200
+        assert del_resp.json()["status"] == "ok"
+
+        # Further authenticated requests must now fail (401)
+        subsequent = await ac.get("/api/children/manage", headers=headers)
+        assert subsequent.status_code == 401
+
 

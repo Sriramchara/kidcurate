@@ -35,6 +35,19 @@ class ParentPreferences(context: Context) {
         get() = prefs.getString(KEY_PARENT_PIN, "") ?: ""
         set(value) = prefs.edit().putString(KEY_PARENT_PIN, value).apply()
 
+    val hasParentPin: Boolean
+        get() = parentPin.isNotBlank()
+
+    val isParentLoggedIn: Boolean
+        get() = parentAuthToken.isNotBlank()
+
+    fun clearParentSession() {
+        parentAuthToken = ""
+        parentEmail = ""
+        parentPin = ""
+        cachedProfilesJson = ""
+    }
+
     var appTheme: String
         get() = prefs.getString(KEY_APP_THEME, "light") ?: "light"
         set(value) = prefs.edit().putString(KEY_APP_THEME, value).apply()

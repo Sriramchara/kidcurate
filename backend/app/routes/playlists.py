@@ -743,6 +743,17 @@ async def add_video_to_child_playlist(
         await db.refresh(video)
 
     await db.refresh(playlist, ["items"])
+    # Prevent duplicate video additions in the child's playlist
+    for existing_item in playlist.items:
+        if existing_item.video_id == video.id:
+            for item in playlist.items:
+                await db.refresh(item, ["video"])
+            return {
+                "status": "already_added",
+                "message": "Video is already in this playlist.",
+                "playlist": playlist_to_response(playlist),
+            }
+
     import uuid
     new_pos = len(playlist.items) + 1
     new_item = PlaylistItem(

@@ -81,6 +81,7 @@ fun ParentZoneScreen(
     // Search state
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<VideoSearchResultItem>>(emptyList()) }
+    var searchSuggestions by remember { mutableStateOf<List<String>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
 
     // Dialog states
@@ -122,9 +123,10 @@ fun ParentZoneScreen(
     fun performSearch(query: String) {
         if (query.isBlank()) return
         isSearching = true
+        searchSuggestions = emptyList()
         scope.launch {
             try {
-                searchResults = ApiClient.api.searchVideos(query.trim())
+                searchResults = ApiClient.api.searchVideos(query.trim(), maxResults = 30)
             } catch (e: Exception) {
                 statusMessage = "Search error: ${e.message}"
             } finally {
@@ -151,9 +153,14 @@ fun ParentZoneScreen(
 
     LaunchedEffect(searchQuery) {
         val q = searchQuery.trim()
-        if (q.length >= 3) {
-            kotlinx.coroutines.delay(850)
-            performSearch(q)
+        if (q.length >= 2) {
+            try {
+                searchSuggestions = ApiClient.api.getSearchSuggestions(q)
+            } catch (_: Exception) {
+                searchSuggestions = emptyList()
+            }
+        } else {
+            searchSuggestions = emptyList()
         }
     }
 
@@ -372,6 +379,10 @@ fun ParentZoneScreen(
                 }
             }
 
+            val existingVideoIds: Set<String> = remember(currentPlaylist) {
+                currentPlaylist?.items?.map { it.youtubeId }?.toSet() ?: emptySet()
+            }
+
             // Tab Content
             when (selectedTabIndex) {
                 0 -> ManagePlaylistTab(
@@ -379,46 +390,53 @@ fun ParentZoneScreen(
                     playlist = currentPlaylist,
                     isLoading = isLoadingPlaylist,
                     onDeleteVideo = { itemId ->
+                        val current = currentPlaylist
+                        if (current != null) {
+                            val remaining = current.items.filter { it.itemId != itemId }
+                            currentPlaylist = current.copy(items = remaining)
+                        }
                         scope.launch {
                             try {
                                 ApiClient.api.removeVideoFromChildPlaylist(selectedChildId, itemId)
                                 statusMessage = "Video removed from playlist."
-                                loadChildPlaylist(selectedChildId)
                             } catch (e: Exception) {
                                 statusMessage = "Error removing video: ${e.message}"
+                                loadChildPlaylist(selectedChildId)
                             }
                         }
                     },
                     onMoveUp = { index ->
-                        val items = currentPlaylist?.items?.toMutableList() ?: return@ManagePlaylistTab
+                        val current = currentPlaylist ?: return@ManagePlaylistTab
+                        val items = current.items.toMutableList()
                         if (index > 0) {
                             val temp = items[index]
                             items[index] = items[index - 1]
                             items[index - 1] = temp
+                            currentPlaylist = current.copy(items = items)
                             val orderedIds = items.map { it.itemId }
                             scope.launch {
                                 try {
                                     ApiClient.api.reorderChildPlaylist(selectedChildId, ReorderPlaylistRequest(orderedIds))
-                                    loadChildPlaylist(selectedChildId)
                                 } catch (e: Exception) {
-                                    statusMessage = "Error reordering: ${e.message}"
+                                    statusMessage = "Error syncing playlist order: ${e.message}"
                                 }
                             }
                         }
                     },
                     onMoveDown = { index ->
-                        val items = currentPlaylist?.items?.toMutableList() ?: return@ManagePlaylistTab
+                        val current = currentPlaylist ?: return@ManagePlaylistTab
+                        val items = current.items.toMutableList()
                         if (index < items.size - 1) {
                             val temp = items[index]
                             items[index] = items[index + 1]
                             items[index + 1] = temp
+                            currentPlaylist = current.copy(items = items)
                             val orderedIds = items.map { it.itemId }
                             scope.launch {
                                 try {
                                     ApiClient.api.reorderChildPlaylist(selectedChildId, ReorderPlaylistRequest(orderedIds))
-                                    loadChildPlaylist(selectedChildId)
                                 } catch (e: Exception) {
-                                    statusMessage = "Error reordering: ${e.message}"
+                                    statusMessage = "Error syncing playlist order: ${e.message}"
                                 }
                             }
                         }
@@ -433,10 +451,12 @@ fun ParentZoneScreen(
                     onPerformSearch = { performSearch(searchQuery) },
                     searchResults = searchResults,
                     isSearching = isSearching,
+                    searchSuggestions = searchSuggestions,
+                    existingVideoIds = existingVideoIds,
                     onAddVideo = { video ->
                         scope.launch {
                             try {
-                                ApiClient.api.addVideoToChildPlaylist(
+                                val resp = ApiClient.api.addVideoToChildPlaylist(
                                     selectedChildId,
                                     AddVideoToChildRequest(
                                         youtubeId = video.youtubeId,
@@ -446,8 +466,12 @@ fun ParentZoneScreen(
                                         durationSeconds = video.durationSeconds ?: 300,
                                     ),
                                 )
-                                statusMessage = "Added \"${video.title}\" to $selectedChildName's playlist!"
-                                loadChildPlaylist(selectedChildId)
+                                if (resp["status"] == "already_added") {
+                                    statusMessage = "\"${video.title}\" is already in $selectedChildName's playlist."
+                                } else {
+                                    statusMessage = "Added \"${video.title}\" to $selectedChildName's playlist!"
+                                    loadChildPlaylist(selectedChildId)
+                                }
                             } catch (e: Exception) {
                                 statusMessage = "Error adding video: ${e.message}"
                             }
@@ -890,6 +914,7 @@ fun ManagePlaylistTab(
                     border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
                     shadowElevation = 2.dp,
                     modifier = Modifier
+                        .animateItem()
                         .fillMaxWidth()
                         .padding(vertical = 4.dp),
                 ) {
@@ -1039,6 +1064,8 @@ fun SearchAndAddTab(
     searchResults: List<VideoSearchResultItem>,
     isSearching: Boolean,
     onAddVideo: (VideoSearchResultItem) -> Unit,
+    searchSuggestions: List<String> = emptyList(),
+    existingVideoIds: Set<String> = emptySet(),
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1069,7 +1096,7 @@ fun SearchAndAddTab(
                     TextField(
                         value = searchQuery,
                         onValueChange = onSearchQueryChange,
-                        placeholder = { Text("Search YouTube or tap a suggestion below...") },
+                        placeholder = { Text("Search safe educational YouTube videos...") },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
                             unfocusedContainerColor = Color.Transparent,
@@ -1112,45 +1139,76 @@ fun SearchAndAddTab(
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
-
-            // Search suggestions (Type-ahead / predictive chips)
-            Text(
-                text = "Search Suggestions (tap to search):",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
-            )
-
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val topics = listOf(
-                    "Space & Planets",
-                    "Moral Stories",
-                    "Heidi Cartoons",
-                    "Math Fun",
-                    "Phonics ABC",
-                    "Science Experiments",
-                    "Origami Crafts",
-                    "Dinosaurs for Kids"
-                )
-                items(topics) { topic ->
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = SurfaceCard,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
-                        onClick = {
-                            onSearchQueryChange(topic)
-                            onPerformSearch()
-                        },
-                    ) {
-                        Text(
-                            text = topic,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = BrandPrimary,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        )
+            // Dynamic suggestions if typing
+            if (searchSuggestions.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = BackgroundCard,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                        searchSuggestions.take(6).forEach { suggestion ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onSearchQueryChange(suggestion)
+                                        onPerformSearch()
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Search,
+                                    contentDescription = null,
+                                    tint = BrandPrimary,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    text = suggestion,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextPrimary,
+                                )
+                            }
+                        }
+                    }
+                }
+            } else if (searchQuery.isBlank()) {
+                Spacer(Modifier.height(10.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val topics = listOf(
+                        "Space & Planets",
+                        "Moral Stories",
+                        "Heidi Cartoons",
+                        "Math Fun",
+                        "Phonics ABC",
+                        "Science Experiments",
+                        "Origami Crafts",
+                        "Dinosaurs for Kids"
+                    )
+                    items(topics) { topic ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = SurfaceCard,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
+                            onClick = {
+                                onSearchQueryChange(topic)
+                                onPerformSearch()
+                            },
+                        ) {
+                            Text(
+                                text = topic,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = BrandPrimary,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -1303,17 +1361,37 @@ fun SearchAndAddTab(
 
                         Spacer(Modifier.height(10.dp))
 
-                        Button(
-                            onClick = { onAddVideo(video) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(42.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                        ) {
-                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Add to $selectedChildName's Playlist", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        val isAlreadyAdded = existingVideoIds.contains(video.youtubeId)
+                        if (isAlreadyAdded) {
+                            Button(
+                                onClick = {},
+                                enabled = false,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(42.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    disabledContainerColor = BrandSuccess.copy(alpha = 0.15f),
+                                    disabledContentColor = BrandSuccess,
+                                ),
+                            ) {
+                                Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp), tint = BrandSuccess)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Already in $selectedChildName's Playlist", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandSuccess)
+                            }
+                        } else {
+                            Button(
+                                onClick = { onAddVideo(video) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(42.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                            ) {
+                                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Add to $selectedChildName's Playlist", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -1624,6 +1702,7 @@ fun SecurityTab(
 
         var showDeleteAccountDialog by remember { mutableStateOf(false) }
         var isDeletingAccount by remember { mutableStateOf(false) }
+        var showChangeParentPinDialog by remember { mutableStateOf(false) }
 
         val googleLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.StartActivityForResult()
@@ -1649,6 +1728,9 @@ fun SecurityTab(
                                 ApiClient.authToken = token
                                 parentPrefs.parentEmail = email
                                 accountStatusMessage = "Connected Google Account: $email"
+                                if (!parentPrefs.hasParentPin) {
+                                    showChangeParentPinDialog = true
+                                }
                             } else {
                                 accountStatusMessage = "Server did not issue an access token."
                             }
@@ -1731,11 +1813,13 @@ fun SecurityTab(
                                 }
                                 Button(
                                     onClick = {
-                                        parentPrefs.parentAuthToken = ""
-                                        parentPrefs.parentEmail = ""
-                                        currentToken = ""
-                                        ApiClient.authToken = ""
-                                        accountStatusMessage = "Signed out of Google account."
+                                        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).requestEmail().build()
+                                        GoogleSignIn.getClient(appContext, gso).signOut().addOnCompleteListener {
+                                            parentPrefs.clearParentSession()
+                                            currentToken = ""
+                                            ApiClient.authToken = ""
+                                            accountStatusMessage = "Signed out. You can now connect a different Google account."
+                                        }
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = BrandCoral),
                                     shape = RoundedCornerShape(10.dp),
@@ -1852,12 +1936,14 @@ fun SecurityTab(
                                 isDeletingAccount = true
                                 try {
                                     com.kidcurate.app.data.ApiClient.api.deleteAccount()
-                                    parentPrefs.parentAuthToken = ""
-                                    parentPrefs.parentEmail = ""
-                                    currentToken = ""
-                                    com.kidcurate.app.data.ApiClient.authToken = ""
-                                    accountStatusMessage = "Account and all data deleted permanently."
-                                    showDeleteAccountDialog = false
+                                    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).requestEmail().build()
+                                    GoogleSignIn.getClient(appContext, gso).signOut().addOnCompleteListener {
+                                        parentPrefs.clearParentSession()
+                                        currentToken = ""
+                                        com.kidcurate.app.data.ApiClient.authToken = ""
+                                        accountStatusMessage = "Account and all data deleted permanently."
+                                        showDeleteAccountDialog = false
+                                    }
                                 } catch (e: Exception) {
                                     accountStatusMessage = "Failed to delete account: ${e.message}"
                                     showDeleteAccountDialog = false
@@ -1886,7 +1972,6 @@ fun SecurityTab(
         }
 
         // Parent Security & PIN Control Card
-        var showChangeParentPinDialog by remember { mutableStateOf(false) }
         var newPinInput by remember { mutableStateOf("") }
         var confirmPinInput by remember { mutableStateOf("") }
         var pinErrorMessage by remember { mutableStateOf<String?>(null) }

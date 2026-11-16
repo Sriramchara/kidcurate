@@ -459,6 +459,43 @@ async def reset_password(data: ResetPasswordRequest, db: AsyncSession = Depends(
     }
 
 
+@router.delete("/account")
+async def delete_account(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Permanently delete parent account and all associated children, playlists, and watch data."""
+    from app.models import Child, Playlist, PlaylistItem, WatchProgress
+
+    res_children = await db.execute(select(Child).where(Child.parent_id == current_user.id))
+    children = res_children.scalars().all()
+    child_ids = [c.id for c in children]
+
+    if child_ids:
+        res_wp = await db.execute(select(WatchProgress).where(WatchProgress.child_id.in_(child_ids)))
+        for wp in res_wp.scalars().all():
+            await db.delete(wp)
+
+        res_pl = await db.execute(select(Playlist).where(Playlist.child_id.in_(child_ids)))
+        for pl in res_pl.scalars().all():
+            res_items = await db.execute(select(PlaylistItem).where(PlaylistItem.playlist_id == pl.id))
+            for item in res_items.scalars().all():
+                await db.delete(item)
+            await db.delete(pl)
+
+        for c in children:
+            await db.delete(c)
+
+    res_tokens = await db.execute(select(PasswordResetToken).where(PasswordResetToken.email == current_user.email))
+    for t in res_tokens.scalars().all():
+        await db.delete(t)
+
+    await db.delete(current_user)
+    await db.commit()
+
+    return {"status": "ok", "message": "Account and all associated cloud data deleted successfully."}
+
+
 @router.post("/verify-parent-password")
 async def verify_parent_password(data: VerifyParentPasswordRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == data.email.lower().strip()))

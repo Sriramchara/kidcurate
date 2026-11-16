@@ -50,6 +50,27 @@ def parse_iso_duration(duration: str) -> int:
     return hours * 3600 + minutes * 60 + seconds
 
 
+@router.get("/suggestions", response_model=List[str])
+async def search_suggestions(q: str = Query("", description="Query for autocomplete suggestions")):
+    """Fast, real-time typeahead suggestions from YouTube autocomplete."""
+    clean = q.strip()
+    if not clean or len(clean) < 2:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(
+                "https://suggestqueries.google.com/complete/search",
+                params={"client": "firefox", "ds": "yt", "q": clean}
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, list) and len(data) > 1 and isinstance(data[1], list):
+                    return [s for s in data[1] if isinstance(s, str)][:8]
+    except Exception as e:
+        logger.debug("YouTube suggestion lookup failed: %s", e)
+    return []
+
+
 @router.get("/search", response_model=List[VideoSearchResult])
 async def search_videos(
     response: Response,
