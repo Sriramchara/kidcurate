@@ -77,7 +77,7 @@ fun ChildSelectScreen(
             ) {
                 ThematicPill(
                     icon = Icons.Rounded.VerifiedUser,
-                    label = "KidCurate • Safe & Ad-Free",
+                    label = "KidCurate • Safe & Distraction-Free",
                     tint = BrandPrimary,
                     background = MaterialTheme.colorScheme.primaryContainer,
                 )
@@ -170,7 +170,7 @@ fun ChildSelectScreen(
                             text = if (isError) {
                                 errorMessage ?: "Could not reach server. Check your connection."
                             } else {
-                                "Welcome! KidCurate is a safe, ad-free video player for kids. Create a profile, pick safe YouTube videos, and hand over the device with complete peace of mind."
+                                "Welcome! KidCurate is a safe, parent-controlled video player for kids. Create a profile, pick safe YouTube videos, and hand over the device with complete peace of mind."
                             },
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp,
