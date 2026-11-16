@@ -1,3 +1,10 @@
+import sys
+from pathlib import Path
+
+backend_dir = Path(__file__).resolve().parent.parent
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
+
 import pytest
 import pytest_asyncio
 import uuid
@@ -172,14 +179,15 @@ async def test_playlist_mutation_authorization():
         child_id = c_resp.json()["id"]
 
         # Unauthenticated add-video must be rejected (401)
-        unauth_add = await ac.post(f"/api/playlists/child/{child_id}/add-video", json={
-            "youtube_id": "libKVRa0WV4",
-            "title": "Solar System Song",
-            "channel_name": "Kids Tube",
-            "thumbnail_url": "https://img.youtube.com/vi/libKVRa0WV4/hqdefault.jpg",
-            "duration_seconds": 180
-        })
-        assert unauth_add.status_code == 401
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as unauth_ac:
+            unauth_add = await unauth_ac.post(f"/api/playlists/child/{child_id}/add-video", json={
+                "youtube_id": "libKVRa0WV4",
+                "title": "Solar System Song",
+                "channel_name": "Kids Tube",
+                "thumbnail_url": "https://img.youtube.com/vi/libKVRa0WV4/hqdefault.jpg",
+                "duration_seconds": 180
+            })
+            assert unauth_add.status_code == 401
 
         # Authenticated add-video succeeds when mocked
         with patch("app.routes.playlists.verify_youtube_embeddable", new=AsyncMock(return_value=(True, "OK"))):
@@ -215,13 +223,14 @@ async def test_progress_update_authorization():
         child_id = c_resp.json()["id"]
 
         # Unauthenticated progress update must be rejected (401)
-        unauth_prog = await ac.post("/api/progress/update", json={
-            "child_id": child_id,
-            "youtube_id": "libKVRa0WV4",
-            "watched_seconds": 60,
-            "completed": False
-        })
-        assert unauth_prog.status_code == 401
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as unauth_ac:
+            unauth_prog = await unauth_ac.post("/api/progress/update", json={
+                "child_id": child_id,
+                "youtube_id": "libKVRa0WV4",
+                "watched_seconds": 60,
+                "completed": False
+            })
+            assert unauth_prog.status_code == 401
 
         # Authenticated progress update succeeds (200)
         auth_prog = await ac.post("/api/progress/update", headers=headers, json={
@@ -245,3 +254,50 @@ async def test_security_headers_present():
         assert resp.headers.get("X-XSS-Protection") == "1; mode=block"
         assert "Strict-Transport-Security" in resp.headers
         assert resp.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+
+
+@pytest.mark.asyncio
+async def test_password_minimum_length_enforced():
+    """Verify passwords shorter than 12 characters are rejected."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        short_resp = await ac.post("/api/auth/register", json={
+            "email": "shortpw@example.com",
+            "password": "short8ch",
+            "name": "Short PW"
+        })
+        assert short_resp.status_code == 422  # Pydantic validation failure
+
+
+@pytest.mark.asyncio
+async def test_token_refresh_flow():
+    """Verify access and refresh token pair rotation."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        reg_resp = await ac.post("/api/auth/register", json={
+            "email": "refreshtest@example.com",
+            "password": "validpassword123",
+            "name": "Refresh User"
+        })
+        assert reg_resp.status_code == 201
+        data = reg_resp.json()
+        assert "access_token" in data
+        assert "refresh_token" in data
+        assert data["refresh_token"] is not None
+
+        # Refresh access token
+        ref_resp = await ac.post("/api/auth/refresh", json={
+            "refresh_token": data["refresh_token"]
+        })
+        assert ref_resp.status_code == 200
+        ref_data = ref_resp.json()
+        assert "access_token" in ref_data
+        assert "refresh_token" in ref_data
+
+
+@pytest.mark.asyncio
+async def test_google_auth_requires_configured_client_id():
+    """Verify Google login fails safely when GOOGLE_CLIENT_ID is not configured."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        with patch.object(app.state if hasattr(app, "state") else None, "GOOGLE_CLIENT_ID", "", create=True):
+            resp = await ac.post("/api/auth/google", json={"id_token": "fake-google-token"})
+            assert resp.status_code in (401, 500)
+

@@ -2,9 +2,26 @@ package com.kidcurate.app.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 
 class ParentPreferences(context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("kidcurate_parent_prefs", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = try {
+        val masterKey = MasterKey.Builder(context.applicationContext)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        EncryptedSharedPreferences.create(
+            context.applicationContext,
+            "kidcurate_parent_encrypted_prefs",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    } catch (e: Exception) {
+        Log.e("ParentPreferences", "EncryptedSharedPreferences initialization failed, falling back", e)
+        context.getSharedPreferences("kidcurate_parent_prefs", Context.MODE_PRIVATE)
+    }
 
     var subtitlesEnabled: Boolean
         get() = prefs.getBoolean(KEY_SUBTITLES_ENABLED, true)

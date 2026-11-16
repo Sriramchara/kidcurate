@@ -178,3 +178,18 @@ class WatchProgress(Base):
     child = relationship("Child", back_populates="watch_progress")
     video = relationship("Video", back_populates="watch_progress")
     playlist_item = relationship("PlaylistItem", back_populates="watch_progress")
+
+
+class PasswordResetToken(Base):
+    """Database-backed store for hashed password reset verification codes.
+    Persists across process restarts and multiple backend instances.
+    """
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    email = Column(String(255), nullable=False, index=True)
+    code_hash = Column(String(255), nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+

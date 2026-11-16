@@ -21,6 +21,7 @@ async function apiFetch(path: string, options: RequestInit = {}) {
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
+    credentials: 'include',
     headers,
   });
   if (!res.ok) {

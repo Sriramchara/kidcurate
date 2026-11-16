@@ -86,6 +86,9 @@ dependencies {
     // DataStore (for persisting child session)
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
+    // Encrypted SharedPreferences backed by Android Keystore
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
     // Image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
 

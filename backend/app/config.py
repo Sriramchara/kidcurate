@@ -26,11 +26,20 @@ class Settings(BaseSettings):
     # JWT
     SECRET_KEY: str = "change-this-in-production-use-long-random-string"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 days
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # Short-lived access token: 15 minutes
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080  # Refresh token: 7 days
 
-    # External APIs
+    # External APIs & Authentication
+    GOOGLE_CLIENT_ID: str = ""
     YOUTUBE_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
+
+    # Email SMTP Settings (for password resets and notifications)
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "noreply@kidcurate.com"
 
     @model_validator(mode="after")
     def validate_production_secrets(self):
