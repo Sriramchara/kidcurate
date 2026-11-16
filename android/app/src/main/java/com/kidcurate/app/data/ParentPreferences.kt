@@ -41,6 +41,10 @@ class ParentPreferences(context: Context) {
     val isParentLoggedIn: Boolean
         get() = parentAuthToken.isNotBlank()
 
+    var hasSeenOnboardingTour: Boolean
+        get() = prefs.getBoolean(KEY_HAS_SEEN_ONBOARDING, false)
+        set(value) = prefs.edit().putBoolean(KEY_HAS_SEEN_ONBOARDING, value).apply()
+
     fun clearParentSession() {
         parentAuthToken = ""
         parentEmail = ""
@@ -170,6 +174,7 @@ class ParentPreferences(context: Context) {
         private const val KEY_TODAY_WATCHED_SECONDS = "today_watched_seconds"
         private const val KEY_CACHED_PROFILES = "cached_profiles_json"
         private const val KEY_CACHED_PLAYLIST_PREFIX = "cached_playlist_json_"
+        private const val KEY_HAS_SEEN_ONBOARDING = "has_seen_onboarding_tour"
 
         @Volatile
         private var instance: ParentPreferences? = null

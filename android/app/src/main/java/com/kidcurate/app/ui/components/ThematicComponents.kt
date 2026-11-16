@@ -321,6 +321,7 @@ fun ParentPasswordDialog(
     var newPinInput by remember { mutableStateOf("") }
     var confirmPinInput by remember { mutableStateOf("") }
     var isVerifying by remember { mutableStateOf(false) }
+    var isResettingPin by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val googleLauncher = rememberLauncherForActivityResult(
@@ -346,10 +347,14 @@ fun ParentPasswordDialog(
                             ApiClient.authToken = token
                             parentPrefs.parentEmail = email
                             isVerifying = false
-                            if (parentPrefs.hasParentPin) {
-                                onSuccess()
-                            } else {
+                            if (isResettingPin || !parentPrefs.hasParentPin) {
+                                parentPrefs.parentPin = ""
+                                newPinInput = ""
+                                confirmPinInput = ""
+                                isResettingPin = false
                                 currentMode = ParentGateMode.SET_PIN
+                            } else {
+                                onSuccess()
                             }
                         } else {
                             isVerifying = false
@@ -468,6 +473,7 @@ fun ParentPasswordDialog(
                         TextButton(
                             onClick = {
                                 errorMessage = null
+                                isResettingPin = true
                                 triggerGoogleSignIn()
                             },
                         ) {

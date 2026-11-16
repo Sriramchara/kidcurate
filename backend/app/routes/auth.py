@@ -496,6 +496,47 @@ async def delete_account(
     return {"status": "ok", "message": "Account and all associated cloud data deleted successfully."}
 
 
+@router.get("/diagnostic/db-summary")
+async def get_db_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Provides transparency on the parent's actual cloud database records."""
+    from app.models import Child, Playlist, PlaylistItem, WatchProgress
+
+    res_children = await db.execute(select(Child).where(Child.parent_id == current_user.id))
+    children = res_children.scalars().all()
+    child_ids = [c.id for c in children]
+
+    playlist_count = 0
+    item_count = 0
+    watch_count = 0
+
+    if child_ids:
+        res_pl = await db.execute(select(Playlist).where(Playlist.child_id.in_(child_ids)))
+        playlists = res_pl.scalars().all()
+        playlist_count = len(playlists)
+        p_ids = [p.id for p in playlists]
+        if p_ids:
+            res_items = await db.execute(select(PlaylistItem).where(PlaylistItem.playlist_id.in_(p_ids)))
+            item_count = len(res_items.scalars().all())
+
+        res_wp = await db.execute(select(WatchProgress).where(WatchProgress.child_id.in_(child_ids)))
+        watch_count = len(res_wp.scalars().all())
+
+    engine_name = "PostgreSQL" if "postgresql" in settings.DATABASE_URL.lower() else "SQLite"
+
+    return {
+        "parent_email": current_user.email,
+        "database_engine": engine_name,
+        "children_count": len(children),
+        "playlists_count": playlist_count,
+        "total_videos_count": item_count,
+        "watch_history_count": watch_count,
+        "account_created_at": current_user.created_at.isoformat() if current_user.created_at else "",
+    }
+
+
 @router.post("/verify-parent-password")
 async def verify_parent_password(data: VerifyParentPasswordRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == data.email.lower().strip()))

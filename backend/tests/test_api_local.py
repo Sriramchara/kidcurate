@@ -349,3 +349,38 @@ async def test_video_deduplication_and_delete_account():
         assert subsequent.status_code == 401
 
 
+@pytest.mark.asyncio
+async def test_db_summary_diagnostic():
+    """Verify database summary endpoint returns live table counts for parent."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        reg = await ac.post("/api/auth/register", json={
+            "email": "dbsummary_test@example.com",
+            "password": "validpassword123",
+            "name": "DB Summary Parent"
+        })
+        assert reg.status_code == 201
+        token = reg.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        summary1 = await ac.get("/api/auth/diagnostic/db-summary", headers=headers)
+        assert summary1.status_code == 200
+        data1 = summary1.json()
+        assert data1["parent_email"] == "dbsummary_test@example.com"
+        assert data1["children_count"] == 0
+
+        c_resp = await ac.post("/api/children/manage", headers=headers, json={
+            "name": "Leo",
+            "age": 5,
+            "avatar": "rocket",
+            "pin": "1234"
+        })
+        assert c_resp.status_code == 200
+
+        summary2 = await ac.get("/api/auth/diagnostic/db-summary", headers=headers)
+        assert summary2.status_code == 200
+        data2 = summary2.json()
+        assert data2["children_count"] == 1
+        assert "database_engine" in data2
+
+
+

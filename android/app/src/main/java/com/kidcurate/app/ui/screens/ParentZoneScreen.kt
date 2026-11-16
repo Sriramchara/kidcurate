@@ -46,6 +46,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.kidcurate.app.data.*
 import com.kidcurate.app.ui.components.GlassBackgroundAura
+import com.kidcurate.app.ui.components.OnboardingTourDialog
 import com.kidcurate.app.ui.components.SoundHaptics
 import com.kidcurate.app.ui.components.ThematicAvatar
 import com.kidcurate.app.ui.components.ThematicPill
@@ -489,6 +490,7 @@ fun ParentZoneScreen(
                 3 -> SecurityTab(
                     parentPrefs = parentPrefs,
                     onThemeChanged = onThemeChanged,
+                    onBackToChildMode = onBackToChildMode,
                 )
             }
         }
@@ -598,6 +600,11 @@ fun ParentZoneScreen(
                         val parsedAge = ageInput.toIntOrNull() ?: child.age
                         scope.launch {
                             try {
+                                if (ApiClient.authToken.isBlank()) {
+                                    statusMessage = "Please sign in with Google under Settings to sync child profiles to the cloud."
+                                    showEditChildDialog = null
+                                    return@launch
+                                }
                                 ApiClient.api.updateChild(
                                     child.id,
                                     ChildUpdateRequest(
@@ -610,7 +617,12 @@ fun ParentZoneScreen(
                                 statusMessage = "Updated profile for ${nameInput.trim()}!"
                                 refreshManagedChildren()
                             } catch (e: Exception) {
-                                statusMessage = "Error updating child: ${e.message}"
+                                val msg = e.message ?: ""
+                                statusMessage = if (msg.contains("401")) {
+                                    "Cloud session expired. Please re-authenticate under Settings."
+                                } else {
+                                    "Error updating child: $msg"
+                                }
                             } finally {
                                 showEditChildDialog = null
                             }
@@ -733,6 +745,11 @@ fun ParentZoneScreen(
                         val parsedAge = ageInput.toIntOrNull() ?: 7
                         scope.launch {
                             try {
+                                if (ApiClient.authToken.isBlank()) {
+                                    statusMessage = "Please sign in with Google under Settings to sync child profiles to the cloud."
+                                    showAddChildDialog = false
+                                    return@launch
+                                }
                                 ApiClient.api.createChild(
                                     ChildCreateRequest(
                                         name = nameInput.trim(),
@@ -744,7 +761,12 @@ fun ParentZoneScreen(
                                 statusMessage = "Created profile for ${nameInput.trim()}!"
                                 refreshManagedChildren()
                             } catch (e: Exception) {
-                                statusMessage = "Error adding child: ${e.message}"
+                                val msg = e.message ?: ""
+                                statusMessage = if (msg.contains("401")) {
+                                    "Cloud session expired. Please re-authenticate under Settings."
+                                } else {
+                                    "Error adding child: $msg"
+                                }
                             } finally {
                                 showAddChildDialog = false
                             }
@@ -1549,9 +1571,11 @@ fun SecurityTab(
     parentPrefs: ParentPreferences,
     onPinUpdated: () -> Unit = {},
     onThemeChanged: (String) -> Unit = {},
+    onBackToChildMode: () -> Unit = {},
 ) {
     val appContext = LocalContext.current
     var selectedTheme by remember { mutableStateOf(parentPrefs.appTheme) }
+    var showOnboardingTour by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -1580,7 +1604,7 @@ fun SecurityTab(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Icon(Icons.Rounded.HelpOutline, contentDescription = null, tint = BrandPrimary)
+                        Icon(Icons.Rounded.Info, contentDescription = null, tint = BrandPrimary)
                         Text("Parent Guide: How It Works", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                     Icon(
@@ -1627,6 +1651,18 @@ fun SecurityTab(
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                        }
+
+                        Spacer(Modifier.height(6.dp))
+
+                        OutlinedButton(
+                            onClick = { showOnboardingTour = true },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Rounded.Info, contentDescription = null, modifier = Modifier.size(16.dp), tint = BrandPrimary)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Replay Interactive App Tour", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandPrimary)
                         }
                     }
                 }
@@ -1819,6 +1855,7 @@ fun SecurityTab(
                                             currentToken = ""
                                             ApiClient.authToken = ""
                                             accountStatusMessage = "Signed out. You can now connect a different Google account."
+                                            onBackToChildMode()
                                         }
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = BrandCoral),
@@ -1943,10 +1980,17 @@ fun SecurityTab(
                                         com.kidcurate.app.data.ApiClient.authToken = ""
                                         accountStatusMessage = "Account and all data deleted permanently."
                                         showDeleteAccountDialog = false
+                                        onBackToChildMode()
                                     }
                                 } catch (e: Exception) {
-                                    accountStatusMessage = "Failed to delete account: ${e.message}"
-                                    showDeleteAccountDialog = false
+                                    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).requestEmail().build()
+                                    GoogleSignIn.getClient(appContext, gso).signOut().addOnCompleteListener {
+                                        parentPrefs.clearParentSession()
+                                        currentToken = ""
+                                        com.kidcurate.app.data.ApiClient.authToken = ""
+                                        showDeleteAccountDialog = false
+                                        onBackToChildMode()
+                                    }
                                 } finally {
                                     isDeletingAccount = false
                                 }
@@ -1969,6 +2013,133 @@ fun SecurityTab(
                     }
                 }
             )
+        }
+
+        // Cloud Database Transparency & Audit Card
+        var dbSummary by remember { mutableStateOf<DbSummaryResponse?>(null) }
+        var isLoadingDbSummary by remember { mutableStateOf(false) }
+        var dbSummaryError by remember { mutableStateOf<String?>(null) }
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            shadowElevation = 1.dp,
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(Icons.Rounded.Storage, contentDescription = null, tint = BrandPrimary)
+                    Text("Cloud Database Transparency", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    text = "Real-time verification of all records stored for your account in the cloud database:",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                if (parentPrefs.isParentLoggedIn) {
+                    if (dbSummary != null) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text("Database Engine:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(dbSummary!!.databaseEngine, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandPrimary)
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text("Connected Account:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(dbSummary!!.parentEmail, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text("Child Profiles in DB:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("${dbSummary!!.childrenCount}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text("Playlists in DB:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("${dbSummary!!.playlistsCount}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text("Videos Stored in DB:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("${dbSummary!!.totalVideosCount}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text("Watch Sessions Logged:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("${dbSummary!!.watchHistoryCount}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    } else if (dbSummaryError != null) {
+                        Text(dbSummaryError!!, fontSize = 12.sp, color = BrandCoral, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            isLoadingDbSummary = true
+                            dbSummaryError = null
+                            scope.launch {
+                                try {
+                                    val summary = ApiClient.api.getDbSummary()
+                                    dbSummary = summary
+                                } catch (e: Exception) {
+                                    dbSummaryError = "Failed to query database: ${e.message}"
+                                } finally {
+                                    isLoadingDbSummary = false
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoadingDbSummary,
+                    ) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            if (isLoadingDbSummary) "Querying Database..."
+                            else if (dbSummary == null) "Inspect Cloud Database Records"
+                            else "Refresh Database Metrics",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                } else {
+                    Text(
+                        "You are currently offline or in local PIN mode. Connect a Google Account above to inspect cloud database records.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
 
         // Parent Security & PIN Control Card
@@ -2242,6 +2413,10 @@ fun SecurityTab(
                     }
                 }
             }
+        }
+
+        if (showOnboardingTour) {
+            OnboardingTourDialog(onDismiss = { showOnboardingTour = false })
         }
     }
 }

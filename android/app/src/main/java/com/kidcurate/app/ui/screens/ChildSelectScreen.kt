@@ -29,6 +29,7 @@ import com.kidcurate.app.data.ChildProfileItem
 import com.kidcurate.app.data.ParentPreferences
 import com.kidcurate.app.ui.components.GlassBackgroundAura
 import com.kidcurate.app.ui.components.GlassCard
+import com.kidcurate.app.ui.components.OnboardingTourDialog
 import com.kidcurate.app.ui.components.ParentPasswordDialog
 import com.kidcurate.app.ui.components.SoundHaptics
 import com.kidcurate.app.ui.components.ThematicAvatar
@@ -45,7 +46,10 @@ fun ChildSelectScreen(
     onRetry: () -> Unit,
     onUpdateServerUrl: (String) -> Unit = {},
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val parentPrefs = remember { ParentPreferences(context) }
     var showParentGate by remember { mutableStateOf(false) }
+    var showOnboardingTour by remember { mutableStateOf(!parentPrefs.hasSeenOnboardingTour) }
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
 
@@ -386,6 +390,15 @@ fun ChildSelectScreen(
                 onOpenParentZone()
             },
             onDismiss = { showParentGate = false },
+        )
+    }
+
+    if (showOnboardingTour) {
+        OnboardingTourDialog(
+            onDismiss = {
+                parentPrefs.hasSeenOnboardingTour = true
+                showOnboardingTour = false
+            }
         )
     }
 }

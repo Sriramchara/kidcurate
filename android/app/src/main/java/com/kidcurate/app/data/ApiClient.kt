@@ -69,6 +69,9 @@ interface KidCurateApi {
     @DELETE("api/auth/account")
     suspend fun deleteAccount(): Map<String, Any>
 
+    @GET("api/auth/diagnostic/db-summary")
+    suspend fun getDbSummary(): DbSummaryResponse
+
     @GET("api/playlists/activity-packs")
     suspend fun getActivityPacks(): List<ActivityPackItem>
 

@@ -151,3 +151,14 @@ data class ActivityPackItem(
     val videos: List<ActivityPackVideo>,
 )
 
+@Immutable
+data class DbSummaryResponse(
+    @SerializedName("parent_email") val parentEmail: String = "",
+    @SerializedName("database_engine") val databaseEngine: String = "",
+    @SerializedName("children_count") val childrenCount: Int = 0,
+    @SerializedName("playlists_count") val playlistsCount: Int = 0,
+    @SerializedName("total_videos_count") val totalVideosCount: Int = 0,
+    @SerializedName("watch_history_count") val watchHistoryCount: Int = 0,
+    @SerializedName("account_created_at") val accountCreatedAt: String = "",
+)
+
