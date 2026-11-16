@@ -60,7 +60,7 @@ fun ParentZoneScreen(
     val haptic = LocalHapticFeedback.current
     val parentPrefs = remember { ParentPreferences.get(context) }
 
-    var selectedTabIndex by remember { mutableStateOf(0) }
+    var selectedTabIndex by remember { mutableIntStateOf(0) }
     val tabTitles = listOf("Videos", "Search", "Profiles", "Settings")
 
     // Managed Children state
@@ -170,8 +170,9 @@ fun ParentZoneScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Row(
+                            modifier = Modifier.weight(1f, fill = false),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             IconButton(onClick = onBackToChildMode) {
                                 Icon(
@@ -193,15 +194,19 @@ fun ParentZoneScreen(
                                     )
                                     Text(
                                         text = "Parent Control Center",
-                                        fontSize = 18.sp,
+                                        fontSize = 17.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = TextPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
                                 }
                                 Text(
                                     text = "Manage playlists, videos & profiles",
-                                    fontSize = 12.sp,
+                                    fontSize = 11.sp,
                                     color = TextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                         }
@@ -851,7 +856,7 @@ fun ManagePlaylistTab(
                 }
             }
         } else {
-            itemsIndexed(items) { index, video ->
+            itemsIndexed(items, key = { _, video -> video.itemId }) { index, video ->
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = BackgroundCard,
@@ -882,9 +887,12 @@ fun ManagePlaylistTab(
 
                         Spacer(Modifier.width(10.dp))
 
-                        // Thumbnail
+                        // Thumbnail with crossfade
                         AsyncImage(
-                            model = video.thumbnailUrl,
+                            model = coil.request.ImageRequest.Builder(LocalContext.current)
+                                .data(video.thumbnailUrl)
+                                .crossfade(true)
+                                .build(),
                             contentDescription = null,
                             modifier = Modifier
                                 .size(width = 80.dp, height = 48.dp)
@@ -919,7 +927,7 @@ fun ManagePlaylistTab(
                                 val mins = (video.durationSeconds ?: 0) / 60
                                 val secs = (video.durationSeconds ?: 0) % 60
                                 Text(
-                                    text = String.format("%02d:%02d", mins, secs),
+                                    text = String.format(java.util.Locale.US, "%02d:%02d", mins, secs),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = BrandPrimary,
@@ -927,43 +935,46 @@ fun ManagePlaylistTab(
                             }
                         }
 
-                        // Reorder & Delete actions
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Reorder & Delete actions with comfortable 36dp touch targets
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
                             IconButton(
                                 onClick = { onMoveUp(index) },
                                 enabled = index > 0,
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(36.dp),
                             ) {
                                 Icon(
                                     Icons.Rounded.ArrowUpward,
                                     contentDescription = "Move Up",
                                     tint = if (index > 0) TextPrimary else TextSecondary.copy(alpha = 0.3f),
-                                    modifier = Modifier.size(16.dp),
+                                    modifier = Modifier.size(18.dp),
                                 )
                             }
 
                             IconButton(
                                 onClick = { onMoveDown(index) },
                                 enabled = index < items.size - 1,
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(36.dp),
                             ) {
                                 Icon(
                                     Icons.Rounded.ArrowDownward,
                                     contentDescription = "Move Down",
                                     tint = if (index < items.size - 1) TextPrimary else TextSecondary.copy(alpha = 0.3f),
-                                    modifier = Modifier.size(16.dp),
+                                    modifier = Modifier.size(18.dp),
                                 )
                             }
 
                             IconButton(
                                 onClick = { onDeleteVideo(video.itemId) },
-                                modifier = Modifier.size(30.dp),
+                                modifier = Modifier.size(36.dp),
                             ) {
                                 Icon(
                                     Icons.Rounded.DeleteOutline,
                                     contentDescription = "Delete Video",
                                     tint = BrandCoral,
-                                    modifier = Modifier.size(18.dp),
+                                    modifier = Modifier.size(20.dp),
                                 )
                             }
                         }
@@ -1126,7 +1137,7 @@ fun SearchAndAddTab(
                 }
             }
         } else {
-            items(searchResults) { video ->
+            items(searchResults, key = { it.youtubeId }) { video ->
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = BackgroundCard,
@@ -1139,7 +1150,10 @@ fun SearchAndAddTab(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             AsyncImage(
-                                model = video.thumbnailUrl,
+                                model = coil.request.ImageRequest.Builder(LocalContext.current)
+                                    .data(video.thumbnailUrl)
+                                    .crossfade(true)
+                                    .build(),
                                 contentDescription = null,
                                 modifier = Modifier
                                     .size(width = 110.dp, height = 66.dp)
@@ -1249,7 +1263,7 @@ fun ChildProfilesTab(
             }
         }
 
-        items(children) { child ->
+        items(children, key = { it.id }) { child ->
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = BackgroundCard,

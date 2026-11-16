@@ -70,7 +70,7 @@ private fun formatTime(seconds: Float): String {
     val totalSeconds = seconds.toInt().coerceAtLeast(0)
     val minutes = totalSeconds / 60
     val remSeconds = totalSeconds % 60
-    return String.format("%02d:%02d", minutes, remSeconds)
+    return String.format(java.util.Locale.US, "%02d:%02d", minutes, remSeconds)
 }
 
 @Composable
@@ -82,7 +82,7 @@ fun PlayerScreen(
     onAllCompleted: () -> Unit,
     onBack: () -> Unit,
 ) {
-    var currentIndex by remember { mutableStateOf(startIndex) }
+    var currentIndex by remember { mutableIntStateOf(startIndex) }
     var isFullscreen by remember { mutableStateOf(false) }
 
     val currentVideo = videos.getOrNull(currentIndex)
@@ -96,9 +96,9 @@ fun PlayerScreen(
     var isChildLockActive by remember { mutableStateOf(false) }
     var showParentPasswordDialog by remember { mutableStateOf(false) }
 
-    var lastRecordedSecond by remember { mutableStateOf(0) }
+    var lastRecordedSecond by remember { mutableIntStateOf(0) }
     var showEndCelebration by remember { mutableStateOf(false) }
-    var celebrationCountdown by remember { mutableStateOf(4) }
+    var celebrationCountdown by remember { mutableIntStateOf(4) }
 
     LaunchedEffect(showEndCelebration) {
         if (showEndCelebration) {
@@ -215,6 +215,7 @@ fun PlayerScreen(
                         .weight(1f)
                         .background(MaterialTheme.colorScheme.background)
                         .verticalScroll(rememberScrollState())
+                        .navigationBarsPadding()
                         .padding(16.dp),
                 ) {
                     Text(
@@ -367,7 +368,7 @@ fun PlayerScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            itemsIndexed(videos) { idx, v ->
+                            itemsIndexed(videos, key = { _, v -> v.itemId }) { idx, v ->
                                 val isCurrent = idx == currentIndex
                                 Surface(
                                     modifier = Modifier
@@ -391,7 +392,10 @@ fun PlayerScreen(
                                             contentAlignment = Alignment.Center,
                                         ) {
                                             AsyncImage(
-                                                model = v.thumbnailUrl,
+                                                model = coil.request.ImageRequest.Builder(LocalContext.current)
+                                                    .data(v.thumbnailUrl)
+                                                    .crossfade(true)
+                                                    .build(),
                                                 contentDescription = v.title,
                                                 contentScale = ContentScale.Crop,
                                                 modifier = Modifier.fillMaxSize(),
@@ -661,8 +665,8 @@ fun OptimizedVideoPlayer(
     val parentPrefs = remember { ParentPreferences.get(context) }
     var youTubePlayerRef by remember { mutableStateOf<YouTubePlayer?>(null) }
     var webViewRef by remember { mutableStateOf<android.webkit.WebView?>(null) }
-    var currentSecond by remember { mutableStateOf(0f) }
-    var videoDuration by remember { mutableStateOf(0f) }
+    var currentSecond by remember { mutableFloatStateOf(0f) }
+    var videoDuration by remember { mutableFloatStateOf(0f) }
     var playerState by remember { mutableStateOf(PlayerConstants.PlayerState.UNKNOWN) }
     var showControls by remember { mutableStateOf(true) }
     var playbackError by remember { mutableStateOf<String?>(null) }
@@ -1011,7 +1015,13 @@ fun OptimizedVideoPlayer(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .then(
+                            if (isFullscreen) Modifier
+                                .displayCutoutPadding()
+                                .navigationBarsPadding()
+                            else Modifier
+                        )
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Simple progress bar

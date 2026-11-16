@@ -19,3 +19,25 @@
 
 # KidCurate Data Models
 -keep class com.kidcurate.app.data.** { *; }
+
+# YouTube Player library & WebView JS bridge
+-keep class com.pierfrancescosoffritti.androidyoutubeplayer.core.** { *; }
+-dontwarn com.pierfrancescosoffritti.androidyoutubeplayer.core.**
+
+# JavascriptInterface (essential for YouTube iFrame events on Android 8-15)
+-keepattributes JavascriptInterface
+-keepattributes *Annotation*
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# Android WebKit
+-keepclassmembers class * extends android.webkit.WebViewClient {
+    public void *(android.webkit.WebView, java.lang.String);
+    public void *(android.webkit.WebView, java.lang.String, android.graphics.Bitmap);
+}
+
+# Coil Image Loading
+-keep class coil.** { *; }
+-dontwarn coil.**
+

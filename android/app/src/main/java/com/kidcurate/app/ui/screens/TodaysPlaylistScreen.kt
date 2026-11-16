@@ -219,10 +219,12 @@ fun FilledPlaylistLightView(
                             shape = RoundedCornerShape(12.dp),
                             color = if (isChildLockActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                             border = BorderStroke(1.dp, if (isChildLockActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
-                            modifier = Modifier.clickable { onToggleLock() },
+                            modifier = Modifier
+                                .height(40.dp)
+                                .clickable { onToggleLock() },
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
@@ -234,7 +236,7 @@ fun FilledPlaylistLightView(
                                 )
                                 Text(
                                     text = if (isChildLockActive) "Locked" else "Unlock",
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isChildLockActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -250,7 +252,8 @@ fun FilledPlaylistLightView(
                                 contentColor = MaterialTheme.colorScheme.onBackground,
                             ),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                            modifier = Modifier.height(40.dp),
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Logout,
@@ -335,8 +338,8 @@ fun FilledPlaylistLightView(
             )
         }
 
-        // YouTube-style Video Cards Feed
-        itemsIndexed(playlist.items) { index, video ->
+        // YouTube-style Video Cards Feed with stable item keys
+        itemsIndexed(playlist.items, key = { _, video -> video.itemId }) { index, video ->
             YouTubeVideoCard(
                 video = video,
                 index = index + 1,
@@ -373,7 +376,10 @@ fun YouTubeVideoCard(
                 contentAlignment = Alignment.Center,
             ) {
                 AsyncImage(
-                    model = video.thumbnailUrl,
+                    model = coil.request.ImageRequest.Builder(LocalContext.current)
+                        .data(video.thumbnailUrl)
+                        .crossfade(true)
+                        .build(),
                     contentDescription = video.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
@@ -406,7 +412,7 @@ fun YouTubeVideoCard(
                             .padding(8.dp),
                     ) {
                         Text(
-                            text = "$min:${"%02d".format(sec)}",
+                            text = String.format(java.util.Locale.US, "%d:%02d", min, sec),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,

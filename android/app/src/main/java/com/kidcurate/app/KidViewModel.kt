@@ -93,7 +93,7 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
 
             for (url in candidateUrls) {
                 try {
-                    val candidateApi = ApiClient.buildApi(url)
+                    val candidateApi = ApiClient.buildProbeApi(url)
                     val result = candidateApi.getPublicProfiles()
                     // If getPublicProfiles succeeds without network exception, connection is confirmed!
                     fetchedProfiles = result

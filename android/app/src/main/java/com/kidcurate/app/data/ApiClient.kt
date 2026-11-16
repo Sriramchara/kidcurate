@@ -115,6 +115,11 @@ object ApiClient {
         .addInterceptor(logging)
         .build()
 
+    private val fastProbeClient = httpClient.newBuilder()
+        .connectTimeout(3500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .readTimeout(4500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .build()
+
     @Volatile
     private var currentBaseUrl: String = BuildConfig.API_BASE_URL.trimEnd('/') + "/"
 
@@ -126,6 +131,16 @@ object ApiClient {
         return Retrofit.Builder()
             .baseUrl(sanitized)
             .client(httpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(KidCurateApi::class.java)
+    }
+
+    fun buildProbeApi(baseUrl: String): KidCurateApi {
+        val sanitized = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        return Retrofit.Builder()
+            .baseUrl(sanitized)
+            .client(fastProbeClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(KidCurateApi::class.java)

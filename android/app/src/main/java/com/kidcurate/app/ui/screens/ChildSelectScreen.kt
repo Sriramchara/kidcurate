@@ -69,13 +69,44 @@ fun ChildSelectScreen(
             ) {
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Brand Tag
-            ThematicPill(
-                icon = Icons.Rounded.VerifiedUser,
-                label = "KidCurate • Safe & Ad-Free",
-                tint = BrandPrimary,
-                background = MaterialTheme.colorScheme.primaryContainer,
-            )
+            // Brand Tag & Server Settings Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ThematicPill(
+                    icon = Icons.Rounded.VerifiedUser,
+                    label = "KidCurate • Safe & Ad-Free",
+                    tint = BrandPrimary,
+                    background = MaterialTheme.colorScheme.primaryContainer,
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.clickable { showServerDialog = true }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.SettingsEthernet,
+                            contentDescription = "Server Settings",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = "Server",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -170,18 +201,36 @@ fun ChildSelectScreen(
                         }
                         Spacer(modifier = Modifier.height(20.dp))
                         if (isError) {
-                            Button(
-                                onClick = onRetry,
-                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                                shape = RoundedCornerShape(14.dp),
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("Retry Connection", fontWeight = FontWeight.Bold)
+                                Button(
+                                    onClick = onRetry,
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.height(48.dp),
+                                ) {
+                                    Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Retry", fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(
+                                    onClick = { showServerDialog = true },
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.height(48.dp),
+                                ) {
+                                    Icon(Icons.Rounded.SettingsEthernet, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Server URL")
+                                }
                             }
                         } else {
                             Button(
                                 onClick = { showParentGate = true },
                                 colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                                 shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.height(48.dp),
                             ) {
                                 Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
@@ -191,7 +240,7 @@ fun ChildSelectScreen(
                     }
                 }
             } else {
-                // Profile Grid
+                // Profile Grid with keys for high-performance zero-jank rendering
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 140.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -200,7 +249,7 @@ fun ChildSelectScreen(
                         .fillMaxWidth()
                         .weight(1f),
                 ) {
-                    itemsIndexed(profiles) { index, profile ->
+                    itemsIndexed(profiles, key = { _, profile -> profile.id }) { index, profile ->
                         GlassCard(
                             modifier = Modifier
                                 .clickable {
