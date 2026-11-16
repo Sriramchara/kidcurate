@@ -199,11 +199,81 @@ fun ChildSelectScreen(
                         }
                     }
                 }
+            } else if (profiles.size == 1) {
+                // Single child profile: perfectly centered on screen
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val profile = profiles.first()
+                    GlassCard(
+                        modifier = Modifier
+                            .widthIn(min = 180.dp, max = 220.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .clickable {
+                                SoundHaptics.playPop(view, haptic)
+                                onSelectProfile(profile)
+                            },
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 28.dp, horizontal = 20.dp),
+                        ) {
+                            ThematicAvatar(
+                                name = profile.name,
+                                avatar = profile.avatar,
+                                size = 88.dp,
+                                iconSize = 44.dp,
+                            )
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            Text(
+                                text = profile.name,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    Text(
+                                        text = "Play",
+                                        color = BrandPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    Icon(
+                                        Icons.Rounded.PlayArrow,
+                                        contentDescription = null,
+                                        tint = BrandPrimary,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
-                // Profile Grid with keys for high-performance zero-jank rendering
+                // Multiple profiles grid
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 140.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -212,6 +282,7 @@ fun ChildSelectScreen(
                     itemsIndexed(profiles, key = { _, profile -> profile.id }) { index, profile ->
                         GlassCard(
                             modifier = Modifier
+                                .clip(RoundedCornerShape(24.dp))
                                 .clickable {
                                     SoundHaptics.playPop(view, haptic)
                                     onSelectProfile(profile)
@@ -219,7 +290,9 @@ fun ChildSelectScreen(
                         ) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.padding(vertical = 24.dp, horizontal = 16.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 24.dp, horizontal = 16.dp),
                             ) {
                                 ThematicAvatar(
                                     name = profile.name,

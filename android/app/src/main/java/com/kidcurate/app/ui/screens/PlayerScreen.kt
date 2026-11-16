@@ -298,7 +298,47 @@ fun PlayerScreen(
                             }
                         }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Touch Lock button right next to Next button
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isChildLockActive) BrandPrimary else MaterialTheme.colorScheme.surfaceVariant,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isChildLockActive) BrandPrimary else MaterialTheme.colorScheme.outline),
+                                modifier = Modifier
+                                    .height(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        if (isChildLockActive) {
+                                            showParentPasswordDialog = true
+                                        } else {
+                                            isChildLockActive = true
+                                            try { activity?.startLockTask() } catch (_: Exception) {}
+                                        }
+                                    },
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    Icon(
+                                        if (isChildLockActive) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                                        contentDescription = "Lock",
+                                        tint = if (isChildLockActive) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(15.dp),
+                                    )
+                                    Text(
+                                        text = if (isChildLockActive) "Locked" else "Lock",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isChildLockActive) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+
                             if (currentIndex > 0) {
                                 OutlinedButton(
                                     onClick = { currentIndex-- },
@@ -320,6 +360,7 @@ fun PlayerScreen(
                                     modifier = Modifier.height(36.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                                     shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                                 ) {
                                     Text("Next", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                     Spacer(Modifier.width(4.dp))
@@ -1035,8 +1076,8 @@ fun OptimizedVideoPlayer(
             }
         }
 
-        // Custom Overlay Controls
-        if (showControls) {
+        // Custom Overlay Controls (Hidden when there is a playback error to keep error notice clean)
+        if (showControls && playbackError == null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()

@@ -221,15 +221,14 @@ fun NumberPadLight(
                         Spacer(modifier = Modifier.size(76.dp))
                     } else {
                         Surface(
+                            onClick = {
+                                SoundHaptics.playTactileClick(view, haptic)
+                                if (digit == "⌫") onDelete() else onDigitPress(digit)
+                            },
                             shape = CircleShape,
                             color = BackgroundCard,
                             border = androidx.compose.foundation.BorderStroke(1.5.dp, SurfaceCardBorder),
-                            modifier = Modifier
-                                .size(76.dp)
-                                .clickable {
-                                    SoundHaptics.playTactileClick(view, haptic)
-                                    if (digit == "⌫") onDelete() else onDigitPress(digit)
-                                },
+                            modifier = Modifier.size(76.dp),
                             shadowElevation = 2.dp,
                         ) {
                             Box(

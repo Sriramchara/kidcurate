@@ -879,124 +879,140 @@ fun ManagePlaylistTab(
         } else {
             itemsIndexed(items, key = { _, video -> video.itemId }) { index, video ->
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = BackgroundCard,
                     border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
-                    shadowElevation = 1.dp,
+                    shadowElevation = 2.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        // Position badge
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        // Big 16:9 Thumbnail with position and duration badges
                         Box(
                             modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center,
+                                .fillMaxWidth()
+                                .aspectRatio(16f / 9f)
+                                .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                                .background(Color.Black.copy(alpha = 0.08f)),
                         ) {
-                            Text(
-                                text = "${index + 1}",
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontSize = 12.sp,
+                            AsyncImage(
+                                model = coil.request.ImageRequest.Builder(LocalContext.current)
+                                    .data(video.thumbnailUrl)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = video.title,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
                             )
+
+                            // Position pill (#1, #2...)
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = BrandPrimary,
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(8.dp),
+                            ) {
+                                Text(
+                                    text = "#${index + 1}",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                )
+                            }
+
+                            // Duration badge in bottom-right
+                            val mins = (video.durationSeconds ?: 0) / 60
+                            val secs = (video.durationSeconds ?: 0) % 60
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color.Black.copy(alpha = 0.82f),
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(8.dp),
+                            ) {
+                                Text(
+                                    text = String.format(java.util.Locale.US, "%d:%02d", mins, secs),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                )
+                            }
                         }
 
-                        Spacer(Modifier.width(10.dp))
-
-                        // Thumbnail with crossfade
-                        AsyncImage(
-                            model = coil.request.ImageRequest.Builder(LocalContext.current)
-                                .data(video.thumbnailUrl)
-                                .crossfade(true)
-                                .build(),
-                            contentDescription = null,
+                        // Details & Actions row
+                        Row(
                             modifier = Modifier
-                                .size(width = 80.dp, height = 48.dp)
-                                .clip(RoundedCornerShape(8.dp)),
-                            contentScale = ContentScale.Crop,
-                        )
-
-                        Spacer(Modifier.width(10.dp))
-
-                        // Video details
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = video.title,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = video.title,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Spacer(Modifier.height(4.dp))
                                 Text(
                                     text = video.channelName,
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                     color = TextSecondary,
                                     maxLines = 1,
-                                )
-                                Text("•", fontSize = 10.sp, color = TextSecondary)
-                                val mins = (video.durationSeconds ?: 0) / 60
-                                val secs = (video.durationSeconds ?: 0) % 60
-                                Text(
-                                    text = String.format(java.util.Locale.US, "%02d:%02d", mins, secs),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = BrandPrimary,
-                                )
-                            }
-                        }
-
-                        // Reorder & Delete actions with comfortable 36dp touch targets
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            IconButton(
-                                onClick = { onMoveUp(index) },
-                                enabled = index > 0,
-                                modifier = Modifier.size(36.dp),
-                            ) {
-                                Icon(
-                                    Icons.Rounded.ArrowUpward,
-                                    contentDescription = "Move Up",
-                                    tint = if (index > 0) TextPrimary else TextSecondary.copy(alpha = 0.3f),
-                                    modifier = Modifier.size(18.dp),
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
 
-                            IconButton(
-                                onClick = { onMoveDown(index) },
-                                enabled = index < items.size - 1,
-                                modifier = Modifier.size(36.dp),
-                            ) {
-                                Icon(
-                                    Icons.Rounded.ArrowDownward,
-                                    contentDescription = "Move Down",
-                                    tint = if (index < items.size - 1) TextPrimary else TextSecondary.copy(alpha = 0.3f),
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
+                            Spacer(Modifier.width(8.dp))
 
-                            IconButton(
-                                onClick = { onDeleteVideo(video.itemId) },
-                                modifier = Modifier.size(36.dp),
+                            // Reorder & Delete actions with comfortable touch targets
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
-                                Icon(
-                                    Icons.Rounded.DeleteOutline,
-                                    contentDescription = "Delete Video",
-                                    tint = BrandCoral,
-                                    modifier = Modifier.size(20.dp),
-                                )
+                                IconButton(
+                                    onClick = { onMoveUp(index) },
+                                    enabled = index > 0,
+                                    modifier = Modifier.size(36.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.ArrowUpward,
+                                        contentDescription = "Move Up",
+                                        tint = if (index > 0) TextPrimary else TextSecondary.copy(alpha = 0.3f),
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = { onMoveDown(index) },
+                                    enabled = index < items.size - 1,
+                                    modifier = Modifier.size(36.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.ArrowDownward,
+                                        contentDescription = "Move Down",
+                                        tint = if (index < items.size - 1) TextPrimary else TextSecondary.copy(alpha = 0.3f),
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = { onDeleteVideo(video.itemId) },
+                                    modifier = Modifier.size(36.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.DeleteOutline,
+                                        contentDescription = "Delete Video",
+                                        tint = BrandCoral,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
                             }
                         }
                     }
@@ -1196,51 +1212,67 @@ fun SearchAndAddTab(
                     shadowElevation = 1.dp,
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
+                        // Big 16:9 Thumbnail with safety and duration badges
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(16f / 9f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.Black.copy(alpha = 0.08f)),
                         ) {
                             AsyncImage(
                                 model = coil.request.ImageRequest.Builder(LocalContext.current)
                                     .data(video.thumbnailUrl)
                                     .crossfade(true)
                                     .build(),
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(width = 110.dp, height = 66.dp)
-                                    .clip(RoundedCornerShape(10.dp)),
+                                contentDescription = video.title,
+                                modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,
                             )
-                            Spacer(Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = video.title,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    text = video.channelName,
-                                    fontSize = 11.sp,
-                                    color = TextSecondary,
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    ThematicPill(
-                                        icon = Icons.Rounded.VerifiedUser,
-                                        label = "${video.overallScore ?: 95}% Safe",
-                                        tint = BrandSuccess,
-                                        background = BrandSuccessContainer,
+                            // Safety Badge
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = BrandSuccess,
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(8.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.VerifiedUser,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(12.dp)
                                     )
-                                    val mins = (video.durationSeconds ?: 0) / 60
                                     Text(
-                                        text = "${mins}m",
-                                        fontSize = 10.sp,
-                                        color = TextSecondary,
-                                        modifier = Modifier.align(Alignment.CenterVertically),
+                                        text = "${video.overallScore ?: 95}% Safe",
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                            }
+                            // Duration badge
+                            if (video.durationSeconds != null && video.durationSeconds > 0) {
+                                val mins = video.durationSeconds / 60
+                                val secs = video.durationSeconds % 60
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color.Black.copy(alpha = 0.82f),
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(8.dp),
+                                ) {
+                                    Text(
+                                        text = String.format(java.util.Locale.US, "%d:%02d", mins, secs),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                                     )
                                 }
                             }
@@ -1248,11 +1280,28 @@ fun SearchAndAddTab(
 
                         Spacer(Modifier.height(10.dp))
 
+                        Text(
+                            text = video.title,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = video.channelName,
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                        )
+
+                        Spacer(Modifier.height(10.dp))
+
                         Button(
                             onClick = { onAddVideo(video) },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(38.dp),
+                                .height(42.dp),
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                         ) {

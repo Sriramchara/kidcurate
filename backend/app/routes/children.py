@@ -107,11 +107,10 @@ async def list_manage_children(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user)
 ):
-    """Used by Parent Zone to list children with full details (name, age, avatar, pin)."""
-    if current_user:
-        result = await db.execute(select(Child).where(Child.parent_id == current_user.id))
-    else:
-        result = await db.execute(select(Child))
+    """Used by Parent Zone to list children with full details (name, age, avatar, pin). Scoped to parent."""
+    if not current_user:
+        return []
+    result = await db.execute(select(Child).where(Child.parent_id == current_user.id))
     children = result.scalars().all()
     return [
         ChildManageResponse(
@@ -133,17 +132,14 @@ async def create_manage_child(
     current_user: Optional[User] = Depends(get_optional_current_user)
 ):
     """Used by Parent Zone to create a new child profile."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required to create child profiles")
     if len(data.pin) != 4 or not data.pin.isdigit():
         raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
     if not (1 <= data.age <= 18):
         raise HTTPException(status_code=400, detail="Age must be between 1 and 18")
 
-    if current_user:
-        parent_id = str(current_user.id)
-    else:
-        result = await db.execute(select(User).limit(1))
-        parent = result.scalar_one_or_none()
-        parent_id = str(parent.id) if parent else str(uuid.uuid4())
+    parent_id = str(current_user.id)
 
     child = Child(
         id=str(uuid.uuid4()),
@@ -226,11 +222,10 @@ async def list_public_child_profiles(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user)
 ):
-    """Used by Android app to display available children for login. Scoped to parent when authenticated."""
-    if current_user:
-        result = await db.execute(select(Child).where(Child.parent_id == current_user.id))
-    else:
-        result = await db.execute(select(Child))
+    """Used by Android app to display available children for login. Scoped strictly to authenticated parent."""
+    if not current_user:
+        return []
+    result = await db.execute(select(Child).where(Child.parent_id == current_user.id))
     children = result.scalars().all()
     return [
         ChildPublicProfile(id=str(c.id), name=c.name, avatar=normalize_avatar(c.avatar))
