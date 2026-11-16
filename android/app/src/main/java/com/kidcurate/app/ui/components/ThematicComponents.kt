@@ -319,13 +319,16 @@ fun ParentPasswordDialog(
                         if (token.isNotBlank()) {
                             parentPrefs.parentAuthToken = token
                             ApiClient.authToken = token
+                            parentPrefs.parentEmail = email
+                            isVerifying = false
+                            onSuccess()
+                        } else {
+                            isVerifying = false
+                            errorMessage = "Server did not issue a session token."
                         }
-                    } catch (_: Exception) {
-                        // Offline or local verification
-                    } finally {
-                        parentPrefs.parentEmail = email
+                    } catch (e: Exception) {
                         isVerifying = false
-                        onSuccess()
+                        errorMessage = "Login error: ${e.message}"
                     }
                 }
             } else {

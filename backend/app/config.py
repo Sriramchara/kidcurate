@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080  # Refresh token: 7 days
 
     # External APIs & Authentication
-    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_ID: str = "179684236627-d7j0s15cvkj6li430jku6easqma5q81l.apps.googleusercontent.com"
     YOUTUBE_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
 

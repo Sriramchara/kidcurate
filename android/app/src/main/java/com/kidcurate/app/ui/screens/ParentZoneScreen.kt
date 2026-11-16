@@ -1647,13 +1647,14 @@ fun SecurityTab(
                                 parentPrefs.parentAuthToken = token
                                 currentToken = token
                                 ApiClient.authToken = token
+                                parentPrefs.parentEmail = email
+                                accountStatusMessage = "Connected Google Account: $email"
+                            } else {
+                                accountStatusMessage = "Server did not issue an access token."
                             }
-                        } catch (_: Exception) {
-                            // Offline or local verification
+                        } catch (e: Exception) {
+                            accountStatusMessage = "Login failed: ${e.message}"
                         } finally {
-                            parentPrefs.parentEmail = email
-                            currentToken = parentPrefs.parentAuthToken.ifBlank { "google_connected" }
-                            accountStatusMessage = "Connected Google Account: $email"
                             isAccountLoading = false
                         }
                     }

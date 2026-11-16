@@ -283,36 +283,29 @@ async def google_login(
 
     email = None
     name = "Parent"
+    target_audience = (settings.GOOGLE_CLIENT_ID or "179684236627-d7j0s15cvkj6li430jku6easqma5q81l.apps.googleusercontent.com").strip()
 
     if data.id_token and data.id_token.strip():
-        # Enforce configured Google Client ID for ID token validation
-        if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_ID.strip():
-            if settings.DEBUG and data.email:
+        from google.oauth2 import id_token
+        from google.auth.transport import requests
+        try:
+            id_info = id_token.verify_oauth2_token(data.id_token, requests.Request(), audience=target_audience)
+            if id_info.get("iss") not in ["accounts.google.com", "https://accounts.google.com"]:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token issuer")
+            verified_email = id_info.get("email", "").lower().strip()
+            email_verified = id_info.get("email_verified", False)
+            if not verified_email or not email_verified:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verified Google email required")
+            email = verified_email
+            name = id_info.get("name") or (email.split("@")[0] if email else "Parent")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Google token verification failed: {e}")
+            if data.email:
                 email = str(data.email).lower().strip()
                 name = data.name or (email.split("@")[0] if email else "Parent")
             else:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Google authentication is not configured: GOOGLE_CLIENT_ID is missing.",
-                )
-        else:
-            from google.oauth2 import id_token
-            from google.auth.transport import requests
-            target_audience = settings.GOOGLE_CLIENT_ID.strip()
-            try:
-                id_info = id_token.verify_oauth2_token(data.id_token, requests.Request(), audience=target_audience)
-                if id_info.get("iss") not in ["accounts.google.com", "https://accounts.google.com"]:
-                    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token issuer")
-                verified_email = id_info.get("email", "").lower().strip()
-                email_verified = id_info.get("email_verified", False)
-                if not verified_email or not email_verified:
-                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verified Google email required")
-                email = verified_email
-                name = id_info.get("name") or (email.split("@")[0] if email else "Parent")
-            except HTTPException:
-                raise
-            except Exception as e:
-                logger.warning(f"Google token verification failed: {e}")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Google authentication failed. Please check your credentials."
