@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: kidcurate_db
       POSTGRES_USER: kidcurate
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?FATAL: DB_PASSWORD must be set in environment}
+      POSTGRES_PASSWORD: "${DB_PASSWORD:?DB_PASSWORD must be set in environment}"
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -27,13 +27,13 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql+asyncpg://kidcurate:${DB_PASSWORD:?FATAL: DB_PASSWORD must be set in environment}@postgres:5432/kidcurate_db
-      - SECRET_KEY=${SECRET_KEY:?FATAL: SECRET_KEY must be set in environment}
+      - "DATABASE_URL=postgresql+asyncpg://kidcurate:${DB_PASSWORD:?DB_PASSWORD must be set in environment}@postgres:5432/kidcurate_db"
+      - "SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in environment}"
       - ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=10080
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - CORS_ORIGINS=["https://app.kidcurate.com","http://localhost:3000"]
+      - 'CORS_ORIGINS=["https://app.kidcurate.com","http://localhost:3000"]'
       - DEBUG=false
     ports:
       - "8000:8000"
