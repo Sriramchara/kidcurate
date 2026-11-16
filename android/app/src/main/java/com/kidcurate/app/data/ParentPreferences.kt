@@ -60,7 +60,7 @@ class ParentPreferences(context: Context) {
 
     private fun getTodayDate(): String {
         val cal = java.util.Calendar.getInstance()
-        return "${cal.get(java.util.Calendar.YEAR)}-${cal.get(java.util.Calendar.MONTH)}-${cal.get(java.util.Calendar.DAY_OF_MONTH)}"
+        return "${cal.get(java.util.Calendar.YEAR)}-${cal.get(java.util.Calendar.MONTH) + 1}-${cal.get(java.util.Calendar.DAY_OF_MONTH)}"
     }
 
     var todayWatchedSeconds: Int

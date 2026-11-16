@@ -341,7 +341,7 @@ fun ParentZoneScreen(
                                         1.dp,
                                         if (isSelected) MaterialTheme.colorScheme.primary else SurfaceCardBorder,
                                     ),
-                                    modifier = Modifier.clickable {
+                                    onClick = {
                                         selectedChildId = child.id
                                         selectedChildName = child.name
                                     },
@@ -1133,7 +1133,7 @@ fun SearchAndAddTab(
                         shape = RoundedCornerShape(12.dp),
                         color = SurfaceCard,
                         border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
-                        modifier = Modifier.clickable {
+                        onClick = {
                             onSearchQueryChange(topic)
                             onPerformSearch()
                         },

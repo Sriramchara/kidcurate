@@ -355,17 +355,20 @@ async def apply_activity_pack(
     child_id: str,
     pack_id: str,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Applies a curated 1-click pack directly to the child's playlist for today."""
+    """Applies a curated 1-click pack directly to the child's playlist for today. Requires authenticated parent."""
     target_pack = next((p for p in CURATED_ACTIVITY_PACKS if p.id == pack_id), None)
     if not target_pack:
         raise HTTPException(status_code=404, detail="Activity pack not found")
 
-    # Verify child exists
-    child_result = await db.execute(select(Child).where(Child.id == child_id))
+    # Verify child exists and belongs to current parent
+    child_result = await db.execute(
+        select(Child).where(Child.id == child_id, Child.parent_id == current_user.id)
+    )
     child = child_result.scalar_one_or_none()
     if not child:
-        raise HTTPException(status_code=404, detail="Child not found")
+        raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
 
     # Get or create today's playlist for the child
     today = date.today()
@@ -676,10 +679,20 @@ async def add_video_to_child_playlist(
     child_id: str,
     data: PlaylistItemAdd,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     In-App Parent Zone endpoint: adds a video directly to child's today playlist.
+    Requires authenticated parent owning the child profile.
     """
+    # Verify child exists and belongs to current parent
+    child_result = await db.execute(
+        select(Child).where(Child.id == child_id, Child.parent_id == current_user.id)
+    )
+    child = child_result.scalar_one_or_none()
+    if not child:
+        raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
+
     # Pre-flight embed check
     is_ok, reason = await verify_youtube_embeddable(data.youtube_id)
     if not is_ok:
@@ -744,8 +757,17 @@ async def remove_video_from_child_playlist(
     child_id: str,
     item_id: str,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Parent Zone endpoint: removes a video item from child's playlist."""
+    """Parent Zone endpoint: removes a video item from child's playlist. Requires authenticated parent."""
+    # Verify child exists and belongs to current parent
+    child_result = await db.execute(
+        select(Child).where(Child.id == child_id, Child.parent_id == current_user.id)
+    )
+    child = child_result.scalar_one_or_none()
+    if not child:
+        raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
+
     result = await db.execute(
         select(Playlist).where(Playlist.child_id == child_id, Playlist.is_active == True)
     )
@@ -779,8 +801,17 @@ async def reorder_child_playlist(
     child_id: str,
     data: ReorderRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Parent Zone endpoint: reorders videos in child's playlist."""
+    """Parent Zone endpoint: reorders videos in child's playlist. Requires authenticated parent."""
+    # Verify child exists and belongs to current parent
+    child_result = await db.execute(
+        select(Child).where(Child.id == child_id, Child.parent_id == current_user.id)
+    )
+    child = child_result.scalar_one_or_none()
+    if not child:
+        raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
+
     result = await db.execute(
         select(Playlist).where(Playlist.child_id == child_id, Playlist.is_active == True)
     )

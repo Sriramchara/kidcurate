@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: kidcurate_db
       POSTGRES_USER: kidcurate
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-kidcurate_secret_pass_2026}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?FATAL: DB_PASSWORD must be set in environment}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -27,8 +27,8 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql+asyncpg://kidcurate:${DB_PASSWORD:-kidcurate_secret_pass_2026}@postgres:5432/kidcurate_db
-      - SECRET_KEY=${SECRET_KEY:-kidcurate-production-secret-key-min-32-chars-2026}
+      - DATABASE_URL=postgresql+asyncpg://kidcurate:${DB_PASSWORD:?FATAL: DB_PASSWORD must be set in environment}@postgres:5432/kidcurate_db
+      - SECRET_KEY=${SECRET_KEY:?FATAL: SECRET_KEY must be set in environment}
       - ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=10080
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}

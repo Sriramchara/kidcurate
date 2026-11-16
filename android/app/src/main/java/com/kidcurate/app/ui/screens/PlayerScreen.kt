@@ -307,17 +307,15 @@ fun PlayerScreen(
                                 shape = RoundedCornerShape(10.dp),
                                 color = if (isChildLockActive) BrandPrimary else MaterialTheme.colorScheme.surfaceVariant,
                                 border = androidx.compose.foundation.BorderStroke(1.dp, if (isChildLockActive) BrandPrimary else MaterialTheme.colorScheme.outline),
-                                modifier = Modifier
-                                    .height(36.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable {
-                                        if (isChildLockActive) {
-                                            showParentPasswordDialog = true
-                                        } else {
-                                            isChildLockActive = true
-                                            try { activity?.startLockTask() } catch (_: Exception) {}
-                                        }
-                                    },
+                                onClick = {
+                                    if (isChildLockActive) {
+                                        showParentPasswordDialog = true
+                                    } else {
+                                        isChildLockActive = true
+                                        try { activity?.startLockTask() } catch (_: Exception) {}
+                                    }
+                                },
+                                modifier = Modifier.height(36.dp),
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -428,9 +426,7 @@ fun PlayerScreen(
                             itemsIndexed(videos, key = { _, v -> v.itemId }) { idx, v ->
                                 val isCurrent = idx == currentIndex
                                 Surface(
-                                    modifier = Modifier
-                                        .width(140.dp)
-                                        .clickable { currentIndex = idx },
+                                    onClick = { currentIndex = idx },
                                     shape = RoundedCornerShape(14.dp),
                                     color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surface,
                                     border = androidx.compose.foundation.BorderStroke(
@@ -438,6 +434,7 @@ fun PlayerScreen(
                                         if (isCurrent) BrandPrimary else MaterialTheme.colorScheme.outline
                                     ),
                                     shadowElevation = if (isCurrent) 4.dp else 1.dp,
+                                    modifier = Modifier.width(140.dp),
                                 ) {
                                     Column(modifier = Modifier.padding(8.dp)) {
                                         Box(
@@ -1188,66 +1185,62 @@ fun OptimizedVideoPlayer(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             // Subtitle / Closed Caption (CC) toggle button
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(
-                                        if (subtitlesEnabled) BrandPrimary.copy(alpha = 0.9f)
-                                        else Color.White.copy(alpha = 0.2f)
-                                    )
-                                    .clickable {
-                                        onToggleSubtitles()
-                                        toastMessage = if (!subtitlesEnabled) "Subtitles ON (English)" else "Subtitles OFF"
-                                    },
-                                contentAlignment = Alignment.Center
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (subtitlesEnabled) BrandPrimary.copy(alpha = 0.9f)
+                                else Color.White.copy(alpha = 0.25f),
+                                onClick = {
+                                    onToggleSubtitles()
+                                    toastMessage = if (!subtitlesEnabled) "Subtitles ON (English)" else "Subtitles OFF"
+                                },
+                                modifier = Modifier.size(36.dp)
                             ) {
-                                Icon(
-                                    imageVector = if (subtitlesEnabled) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionDisabled,
-                                    contentDescription = if (subtitlesEnabled) "Disable Subtitles" else "Enable Subtitles",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (subtitlesEnabled) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionDisabled,
+                                        contentDescription = if (subtitlesEnabled) "Disable Subtitles" else "Enable Subtitles",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
 
                             // Video Resolution / Quality button
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(
-                                        if (currentQuality != "auto" && currentQuality != "default") BrandPrimary.copy(alpha = 0.9f)
-                                        else Color.White.copy(alpha = 0.2f)
-                                    )
-                                    .clickable {
-                                        queryAvailableQualities()
-                                        showQualityDialog = true
-                                    },
-                                contentAlignment = Alignment.Center
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (currentQuality != "auto" && currentQuality != "default") BrandPrimary.copy(alpha = 0.9f)
+                                else Color.White.copy(alpha = 0.25f),
+                                onClick = {
+                                    queryAvailableQualities()
+                                    showQualityDialog = true
+                                },
+                                modifier = Modifier.size(36.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.HighQuality,
-                                    contentDescription = "Video Quality / Resolution",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.HighQuality,
+                                        contentDescription = "Video Quality / Resolution",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
 
                             // Fullscreen toggle button
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.White.copy(alpha = 0.2f))
-                                    .clickable { onToggleFullscreen() },
-                                contentAlignment = Alignment.Center
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.White.copy(alpha = 0.25f),
+                                onClick = { onToggleFullscreen() },
+                                modifier = Modifier.size(36.dp)
                             ) {
-                                Icon(
-                                    imageVector = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                                    contentDescription = "Toggle Fullscreen",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                                        contentDescription = "Toggle Fullscreen",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     }

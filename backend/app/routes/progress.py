@@ -28,15 +28,21 @@ class ProgressResponse(BaseModel):
 
 
 @router.post("/update")
-async def update_progress(data: ProgressUpdate, db: AsyncSession = Depends(get_db)):
+async def update_progress(
+    data: ProgressUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Called by Android app when video is played or completed.
-    No parent auth needed — child session just needs child_id.
+    Requires authenticated parent whose account owns the child profile.
     """
-    # Verify child exists
-    child_result = await db.execute(select(Child).where(Child.id == data.child_id))
+    # Verify child exists and belongs to the authenticated parent
+    child_result = await db.execute(
+        select(Child).where(Child.id == data.child_id, Child.parent_id == current_user.id)
+    )
     if not child_result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Child not found")
+        raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
 
     # Get video by youtube_id
     vid_result = await db.execute(select(Video).where(Video.youtube_id == data.youtube_id))

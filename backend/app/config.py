@@ -1,7 +1,9 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import model_validator
 from typing import List
 from pathlib import Path
 import json
+import os
 
 ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 
@@ -15,6 +17,7 @@ class Settings(BaseSettings):
     # App
     APP_NAME: str = "KidCurate"
     DEBUG: bool = False
+    ENVIRONMENT: str = "development"
     CORS_ORIGINS: str = '["http://localhost:3000"]'
 
     # Database
@@ -28,6 +31,14 @@ class Settings(BaseSettings):
     # External APIs
     YOUTUBE_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self):
+        is_prod = self.ENVIRONMENT.lower() in ("production", "prod") or bool(os.environ.get("RENDER"))
+        if is_prod:
+            if "change-this-in-production" in self.SECRET_KEY or len(self.SECRET_KEY) < 32:
+                raise ValueError("FATAL: In production, SECRET_KEY must be a cryptographically secure random string of at least 32 characters.")
+        return self
 
     @property
     def cors_origins_list(self) -> List[str]:

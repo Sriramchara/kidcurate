@@ -60,7 +60,6 @@ class ForgotPasswordRequest(BaseModel):
 class ForgotPasswordResponse(BaseModel):
     message: str
     email: str
-    reset_code: str
 
 
 class ResetPasswordRequest(BaseModel):
@@ -262,27 +261,36 @@ async def google_login(data: GoogleLoginRequest, db: AsyncSession = Depends(get_
 
 @router.post("/forgot-password", response_model=ForgotPasswordResponse)
 async def forgot_password(data: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == data.email.lower().strip()))
+    clean_email = data.email.lower().strip()
+    result = await db.execute(select(User).where(User.email == clean_email))
     user = result.scalar_one_or_none()
+    
+    # Generic uniform response for registered and unregistered emails to prevent email enumeration
+    generic_response = ForgotPasswordResponse(
+        message="If this email is registered, a 6-digit verification code has been generated. Use it to reset your password.",
+        email=data.email,
+    )
+    
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No parent account registered with this email address.",
-        )
+        return generic_response
 
-    # Generate a secure 6-digit numeric verification code
+    # Generate a cryptographically secure 6-digit numeric verification code
     code = f"{secrets.randbelow(900000) + 100000}"
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
-    PASSWORD_RESET_STORE[data.email.lower().strip()] = {
-        "code": code,
+    
+    # Store bcrypt hash of code with attempt counter for brute-force protection
+    PASSWORD_RESET_STORE[clean_email] = {
+        "code_hash": hash_password(code),
         "expires_at": expires_at,
+        "attempts": 0,
+        "created_at": datetime.now(timezone.utc),
     }
+    
+    # In production, dispatch code via secure email provider. Log securely server-side for development.
+    import logging
+    logging.getLogger("uvicorn.error").info(f"Password reset code generated for {clean_email}: {code}")
 
-    return ForgotPasswordResponse(
-        message="A 6-digit verification code has been generated. Use it to reset your password.",
-        email=data.email,
-        reset_code=code,
-    )
+    return generic_response
 
 
 @router.post("/reset-password")
@@ -293,9 +301,10 @@ async def reset_password(data: ResetPasswordRequest, db: AsyncSession = Depends(
     if not entry:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No active reset code found for this email. Please request a new code.",
+            detail="No active reset request found for this email. Please request a new code.",
         )
 
+    # Check expiration
     if datetime.now(timezone.utc) > entry["expires_at"]:
         del PASSWORD_RESET_STORE[email_key]
         raise HTTPException(
@@ -303,10 +312,21 @@ async def reset_password(data: ResetPasswordRequest, db: AsyncSession = Depends(
             detail="The verification code has expired. Please request a new one.",
         )
 
-    if entry["code"] != data.code.strip():
+    # Brute-force attempt limiting (max 5 guesses)
+    entry["attempts"] += 1
+    if entry["attempts"] > 5:
+        del PASSWORD_RESET_STORE[email_key]
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many incorrect verification attempts. This code is invalidated. Please request a new one.",
+        )
+
+    # Verify code using constant-time bcrypt verification against stored hash
+    if not verify_password(data.code.strip(), entry["code_hash"]):
+        remaining = 5 - entry["attempts"]
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid verification code. Please check and try again.",
+            detail=f"Invalid verification code. {remaining} attempt(s) remaining.",
         )
 
     if len(data.new_password) < 6:
@@ -323,7 +343,7 @@ async def reset_password(data: ResetPasswordRequest, db: AsyncSession = Depends(
     user.password_hash = hash_password(data.new_password)
     await db.commit()
 
-    # Invalidate code
+    # Invalidate code immediately upon use
     if email_key in PASSWORD_RESET_STORE:
         del PASSWORD_RESET_STORE[email_key]
 

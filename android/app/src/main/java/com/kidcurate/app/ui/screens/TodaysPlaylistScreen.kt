@@ -219,9 +219,8 @@ fun FilledPlaylistLightView(
                             shape = RoundedCornerShape(12.dp),
                             color = if (isChildLockActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                             border = BorderStroke(1.dp, if (isChildLockActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
-                            modifier = Modifier
-                                .height(40.dp)
-                                .clickable { onToggleLock() },
+                            onClick = onToggleLock,
+                            modifier = Modifier.height(40.dp),
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -356,14 +355,14 @@ fun YouTubeVideoCard(
     onClick: () -> Unit,
 ) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .clickable(onClick = onClick),
+        onClick = onClick,
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
         shadowElevation = 2.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // 16:9 Thumbnail with duration overlay

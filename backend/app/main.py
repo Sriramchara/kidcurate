@@ -29,14 +29,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow Next.js portal, Netlify, custom domain, and Android
+# CORS — allow Next.js portal, configured domains, and mobile clients
+origin_regex = None
+if settings.DEBUG:
+    origin_regex = r"https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|.*\.netlify\.app|.*testeenspace\.site)(:\d+)?",
+    allow_origin_regex=origin_regex,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 # Security Headers Middleware
@@ -64,7 +68,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.exception(f"Unhandled server error on {request.method} {request.url.path}: {exc}")
     return JSONResponse(
         status_code=500,
-        content={"detail": "An internal server error occurred", "message": str(exc)},
+        content={"detail": "An internal server error occurred. Please try again later."},
     )
 
 

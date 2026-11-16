@@ -18,3 +18,5 @@ google-api-python-client>=2.140.0
 youtube-transcript-api>=0.6.2
 pillow>=10.4.0
 psycopg2-binary>=2.9.9
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

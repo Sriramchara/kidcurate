@@ -2,13 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr, ConfigDict
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta, timezone
 from app.database import get_db
 from app.models import User, Child
-from app.auth import get_current_user, get_optional_current_user, verify_password
+from app.auth import get_current_user, get_optional_current_user, verify_password, hash_password
 import uuid
 
 router = APIRouter(prefix="/api/children", tags=["Children"])
+
+# In-memory store for PIN attempt lockout (brute-force defense)
+PIN_LOCKOUT_STORE: Dict[str, Dict[str, Any]] = {}
 
 def normalize_avatar(avatar_val: Optional[str]) -> str:
     return str(avatar_val).strip() if avatar_val else "compass"
@@ -98,18 +102,16 @@ class ChildManageResponse(BaseModel):
     name: str
     age: int
     avatar: str
-    pin: str
+    has_pin: bool = True
     parent_id: Optional[str] = None
 
 
 @router.get("/manage", response_model=List[ChildManageResponse])
 async def list_manage_children(
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_current_user)
+    current_user: User = Depends(get_current_user)
 ):
-    """Used by Parent Zone to list children with full details (name, age, avatar, pin). Scoped to parent."""
-    if not current_user:
-        return []
+    """Used by Parent Zone to list children with full details. Scoped strictly to parent."""
     result = await db.execute(select(Child).where(Child.parent_id == current_user.id))
     children = result.scalars().all()
     return [
@@ -118,7 +120,7 @@ async def list_manage_children(
             name=c.name,
             age=c.age,
             avatar=normalize_avatar(c.avatar),
-            pin=c.pin,
+            has_pin=bool(c.pin),
             parent_id=str(c.parent_id) if c.parent_id else None
         )
         for c in children
@@ -129,11 +131,9 @@ async def list_manage_children(
 async def create_manage_child(
     data: ChildCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """Used by Parent Zone to create a new child profile."""
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Authentication required to create child profiles")
     if len(data.pin) != 4 or not data.pin.isdigit():
         raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
     if not (1 <= data.age <= 18):
@@ -147,7 +147,7 @@ async def create_manage_child(
         name=data.name.strip(),
         age=data.age,
         avatar=normalize_avatar(data.avatar or "compass"),
-        pin=data.pin,
+        pin=hash_password(data.pin),
     )
     db.add(child)
     await db.commit()
@@ -157,18 +157,25 @@ async def create_manage_child(
         name=child.name,
         age=child.age,
         avatar=normalize_avatar(child.avatar),
-        pin=child.pin,
+        has_pin=True,
         parent_id=str(child.parent_id)
     )
 
 
 @router.put("/manage/{child_id}", response_model=ChildManageResponse)
-async def update_manage_child(child_id: str, data: ChildUpdate, db: AsyncSession = Depends(get_db)):
-    """Used by Parent Zone to update child name, age, avatar, or pin."""
-    result = await db.execute(select(Child).where(Child.id == child_id))
+async def update_manage_child(
+    child_id: str,
+    data: ChildUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Used by Parent Zone to update child name, age, avatar, or pin. Strictly scoped to parent."""
+    result = await db.execute(
+        select(Child).where(Child.id == child_id, Child.parent_id == current_user.id)
+    )
     child = result.scalar_one_or_none()
     if not child:
-        raise HTTPException(status_code=404, detail="Child profile not found")
+        raise HTTPException(status_code=404, detail="Child profile not found or access denied")
 
     if data.name is not None and data.name.strip():
         child.name = data.name.strip()
@@ -181,7 +188,7 @@ async def update_manage_child(child_id: str, data: ChildUpdate, db: AsyncSession
     if data.pin is not None:
         if len(data.pin) != 4 or not data.pin.isdigit():
             raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
-        child.pin = data.pin
+        child.pin = hash_password(data.pin)
 
     await db.commit()
     await db.refresh(child)
@@ -190,19 +197,25 @@ async def update_manage_child(child_id: str, data: ChildUpdate, db: AsyncSession
         name=child.name,
         age=child.age,
         avatar=normalize_avatar(child.avatar),
-        pin=child.pin,
+        has_pin=bool(child.pin),
         parent_id=str(child.parent_id)
     )
 
 
 @router.delete("/manage/{child_id}")
-async def delete_manage_child(child_id: str, db: AsyncSession = Depends(get_db)):
-    """Used by Parent Zone to delete a child profile."""
+async def delete_manage_child(
+    child_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Used by Parent Zone to delete a child profile. Strictly scoped to parent."""
     from app.models import Playlist, PlaylistItem
-    result = await db.execute(select(Child).where(Child.id == child_id))
+    result = await db.execute(
+        select(Child).where(Child.id == child_id, Child.parent_id == current_user.id)
+    )
     child = result.scalar_one_or_none()
     if not child:
-        raise HTTPException(status_code=404, detail="Child profile not found")
+        raise HTTPException(status_code=404, detail="Child profile not found or access denied")
 
     result_pl = await db.execute(select(Playlist).where(Playlist.child_id == child_id))
     playlists = result_pl.scalars().all()
@@ -302,15 +315,55 @@ async def delete_child(
 
 @router.post("/verify-pin")
 async def verify_child_pin(data: ChildPINVerify, db: AsyncSession = Depends(get_db)):
-    """Used by Android app to verify child PIN before showing their playlist."""
-    result = await db.execute(
-        select(Child).where(Child.id == data.child_id)
-    )
+    """Used by Android app to verify child PIN before showing their playlist. Protected against brute-force attacks."""
+    cid = data.child_id
+    lockout = PIN_LOCKOUT_STORE.get(cid)
+    now = datetime.now(timezone.utc)
+    if lockout:
+        if now < lockout["locked_until"]:
+            remaining = int((lockout["locked_until"] - now).total_seconds())
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Too many incorrect attempts. PIN entry locked for {remaining} seconds."
+            )
+        elif now >= lockout["locked_until"]:
+            del PIN_LOCKOUT_STORE[cid]
+
+    result = await db.execute(select(Child).where(Child.id == cid))
     child = result.scalar_one_or_none()
     if not child:
         raise HTTPException(status_code=404, detail="Child not found")
-    if child.pin != data.pin:
-        raise HTTPException(status_code=401, detail="Incorrect PIN")
+
+    # Constant-time verification supporting both bcrypt hashes and legacy plaintext PINs
+    is_valid = False
+    if child.pin.startswith("$2b$") or child.pin.startswith("$2a$"):
+        is_valid = verify_password(data.pin, child.pin)
+    else:
+        is_valid = (child.pin == data.pin)
+        if is_valid:
+            # Upgrade legacy plaintext PIN to bcrypt hash automatically upon first login
+            child.pin = hash_password(data.pin)
+            await db.commit()
+
+    if not is_valid:
+        entry = PIN_LOCKOUT_STORE.setdefault(cid, {"attempts": 0, "locked_until": now})
+        entry["attempts"] += 1
+        if entry["attempts"] >= 5:
+            entry["locked_until"] = now + timedelta(minutes=5)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many incorrect attempts. PIN entry locked for 5 minutes."
+            )
+        remaining_attempts = 5 - entry["attempts"]
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Incorrect PIN. {remaining_attempts} attempt(s) remaining."
+        )
+
+    # Success: clear failed attempts
+    if cid in PIN_LOCKOUT_STORE:
+        del PIN_LOCKOUT_STORE[cid]
+
     return {
         "verified": True,
         "child_id": str(child.id),
@@ -328,7 +381,7 @@ class ChildPINReset(BaseModel):
 
 @router.post("/reset-pin")
 async def reset_child_pin(data: ChildPINReset, db: AsyncSession = Depends(get_db)):
-    """Allows parents to securely reset a child's PIN by verifying parent credentials."""
+    """Allows parents to securely reset a child's PIN by verifying parent credentials and enforcing ownership."""
     result_u = await db.execute(select(User).where(User.email == data.parent_email.lower().strip()))
     parent = result_u.scalar_one_or_none()
     if not parent or not verify_password(data.parent_password, parent.password_hash):
@@ -337,12 +390,15 @@ async def reset_child_pin(data: ChildPINReset, db: AsyncSession = Depends(get_db
     if len(data.new_pin) != 4 or not data.new_pin.isdigit():
         raise HTTPException(status_code=400, detail="New PIN must be exactly 4 digits.")
 
-    result_c = await db.execute(select(Child).where(Child.id == data.child_id))
+    # Strictly enforce child.parent_id == parent.id to prevent cross-account PIN tampering
+    result_c = await db.execute(
+        select(Child).where(Child.id == data.child_id, Child.parent_id == parent.id)
+    )
     child = result_c.scalar_one_or_none()
     if not child:
-        raise HTTPException(status_code=404, detail="Child profile not found.")
+        raise HTTPException(status_code=404, detail="Child profile not found or does not belong to your account.")
 
-    child.pin = data.new_pin
+    child.pin = hash_password(data.new_pin)
     await db.commit()
     return {
         "status": "ok",
