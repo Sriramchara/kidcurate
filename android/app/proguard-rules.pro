@@ -41,3 +41,9 @@
 -keep class coil.** { *; }
 -dontwarn coil.**
 
+# Google Tink & AndroidX Security Crypto (Keystore-backed EncryptedSharedPreferences)
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn com.google.crypto.tink.**
+-keep class com.google.crypto.tink.** { *; }
+-keep class androidx.security.crypto.** { *; }
+
