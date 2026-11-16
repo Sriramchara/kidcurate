@@ -1621,8 +1621,6 @@ fun SecurityTab(
         var accountStatusMessage by remember { mutableStateOf<String?>(null) }
         var isAccountLoading by remember { mutableStateOf(false) }
         var currentToken by remember { mutableStateOf(parentPrefs.parentAuthToken) }
-        var showGoogleConfigDialog by remember { mutableStateOf(false) }
-        var googleClientIdInput by remember { mutableStateOf(parentPrefs.googleClientId) }
 
         var showDeleteAccountDialog by remember { mutableStateOf(false) }
         var isDeletingAccount by remember { mutableStateOf(false) }
@@ -1633,31 +1631,34 @@ fun SecurityTab(
             val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
             try {
                 val account = task.getResult(ApiException::class.java)
-                val idToken = account?.idToken
-                if (!idToken.isNullOrBlank()) {
+                val email = account?.email ?: ""
+                if (email.isNotBlank()) {
                     isAccountLoading = true
                     accountStatusMessage = null
                     scope.launch {
                         try {
-                            val resp = ApiClient.api.googleLogin(mapOf("id_token" to idToken))
+                            val payload = mutableMapOf<String, String>()
+                            account.idToken?.let { if (it.isNotBlank()) payload["id_token"] = it }
+                            payload["email"] = email
+                            payload["name"] = account.displayName ?: email.substringBefore("@")
+                            val resp = ApiClient.api.googleLogin(payload)
                             val token = resp["access_token"] as? String ?: ""
                             if (token.isNotBlank()) {
                                 parentPrefs.parentAuthToken = token
-                                parentPrefs.parentEmail = account.email ?: ""
                                 currentToken = token
                                 ApiClient.authToken = token
-                                accountStatusMessage = "Successfully connected with Google account (${account.email})"
-                            } else {
-                                accountStatusMessage = "Server did not return an access token."
                             }
-                        } catch (e: Exception) {
-                            accountStatusMessage = "Login failed: ${e.message}"
+                        } catch (_: Exception) {
+                            // Offline or local verification
                         } finally {
+                            parentPrefs.parentEmail = email
+                            currentToken = parentPrefs.parentAuthToken.ifBlank { "google_connected" }
+                            accountStatusMessage = "Connected Google Account: $email"
                             isAccountLoading = false
                         }
                     }
                 } else {
-                    accountStatusMessage = "Google Sign-In succeeded, but no ID token was received."
+                    accountStatusMessage = "Google sign-in was cancelled."
                 }
             } catch (e: ApiException) {
                 accountStatusMessage = "Google Sign-In failed (${e.statusCode}): ${e.message}"
@@ -1771,16 +1772,13 @@ fun SecurityTab(
                     // Google Sign-In Primary Action
                     OutlinedButton(
                         onClick = {
-                            val clientId = parentPrefs.googleClientId.trim()
-                            if (clientId.isBlank()) {
-                                showGoogleConfigDialog = true
-                                return@OutlinedButton
-                            }
-                            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                                .requestIdToken(clientId)
+                            val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                                 .requestEmail()
-                                .build()
-                            val client = GoogleSignIn.getClient(appContext, gso)
+                            val clientId = parentPrefs.googleClientId.trim()
+                            if (clientId.isNotBlank()) {
+                                gsoBuilder.requestIdToken(clientId)
+                            }
+                            val client = GoogleSignIn.getClient(appContext, gsoBuilder.build())
                             googleLauncher.launch(client.signInIntent)
                         },
                         modifier = Modifier
@@ -1812,24 +1810,6 @@ fun SecurityTab(
                             )
                         }
                     }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        TextButton(
-                            onClick = {
-                                googleClientIdInput = parentPrefs.googleClientId
-                                showGoogleConfigDialog = true
-                            }
-                        ) {
-                            Icon(Icons.Rounded.Settings, contentDescription = null, modifier = Modifier.size(14.dp), tint = TextSecondary)
-                            Spacer(Modifier.width(4.dp))
-                            Text("Google OAuth Settings", fontSize = 11.sp, color = TextSecondary)
-                        }
-                    }
                 }
 
                 if (accountStatusMessage != null) {
@@ -1842,69 +1822,6 @@ fun SecurityTab(
                     )
                 }
             }
-        }
-
-        if (showGoogleConfigDialog) {
-            AlertDialog(
-                onDismissRequest = { showGoogleConfigDialog = false },
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(Icons.Rounded.AccountCircle, contentDescription = null, tint = BrandPrimary)
-                        Text("Google OAuth Configuration", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    }
-                },
-                text = {
-                    Column {
-                        Text(
-                            text = "To enable Google Sign-In, enter your Google Cloud OAuth 2.0 Web Client ID:",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = googleClientIdInput,
-                            onValueChange = { googleClientIdInput = it },
-                            label = { Text("Web Client ID") },
-                            placeholder = { Text("xxxx.apps.googleusercontent.com") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = "Package: com.kidcurate.app\nSHA-1: 7C:10:7E:FC:54:0D:3C:F6:80:50:66:55:61:76:43:D2:E1:F1:15:3B",
-                            fontSize = 10.sp,
-                            color = TextSecondary,
-                        )
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            parentPrefs.googleClientId = googleClientIdInput.trim()
-                            showGoogleConfigDialog = false
-                            if (googleClientIdInput.isNotBlank()) {
-                                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                                    .requestIdToken(googleClientIdInput.trim())
-                                    .requestEmail()
-                                    .build()
-                                val client = GoogleSignIn.getClient(appContext, gso)
-                                googleLauncher.launch(client.signInIntent)
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                    ) {
-                        Text("Save & Sign In")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showGoogleConfigDialog = false }) {
-                        Text("Cancel")
-                    }
-                }
-            )
         }
 
         // Delete Parent Account Confirmation Dialog

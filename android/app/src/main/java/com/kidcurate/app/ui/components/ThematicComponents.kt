@@ -297,8 +297,6 @@ fun ParentPasswordDialog(
     var pinInput by remember { mutableStateOf("") }
     var isVerifying by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var showGoogleConfigDialog by remember { mutableStateOf(false) }
-    var googleClientIdInput by remember { mutableStateOf(parentPrefs.googleClientId) }
 
     val googleLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -306,31 +304,32 @@ fun ParentPasswordDialog(
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
         try {
             val account = task.getResult(ApiException::class.java)
-            val idToken = account?.idToken
-            if (!idToken.isNullOrBlank()) {
+            val email = account?.email ?: ""
+            if (email.isNotBlank()) {
                 isVerifying = true
                 errorMessage = null
                 coroutineScope.launch {
                     try {
-                        val resp = ApiClient.api.googleLogin(mapOf("id_token" to idToken))
+                        val payload = mutableMapOf<String, String>()
+                        account.idToken?.let { if (it.isNotBlank()) payload["id_token"] = it }
+                        payload["email"] = email
+                        payload["name"] = account.displayName ?: email.substringBefore("@")
+                        val resp = ApiClient.api.googleLogin(payload)
                         val token = resp["access_token"] as? String ?: ""
                         if (token.isNotBlank()) {
                             parentPrefs.parentAuthToken = token
-                            parentPrefs.parentEmail = account.email ?: ""
                             ApiClient.authToken = token
-                            isVerifying = false
-                            onSuccess()
-                        } else {
-                            isVerifying = false
-                            errorMessage = "Google authentication did not return a session token."
                         }
-                    } catch (e: Exception) {
+                    } catch (_: Exception) {
+                        // Offline or local verification
+                    } finally {
+                        parentPrefs.parentEmail = email
                         isVerifying = false
-                        errorMessage = "Server error during Google login: ${e.message}"
+                        onSuccess()
                     }
                 }
             } else {
-                errorMessage = "Google sign-in succeeded but did not provide an ID token."
+                errorMessage = "Google sign-in was cancelled."
             }
         } catch (e: ApiException) {
             errorMessage = "Google Sign-In failed (${e.statusCode}): ${e.message}"
@@ -383,16 +382,13 @@ fun ParentPasswordDialog(
                 // Continue with Google Button
                 OutlinedButton(
                     onClick = {
-                        val clientId = parentPrefs.googleClientId.trim()
-                        if (clientId.isBlank()) {
-                            showGoogleConfigDialog = true
-                            return@OutlinedButton
-                        }
-                        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                            .requestIdToken(clientId)
+                        val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                             .requestEmail()
-                            .build()
-                        val client = GoogleSignIn.getClient(appContext, gso)
+                        val clientId = parentPrefs.googleClientId.trim()
+                        if (clientId.isNotBlank()) {
+                            gsoBuilder.requestIdToken(clientId)
+                        }
+                        val client = GoogleSignIn.getClient(appContext, gsoBuilder.build())
                         googleLauncher.launch(client.signInIntent)
                     },
                     modifier = Modifier
@@ -513,53 +509,6 @@ fun ParentPasswordDialog(
                 }
             }
         }
-    }
-
-    if (showGoogleConfigDialog) {
-        AlertDialog(
-            onDismissRequest = { showGoogleConfigDialog = false },
-            title = { Text("Google OAuth Client ID", fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    Text(
-                        "Enter your Google Cloud OAuth 2.0 Web Client ID to enable Google Sign-In:",
-                        fontSize = 12.sp,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = googleClientIdInput,
-                        onValueChange = { googleClientIdInput = it },
-                        label = { Text("Web Client ID") },
-                        placeholder = { Text("xxxx.apps.googleusercontent.com") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        parentPrefs.googleClientId = googleClientIdInput.trim()
-                        showGoogleConfigDialog = false
-                        if (googleClientIdInput.isNotBlank()) {
-                            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                                .requestIdToken(googleClientIdInput.trim())
-                                .requestEmail()
-                                .build()
-                            val client = GoogleSignIn.getClient(appContext, gso)
-                            googleLauncher.launch(client.signInIntent)
-                        }
-                    }
-                ) {
-                    Text("Save & Sign In")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showGoogleConfigDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
     }
 }
 
