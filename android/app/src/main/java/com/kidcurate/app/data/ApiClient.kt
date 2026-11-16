@@ -119,8 +119,8 @@ object ApiClient {
         .build()
 
     private val fastProbeClient = httpClient.newBuilder()
-        .connectTimeout(7500, java.util.concurrent.TimeUnit.MILLISECONDS)
-        .readTimeout(8500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
     @Volatile

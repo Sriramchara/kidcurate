@@ -134,14 +134,12 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } else {
                 // If network failed but we have cached profiles, do NOT show blocking error screen!
-                if (_state.value.availableProfiles.isEmpty()) {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = "Unable to connect to KidCurate. Please check your internet connection.",
-                    )
-                } else {
-                    _state.value = _state.value.copy(isLoading = false, error = null)
-                }
+                // On first launch with 0 profiles, still show the onboarding welcome card rather than blocking the parent
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    error = null,
+                    screen = AppScreen.ChildSelect,
+                )
             }
         }
     }
