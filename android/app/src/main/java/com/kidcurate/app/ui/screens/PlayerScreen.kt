@@ -489,65 +489,67 @@ fun PlayerScreen(
                 }
             }
         }
-    }
 
-    // Back button and Lock toggle (hidden in fullscreen)
-    if (!isFullscreen) {
-        Row(
-            modifier = Modifier
-                .statusBarsPadding()
-                .padding(12.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(
-                onClick = { attemptBack() },
+        // Floating Back button and Lock toggle OVER the player (hidden in fullscreen)
+        if (!isFullscreen) {
+            Row(
                 modifier = Modifier
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.65f)),
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Color.White,
-                )
-            }
-
-            // Lock indicator / toggle
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = if (isChildLockActive) BrandPrimary.copy(alpha = 0.9f) else Color.Black.copy(alpha = 0.65f),
-                modifier = Modifier.clickable {
-                    if (isChildLockActive) {
-                        showParentPasswordDialog = true
-                    } else {
-                        isChildLockActive = true
-                        try { activity?.startLockTask() } catch (_: Exception) {}
-                    }
-                },
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                IconButton(
+                    onClick = { attemptBack() },
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.65f)),
                 ) {
                     Icon(
-                        if (isChildLockActive) Icons.Filled.Lock else Icons.Filled.LockOpen,
-                        contentDescription = "Child Lock",
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
                         tint = Color.White,
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(22.dp),
                     )
-                    Text(
-                        text = if (isChildLockActive) "Locked" else "Lock",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                    )
+                }
+
+                // Lock indicator / toggle
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isChildLockActive) BrandPrimary.copy(alpha = 0.9f) else Color.Black.copy(alpha = 0.65f),
+                    modifier = Modifier.clickable {
+                        if (isChildLockActive) {
+                            showParentPasswordDialog = true
+                        } else {
+                            isChildLockActive = true
+                            try { activity?.startLockTask() } catch (_: Exception) {}
+                        }
+                    },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            if (isChildLockActive) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                            contentDescription = "Child Lock",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = if (isChildLockActive) "Locked" else "Lock",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        )
+                    }
                 }
             }
         }
-    }
 
     if (showParentPasswordDialog) {
         ParentPasswordDialog(
@@ -647,6 +649,7 @@ fun PlayerScreen(
             }
         }
     }
+}
 }
 
 @Composable
@@ -749,8 +752,6 @@ fun OptimizedVideoPlayer(
         }
     }
 
-    var isStuckUnplayable by remember { mutableStateOf(false) }
-
     // React dynamically to subtitlesEnabled changes
     LaunchedEffect(subtitlesEnabled, webViewRef) {
         applySubtitles(subtitlesEnabled)
@@ -758,16 +759,9 @@ fun OptimizedVideoPlayer(
 
     LaunchedEffect(video.youtubeId) {
         playbackError = null
-        isStuckUnplayable = false
         currentSecond = 0f
         videoDuration = 0f
         youTubePlayerRef?.loadVideo(video.youtubeId, 0f)
-
-        // Watchdog: If after 3.5s the video has not started playing and has 0 duration, surface a helpful skip
-        delay(3500)
-        if (playerState != PlayerConstants.PlayerState.PLAYING && currentSecond == 0f && videoDuration == 0f) {
-            isStuckUnplayable = true
-        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -794,14 +788,12 @@ fun OptimizedVideoPlayer(
                         override fun onReady(youTubePlayer: YouTubePlayer) {
                             youTubePlayerRef = youTubePlayer
                             playbackError = null
-                            isStuckUnplayable = false
                             youTubePlayer.loadVideo(video.youtubeId, 0f)
                             val wv = findWebView(this@apply)
                             wv?.settings?.apply {
                                 domStorageEnabled = true
                                 databaseEnabled = true
                                 mediaPlaybackRequiresUserGesture = false
-                                userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
                             }
                             try {
                                 android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true)
@@ -812,13 +804,11 @@ fun OptimizedVideoPlayer(
 
                         override fun onCurrentSecond(youTubePlayer: YouTubePlayer, second: Float) {
                             currentSecond = second
-                            if (second > 0f) isStuckUnplayable = false
                             onProgressUpdate(second.toInt())
                         }
 
                         override fun onVideoDuration(youTubePlayer: YouTubePlayer, duration: Float) {
                             videoDuration = duration
-                            if (duration > 0f) isStuckUnplayable = false
                         }
 
                         override fun onStateChange(
@@ -827,7 +817,6 @@ fun OptimizedVideoPlayer(
                         ) {
                             playerState = state
                             if (state == PlayerConstants.PlayerState.PLAYING) {
-                                isStuckUnplayable = false
                                 applySubtitles(subtitlesEnabled)
                             }
                             if (state == PlayerConstants.PlayerState.ENDED) {
@@ -844,9 +833,12 @@ fun OptimizedVideoPlayer(
                                     "This video was not found on YouTube."
                                 PlayerConstants.PlayerError.VIDEO_NOT_PLAYABLE_IN_EMBEDDED_PLAYER ->
                                     "The video creator has restricted playback in third-party mobile apps."
-                                else -> "Video playback is currently unavailable."
+                                PlayerConstants.PlayerError.INVALID_PARAMETER_IN_REQUEST ->
+                                    "Invalid video playback request."
+                                PlayerConstants.PlayerError.HTML_5_PLAYER ->
+                                    "HTML5 player error encountered."
+                                else -> "Video playback is currently unavailable. Please check your connection."
                             }
-                            isStuckUnplayable = true
                         }
                     }, options)
                 }
@@ -883,8 +875,8 @@ fun OptimizedVideoPlayer(
             modifier = Modifier.fillMaxSize(),
         )
 
-        // Playback Error or Stuck Video Overlay
-        if (playbackError != null || isStuckUnplayable) {
+        // Playback Error Overlay (ONLY shown if YouTube reports a genuine playback error)
+        if (playbackError != null) {
             Surface(
                 color = Color.Black.copy(alpha = 0.92f),
                 modifier = Modifier.fillMaxSize(),
@@ -904,15 +896,14 @@ fun OptimizedVideoPlayer(
                     )
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        text = if (playbackError != null) "Video Playback Notice" else "Playback Restricted",
+                        text = "Playback Notice",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = playbackError
-                            ?: "The creator restricted playback of this video in third-party mobile apps.",
+                        text = playbackError ?: "Video playback error occurred.",
                         color = Color.White.copy(alpha = 0.85f),
                         fontSize = 13.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -922,6 +913,16 @@ fun OptimizedVideoPlayer(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        OutlinedButton(
+                            onClick = {
+                                playbackError = null
+                                youTubePlayerRef?.loadVideo(video.youtubeId, 0f)
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.6f)),
+                        ) {
+                            Text("Retry 🔄", color = Color.White)
+                        }
                         if (onSkipNext != null) {
                             Button(
                                 onClick = onSkipNext,
@@ -929,18 +930,6 @@ fun OptimizedVideoPlayer(
                                 shape = RoundedCornerShape(12.dp),
                             ) {
                                 Text("Next Video ▶️", fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        if (isStuckUnplayable && playbackError == null) {
-                            OutlinedButton(
-                                onClick = {
-                                    isStuckUnplayable = false
-                                    youTubePlayerRef?.loadVideo(video.youtubeId, 0f)
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.6f)),
-                            ) {
-                                Text("Replay 🔄", color = Color.White)
                             }
                         }
                     }
@@ -985,6 +974,44 @@ fun OptimizedVideoPlayer(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.5f))
             ) {
+                // In fullscreen, show top exit fullscreen button and video title
+                if (isFullscreen) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .statusBarsPadding()
+                            .displayCutoutPadding()
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(
+                            onClick = onToggleFullscreen,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.65f)),
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Exit Fullscreen",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            text = video.title,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+
                 // Center Play/Pause button
                 IconButton(
                     onClick = {
