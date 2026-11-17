@@ -9,7 +9,7 @@ from app.database import get_db
 from app.auth import get_current_user
 from app.models import User, Playlist, PlaylistItem, Video, Child
 import uuid
-from app.services.ai_scorer import generate_quiz, generate_curriculum
+from app.services.ai_scorer import generate_curriculum
 from app.config import settings
 import json
 from app.routes.videos import YOUTUBE_SEARCH_URL, YOUTUBE_VIDEOS_URL, parse_iso_duration
@@ -42,35 +42,6 @@ async def create_ai_curriculum(
     if not curriculum:
         raise HTTPException(status_code=500, detail="Curriculum generation failed")
     return curriculum
-
-
-@router.get("/quiz/{youtube_id}")
-async def get_video_quiz(
-    youtube_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Get or generate an AI quiz for a specific video. Requires authenticated parent/user session."""
-    # Check if video exists and has cached quiz
-    db_vid = await db.execute(select(Video).where(Video.youtube_id == youtube_id))
-    video = db_vid.scalar_one_or_none()
-    
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found in database")
-        
-    if video.quiz_json:
-        return json.loads(video.quiz_json)
-        
-    # Generate new quiz
-    quiz = await generate_quiz(youtube_id, video.title, video.description or "")
-    if not quiz:
-        raise HTTPException(status_code=503, detail="Could not generate quiz from transcript")
-        
-    # Cache it
-    video.quiz_json = json.dumps(quiz)
-    await db.commit()
-    
-    return quiz
 
 
 class ApplyCurriculumRequest(BaseModel):

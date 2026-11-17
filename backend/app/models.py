@@ -111,7 +111,6 @@ class Video(Base):
     ai_summary = Column(Text)
     red_flags = Column(Text)  # JSON array stored as text
     is_safe = Column(Boolean, default=True)
-    quiz_json = Column(Text)  # JSON object storing the 3-question quiz
 
     # Metadata
     published_at = Column(DateTime(timezone=True))

@@ -28,9 +28,6 @@ interface KidCurateApi {
     @POST("api/progress/update")
     suspend fun updateProgress(@Body progress: ProgressUpdate): Map<String, Boolean>
 
-    @GET("api/ai/quiz/{youtube_id}")
-    suspend fun getQuiz(@Path("youtube_id") youtubeId: String): QuizData
-
     @GET("api/videos/search")
     suspend fun searchVideos(
         @Query("q") query: String,

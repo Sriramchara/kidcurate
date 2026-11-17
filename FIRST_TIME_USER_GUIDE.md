@@ -52,7 +52,7 @@ You can also manage everything conveniently from your laptop or PC:
 3. In the **Parent Dashboard**:
    - View your children's profiles and recent watch history.
    - Search YouTube and curate educational playlists.
-   - View AI learning summaries and quizzes generated for each video.
+   - View AI learning summaries and safety scores generated for each video.
    - Adjust screen-time limits and subject filters.
 
 ---

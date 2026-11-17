@@ -22,7 +22,7 @@ Engineering Rules you must ALWAYS follow when generating code:
 - Cross-DB GUID Type: All primary and foreign keys use the GUID() TypeDecorator to support both PostgreSQL native UUID and SQLite CHAR(36) transparently without hex conversion crashes.
 - Next.js 16 App Router: Any component utilizing React hooks (useState, useEffect, useParams, useRouter) must declare 'use client'; at the very top.
 - Distraction-Free Child Security: Under NO circumstance should YouTube recommendations, external links, comments, or autoplay ads be accessible to the child on the Android client. Playback must be locked to parent-curated playlists.
-- AI Graceful Degradation: If Gemini or YouTube transcript API fails or is rate-limited, fallback quizzes and search results must always ensure a child or parent is never locked out or faced with unhandled 500 exceptions.
+- AI Graceful Degradation: If Gemini or YouTube transcript API fails or is rate-limited, fallback responses and safe search results must always ensure a child or parent is never locked out or faced with unhandled 500 exceptions.
 ```
 
 ---
@@ -33,7 +33,7 @@ Traditional YouTube is unsuited for independent child learning due to commercial
 
 **KidCurate** solves this through a parent-in-the-loop, AI-guided learning architecture:
 * **The Parent Curies:** Parents search YouTube through safe, embeddable-only filters, inspect AI educational/safety ratings (0–100), generate multi-day AI curriculums, organize playlists with drag-and-drop, and track watch progress.
-* **The Child Learns:** Kids log in using their personal 4-digit PIN on a tablet or phone, view only parent-approved playlists for the day, watch videos in a distraction-free player, and take a quick 3-question AI comprehension quiz before earning their completion reward.
+* **The Child Learns:** Kids log in using their personal 4-digit PIN on a tablet or phone, view only parent-approved playlists for the day, watch videos in a distraction-free player, and earn their star completion reward with seamless playback across the curated playlist.
 
 ---
 
@@ -82,22 +82,8 @@ sequenceDiagram
     Android->>API: POST /api/progress/update {watched_seconds, completed: false}
     
     Kid->>Android: Video Finishes
-    Android->>API: GET /api/ai/quiz/{youtube_id}
-    alt Quiz Cached
-        API->>DB: Read quiz_json
-        DB-->>API: 3 Questions
-    else Quiz Not Cached
-        API->>API: Fetch transcript via youtube-transcript-api
-        API->>Gemini: Generate 3-question comprehension quiz
-        Gemini-->>API: Questions JSON
-        API->>DB: Cache quiz_json on Video
-    end
-    API-->>Android: Quiz JSON
-    
-    Android->>Kid: Display interactive QuizScreen
-    Kid->>Android: Answers all 3 questions
     Android->>API: POST /api/progress/update {completed: true}
-    Android->>Kid: Celebratory Completion Screen!
+    Android->>Kid: Celebratory Star Countdown & Next Video!
 ```
 
 ### B. Parent Video Discovery & AI Curriculum Flow
@@ -142,9 +128,9 @@ kidcurate/
 │   │   │   ├── videos.py     # YouTube search with strict filtering, caching & scoring
 │   │   │   ├── playlists.py  # Playlist CRUD, drag-and-drop reordering, /child/{id}/today
 │   │   │   ├── progress.py   # Progress update, watch history & analytics summary
-│   │   │   └── ai.py         # /api/ai/curriculum (roadmap generator), /api/ai/quiz/{id}
+│   │   │   └── ai.py         # /api/ai/curriculum (roadmap generator)
 │   │   ├── services/
-│   │   │   └── ai_scorer.py  # Gemini prompts, transcript extraction & fallback quiz generator
+│   │   │   └── ai_scorer.py  # Gemini prompts & curriculum generator
 │   │   ├── auth.py           # Password hashing (bcrypt) & JWT decoding dependencies
 │   │   ├── config.py         # Settings loaded from backend/.env via Pydantic
 │   │   ├── database.py       # Async engine & sessionmaker, startup create_tables()
@@ -183,7 +169,6 @@ kidcurate/
     │   │   │       │   ├── PinEntryScreen.kt         # PIN pad with custom keypad & profile switcher
     │   │   │       │   ├── TodaysPlaylistScreen.kt   # Daily queue of assigned lessons
     │   │   │       │   ├── PlayerScreen.kt           # Embedded YouTube player with auto-landscape
-    │   │   │       │   ├── QuizScreen.kt             # 3-question AI comprehension quiz
     │   │   │       │   └── CompletionScreen.kt       # Reward celebration screen
     │   │   │       └── theme/                        # Colors, typography, shapes
     │   │   └── AndroidManifest.xml
@@ -238,7 +223,6 @@ erDiagram
         int overall_score "0-100"
         text ai_summary
         json subject_tags
-        json quiz_json
         boolean is_safe
     }
 
@@ -334,7 +318,6 @@ class GUID(TypeDecorator):
 | `GET` | `/api/progress/child/{id}/summary` | Bearer Token | Aggregate analytics (total hours, completed count, top subjects) |
 | `GET` | `/api/progress/child/{id}/history` | Bearer Token | Reverse-chronological watch activity log |
 | `POST` | `/api/ai/curriculum` | Bearer Token | Generate multi-day AI learning roadmap (`child_age`, `subject`, `goals`, `num_days`) |
-| `GET` | `/api/ai/quiz/{youtube_id}` | **Public** | Retrieve or generate 3-question comprehension quiz |
 
 ---
 
@@ -347,9 +330,6 @@ $$\text{Overall Score} = (0.5 \times \text{Educational}) + (0.3 \times \text{Saf
 1. **Educational Score:** Measures explanation pacing, active demonstration, curriculum alignment, and conceptual rigor.
 2. **Safety Score:** Penalizes profanity, jump scares, commercial marketing/excessive toy ads, clickbait, and unverified claims.
 3. **Clarity Score:** Audio cleanliness, age-level vocabulary, and visual clarity.
-
-### Fallback Quiz Mechanism
-If a YouTube video does not provide a caption transcript, the backend automatically generates comprehension questions from the video title, description, and tags, ensuring children are never blocked from completing their lessons.
 
 ---
 

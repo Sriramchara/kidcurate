@@ -66,19 +66,6 @@ data class ProgressUpdate(
     val completed: Boolean,
 )
 
-// ─── Quiz ─────────────────────────────────────────────────────────────────
-
-data class QuizQuestion(
-    val question: String,
-    val options: List<String>,
-    @SerializedName("correct_answer") val correctAnswer: Int,
-    val explanation: String
-)
-
-data class QuizData(
-    val questions: List<QuizQuestion>
-)
-
 // ─── Parent Zone & Search ───────────────────────────────────────────────────
 
 data class VideoSearchResultItem(

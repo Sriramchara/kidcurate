@@ -126,13 +126,13 @@ def generate_feature_graphic():
     # Title
     draw.text((70, 90), "KidCurate", fill=(255, 255, 255, 255), font_size=56)
     draw.text((72, 160), "Parent-Controlled YouTube Learning for Kids", fill=(255, 184, 0, 255), font_size=22)
-    draw.text((72, 200), "Safe, curated video roadmaps with interactive mini-quizzes.\nNo ads, no algorithmic recommendations, 100% focused.", fill=(203, 213, 225, 255), font_size=15)
+    draw.text((72, 200), "Safe, curated video roadmaps with distraction-free playback.\nNo ads, no algorithmic recommendations, 100% focused.", fill=(203, 213, 225, 255), font_size=15)
     
     # Feature Badges
     badges = [
         ("Shield", "100% Parent Controlled & Ad-Free", 280),
         ("Sparkles", "AI-Curated Weekly Learning Quest", 330),
-        ("Trophy", "Interactive Comprehension Quizzes", 380),
+        ("Trophy", "Phonics Karaoke & Screen-Time Locks", 380),
     ]
     for icon_name, text, y_pos in badges:
         # Badge Pill

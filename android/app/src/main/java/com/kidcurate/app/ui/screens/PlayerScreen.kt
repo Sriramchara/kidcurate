@@ -37,9 +37,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import coil.compose.AsyncImage
-import com.kidcurate.app.data.ApiClient
 import com.kidcurate.app.data.ParentPreferences
-import com.kidcurate.app.data.QuizData
 import com.kidcurate.app.data.VideoItem
 import com.kidcurate.app.ui.components.ConfettiCelebration
 import com.kidcurate.app.ui.components.GlassCard
@@ -108,23 +106,6 @@ fun PlayerScreen(
     var currentVideoSeconds by remember(currentIndex) { mutableFloatStateOf(0f) }
     var currentVideoTotalDuration by remember(currentIndex) { mutableFloatStateOf(0f) }
     var currentVideoHasError by remember(currentIndex) { mutableStateOf(false) }
-
-    var videoQuiz by remember(currentIndex) { mutableStateOf<QuizData?>(null) }
-    var showQuizDialog by remember { mutableStateOf(false) }
-    var currentQuizQuestionIndex by remember(currentIndex) { mutableIntStateOf(0) }
-    var selectedAnswerIndex by remember { mutableStateOf<Int?>(null) }
-    var quizAnsweredCorrectly by remember { mutableStateOf<Boolean?>(null) }
-
-    LaunchedEffect(currentVideo?.youtubeId) {
-        if (currentVideo != null) {
-            try {
-                val q = ApiClient.api.getQuiz(currentVideo.youtubeId)
-                if (q.questions.isNotEmpty()) {
-                    videoQuiz = q
-                }
-            } catch (_: Exception) {}
-        }
-    }
 
     LaunchedEffect(showEndCelebration) {
         if (showEndCelebration) {
@@ -231,9 +212,7 @@ fun PlayerScreen(
                         onToggleFullscreen = { isFullscreen = !effectiveFullscreen },
                         onVideoEnded = { _ ->
                             isCurrentVideoCompleted = true
-                            if (videoQuiz != null && videoQuiz!!.questions.isNotEmpty()) {
-                                showQuizDialog = true
-                            } else if (currentIndex + 1 < videos.size) {
+                            if (currentIndex + 1 < videos.size) {
                                 showEndCelebration = true
                             } else {
                                 if (currentVideo != null) onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
@@ -745,182 +724,6 @@ fun PlayerScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                     ) {
                         Text(if (nextVideo != null) "Play Now" else "Finish", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-    }
-
-    if (showQuizDialog && videoQuiz != null && videoQuiz!!.questions.isNotEmpty()) {
-        val questions = videoQuiz!!.questions
-        val currentQ = questions.getOrNull(currentQuizQuestionIndex) ?: questions.first()
-
-        Dialog(onDismissRequest = {}) {
-            GlassCard(
-                shape = RoundedCornerShape(24.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            Icons.Rounded.EmojiEvents,
-                            contentDescription = null,
-                            tint = BrandPrimary,
-                            modifier = Modifier.size(28.dp),
-                        )
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    Text(
-                        text = "Brain Spark Quiz",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                    )
-
-                    Text(
-                        text = "Question ${currentQuizQuestionIndex + 1} of ${questions.size}",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-
-                    Spacer(Modifier.height(14.dp))
-
-                    Text(
-                        text = currentQ.question,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center,
-                    )
-
-                    Spacer(Modifier.height(16.dp))
-
-                    currentQ.options.forEachIndexed { optIndex, optionText ->
-                        val isSelected = selectedAnswerIndex == optIndex
-                        val isCorrect = optIndex == currentQ.correctAnswer
-
-                        val btnColor = when {
-                            selectedAnswerIndex == null -> MaterialTheme.colorScheme.surface
-                            isSelected && isCorrect -> Color(0xFF10B981)
-                            isSelected && !isCorrect -> MaterialTheme.colorScheme.error
-                            !isSelected && isCorrect -> Color(0xFF10B981).copy(alpha = 0.2f)
-                            else -> MaterialTheme.colorScheme.surface
-                        }
-
-                        Surface(
-                            onClick = {
-                                if (selectedAnswerIndex == null) {
-                                    selectedAnswerIndex = optIndex
-                                    quizAnsweredCorrectly = isCorrect
-                                    if (isCorrect) {
-                                        SoundHaptics.playCelebration(view, haptic)
-                                    }
-                                }
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            color = btnColor,
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (isSelected) BrandPrimary else MaterialTheme.colorScheme.outlineVariant
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(26.dp)
-                                        .clip(CircleShape)
-                                        .background(BrandPrimary.copy(alpha = 0.15f)),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = ('A'.code + optIndex).toChar().toString(),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = BrandPrimary,
-                                    )
-                                }
-                                Text(
-                                    text = optionText,
-                                    fontSize = 13.sp,
-                                    color = if (selectedAnswerIndex != null && isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                if (selectedAnswerIndex != null && isCorrect) {
-                                    Icon(
-                                        Icons.Rounded.CheckCircle,
-                                        contentDescription = "Correct",
-                                        tint = if (isSelected) Color.White else Color(0xFF10B981),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    if (selectedAnswerIndex != null) {
-                        Spacer(Modifier.height(14.dp))
-                        Text(
-                            text = if (quizAnsweredCorrectly == true) "Superstar! You got it right! +1 Star" else "Good try! ${currentQ.explanation}",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (quizAnsweredCorrectly == true) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                        )
-
-                        Spacer(Modifier.height(14.dp))
-
-                        Button(
-                            onClick = {
-                                if (currentQuizQuestionIndex + 1 < questions.size) {
-                                    currentQuizQuestionIndex++
-                                    selectedAnswerIndex = null
-                                    quizAnsweredCorrectly = null
-                                } else {
-                                    showQuizDialog = false
-                                    selectedAnswerIndex = null
-                                    quizAnsweredCorrectly = null
-                                    currentQuizQuestionIndex = 0
-                                    if (currentVideo != null) onVideoCompleted(currentVideo, 60)
-                                    if (currentIndex + 1 < videos.size) {
-                                        showEndCelebration = true
-                                    } else {
-                                        onAllCompleted()
-                                    }
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(46.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                        ) {
-                            Text(
-                                text = if (currentQuizQuestionIndex + 1 < questions.size) "Next Question" else "Continue to Next Video",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                            )
-                        }
                     }
                 }
             }
