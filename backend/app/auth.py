@@ -65,7 +65,8 @@ async def get_current_user(
     try:
         payload = jwt.decode(actual_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id: str = payload.get("sub")
-        if user_id is None:
+        token_type: str = payload.get("type")
+        if user_id is None or token_type != "access":
             raise credentials_exception
     except JWTError:
         raise credentials_exception
@@ -88,7 +89,8 @@ async def get_optional_current_user(
     try:
         payload = jwt.decode(actual_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id: str = payload.get("sub")
-        if not user_id:
+        token_type: str = payload.get("type")
+        if not user_id or token_type != "access":
             return None
         result = await db.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()

@@ -195,10 +195,33 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 false
             }
+        } catch (e: retrofit2.HttpException) {
+            val detail = try {
+                val body = e.response()?.errorBody()?.string() ?: ""
+                org.json.JSONObject(body).optString("detail", "")
+            } catch (_: Exception) {
+                ""
+            }
+            val msg = when {
+                e.code() == 429 -> if (detail.isNotBlank()) detail else "Too many failed attempts. Account locked temporarily."
+                detail.isNotBlank() -> detail
+                else -> "Incorrect PIN. Please try again."
+            }
+            _state.value = _state.value.copy(
+                isLoading = false,
+                error = msg,
+            )
+            false
+        } catch (e: java.io.IOException) {
+            _state.value = _state.value.copy(
+                isLoading = false,
+                error = "Connection error. Please check your internet connection.",
+            )
+            false
         } catch (e: Exception) {
             _state.value = _state.value.copy(
                 isLoading = false,
-                error = "Incorrect PIN. Please try again.",
+                error = e.message ?: "Verification error. Please try again.",
             )
             false
         }

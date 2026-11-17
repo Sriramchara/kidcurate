@@ -1,8 +1,15 @@
 package com.kidcurate.app.data
 
+import android.content.Context
+import android.util.Log
 import com.kidcurate.app.BuildConfig
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import okhttp3.logging.HttpLoggingInterceptor
+import org.json.JSONObject
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
@@ -98,7 +105,21 @@ interface KidCurateApi {
 
     @POST("api/auth/google")
     suspend fun googleLogin(@Body request: Map<String, String>): Map<String, Any>
+
+    @POST("api/auth/refresh")
+    suspend fun refreshToken(@Body request: Map<String, String>): Map<String, Any>
 }
+
+private val Response.responseCount: Int
+    get() {
+        var count = 1
+        var prior = priorResponse
+        while (prior != null) {
+            count++
+            prior = prior.priorResponse
+        }
+        return count
+    }
 
 object ApiClient {
     private val logging = HttpLoggingInterceptor().apply {
@@ -107,6 +128,14 @@ object ApiClient {
 
     @Volatile
     var authToken: String = ""
+
+    @Volatile
+    private var appContext: Context? = null
+    private val refreshLock = Any()
+
+    fun init(context: Context) {
+        appContext = context.applicationContext
+    }
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
@@ -123,6 +152,66 @@ object ApiClient {
                 orig
             }
             chain.proceed(newReq)
+        }
+        .authenticator { _, response ->
+            if (response.responseCount >= 3) return@authenticator null
+            val path = response.request.url.encodedPath
+            if (path.contains("api/auth/refresh") || path.contains("api/auth/login") || path.contains("api/auth/google")) {
+                return@authenticator null
+            }
+            val reqToken = response.request.header("Authorization")?.removePrefix("Bearer ")?.trim() ?: ""
+
+            synchronized(refreshLock) {
+                // If another concurrent thread has already refreshed the token, retry with it
+                if (authToken.isNotBlank() && authToken != reqToken) {
+                    return@authenticator response.request.newBuilder()
+                        .header("Authorization", "Bearer $authToken")
+                        .build()
+                }
+
+                val ctx = appContext ?: return@authenticator null
+                val prefs = ParentPreferences.get(ctx)
+                val rToken = prefs.parentRefreshToken
+                if (rToken.isBlank()) return@authenticator null
+
+                val refreshUrl = currentBaseUrl + "api/auth/refresh"
+                val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+                val body = "{\"refresh_token\": \"$rToken\"}".toRequestBody(jsonMediaType)
+                val refreshRequest = Request.Builder()
+                    .url(refreshUrl)
+                    .post(body)
+                    .build()
+
+                try {
+                    val rawClient = OkHttpClient.Builder()
+                        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                        .build()
+                    val refreshResp = rawClient.newCall(refreshRequest).execute()
+                    if (refreshResp.isSuccessful) {
+                        val respBody = refreshResp.body?.string() ?: ""
+                        val json = JSONObject(respBody)
+                        val newAccess = json.optString("access_token", "")
+                        val newRefresh = json.optString("refresh_token", "")
+                        if (newAccess.isNotBlank()) {
+                            authToken = newAccess
+                            prefs.parentAuthToken = newAccess
+                            if (newRefresh.isNotBlank()) {
+                                prefs.parentRefreshToken = newRefresh
+                            }
+                            return@authenticator response.request.newBuilder()
+                                .header("Authorization", "Bearer $newAccess")
+                                .build()
+                        }
+                    } else if (refreshResp.code == 401 || refreshResp.code == 403) {
+                        prefs.clearParentSession()
+                        authToken = ""
+                    }
+                } catch (e: Exception) {
+                    Log.e("ApiClient", "Token refresh failed: ${e.message}")
+                }
+                null
+            }
         }
         .addInterceptor(logging)
         .build()

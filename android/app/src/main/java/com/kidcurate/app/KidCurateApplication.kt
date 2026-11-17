@@ -9,6 +9,17 @@ import coil.util.DebugLogger
 
 class KidCurateApplication : Application(), ImageLoaderFactory {
 
+    companion object {
+        lateinit var instance: KidCurateApplication
+            private set
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+        com.kidcurate.app.data.ApiClient.init(this)
+    }
+
     override fun newImageLoader(): ImageLoader {
         return ImageLoader.Builder(this)
             .memoryCache {

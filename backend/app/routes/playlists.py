@@ -387,12 +387,12 @@ async def apply_activity_pack(
         await db.commit()
         await db.refresh(playlist)
 
-    # Get max existing order index
+    # Get max existing position index
     items_result = await db.execute(
-        select(PlaylistItem).where(PlaylistItem.playlist_id == playlist.id).order_by(PlaylistItem.order_index.desc())
+        select(PlaylistItem).where(PlaylistItem.playlist_id == playlist.id).order_by(PlaylistItem.position.desc())
     )
     existing_items = items_result.scalars().all()
-    next_order = (existing_items[0].order_index + 1) if existing_items else 0
+    next_order = (existing_items[0].position + 1) if existing_items else 1
     existing_yt_ids = set()
     for it in existing_items:
         await db.refresh(it, ["video"])
@@ -422,11 +422,11 @@ async def apply_activity_pack(
             await db.commit()
             await db.refresh(vid)
 
-        # Add item
+        # Add item with position index
         item = PlaylistItem(
             playlist_id=playlist.id,
             video_id=vid.id,
-            order_index=next_order,
+            position=next_order,
         )
         db.add(item)
         next_order += 1

@@ -383,4 +383,111 @@ async def test_db_summary_diagnostic():
         assert "database_engine" in data2
 
 
+@pytest.mark.asyncio
+async def test_token_type_enforcement():
+    """Verify refresh tokens cannot be used as access tokens (SEC-002)."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        reg = await ac.post("/api/auth/register", json={
+            "email": "tokentype_test@example.com",
+            "password": "validpassword123",
+            "name": "Token Type Test Parent"
+        })
+        assert reg.status_code == 201
+        data = reg.json()
+        access_token = data["access_token"]
+        refresh_token = data["refresh_token"]
+
+        # Valid access token succeeds
+        res_valid = await ac.get("/api/children/manage", headers={"Authorization": f"Bearer {access_token}"})
+        assert res_valid.status_code == 200
+
+        # Refresh token used as bearer token MUST be rejected with 401
+        res_invalid = await ac.get("/api/children/manage", headers={"Authorization": f"Bearer {refresh_token}"})
+        assert res_invalid.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_apply_activity_pack_and_position_indexing():
+    """Verify applying activity pack succeeds and correctly uses position index (BUG-001)."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        reg = await ac.post("/api/auth/register", json={
+            "email": "pack_test@example.com",
+            "password": "validpassword123",
+            "name": "Pack Test Parent"
+        })
+        assert reg.status_code == 201
+        headers = {"Authorization": f"Bearer {reg.json()['access_token']}"}
+
+        c_resp = await ac.post("/api/children/manage", headers=headers, json={
+            "name": "Pack Kid",
+            "age": 6,
+            "avatar": "sparkles",
+            "pin": "5678"
+        })
+        assert c_resp.status_code == 200
+        child_id = c_resp.json()["id"]
+
+        packs_resp = await ac.get("/api/playlists/activity-packs")
+        assert packs_resp.status_code == 200
+        packs = packs_resp.json()
+        assert len(packs) > 0
+        pack_id = packs[0]["id"]
+
+        apply_resp = await ac.post(f"/api/playlists/child/{child_id}/apply-pack/{pack_id}", headers=headers)
+        assert apply_resp.status_code == 200
+        assert apply_resp.json()["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_apply_curriculum():
+    """Verify AI curriculum apply succeeds without video_count type error (BUG-002)."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        reg = await ac.post("/api/auth/register", json={
+            "email": "curriculum_test@example.com",
+            "password": "validpassword123",
+            "name": "Curriculum Parent"
+        })
+        assert reg.status_code == 201
+        headers = {"Authorization": f"Bearer {reg.json()['access_token']}"}
+
+        c_resp = await ac.post("/api/children/manage", headers=headers, json={
+            "name": "Curriculum Kid",
+            "age": 7,
+            "avatar": "book",
+            "pin": "9999"
+        })
+        assert c_resp.status_code == 200
+        child_id = c_resp.json()["id"]
+
+        apply_resp = await ac.post(
+            "/api/ai/curriculum/apply",
+            headers=headers,
+            json={
+                "child_id": child_id,
+                "curriculum": {
+                    "days": [
+                        {
+                            "day_number": 1,
+                            "topic": "Solar System Basics",
+                            "videos": [
+                                {
+                                    "youtube_id": "curr_vid_1",
+                                    "title": "Sun and Planets",
+                                    "channel_name": "SpaceKids",
+                                    "thumbnail_url": "https://img.youtube.com/vi/curr_vid_1/hqdefault.jpg",
+                                    "duration_seconds": 240
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        )
+        assert apply_resp.status_code == 200
+        res_data = apply_resp.json()
+        assert res_data["status"] == "success"
+        assert len(res_data["playlists"]) == 1
+
+
+
 

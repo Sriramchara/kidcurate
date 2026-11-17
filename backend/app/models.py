@@ -70,7 +70,7 @@ class Child(Base):
     name = Column(String(100), nullable=False)
     age = Column(Integer, nullable=False)
     avatar = Column(String(50), default="compass")  # vector badge key
-    pin = Column(String(4), nullable=False)  # 4-digit PIN for child login
+    pin = Column(String(255), nullable=False)  # 4-digit PIN (supports plaintext or hashed)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships

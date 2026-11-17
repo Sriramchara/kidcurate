@@ -101,7 +101,7 @@ async def apply_ai_curriculum(
     for idx, d in enumerate(days):
         day_num = d.get("day_number", idx + 1)
         topic = d.get("topic", f"Lesson {day_num}")
-        scheduled_date = (today + timedelta(days=idx)).isoformat()
+        scheduled_date = today + timedelta(days=idx)
 
         playlist = Playlist(
             id=str(uuid.uuid4()),
@@ -112,7 +112,6 @@ async def apply_ai_curriculum(
             is_active=True,
             is_template=False,
             total_duration_seconds=0,
-            video_count=0,
         )
         db.add(playlist)
         await db.flush()
@@ -151,13 +150,12 @@ async def apply_ai_curriculum(
             db.add(p_item)
             total_secs += (vid.duration_seconds or 300)
 
-        playlist.video_count = len(added_videos)
         playlist.total_duration_seconds = total_secs
         created_playlists.append({
             "id": playlist.id,
             "title": playlist.title,
-            "scheduled_date": playlist.scheduled_date,
-            "video_count": playlist.video_count,
+            "scheduled_date": playlist.scheduled_date.isoformat() if playlist.scheduled_date else "",
+            "video_count": len(added_videos),
             "total_duration_seconds": playlist.total_duration_seconds,
         })
 

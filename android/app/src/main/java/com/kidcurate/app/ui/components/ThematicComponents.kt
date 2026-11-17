@@ -342,8 +342,12 @@ fun ParentPasswordDialog(
                         payload["name"] = account.displayName ?: email.substringBefore("@")
                         val resp = ApiClient.api.googleLogin(payload)
                         val token = resp["access_token"] as? String ?: ""
+                        val refreshToken = resp["refresh_token"] as? String ?: ""
                         if (token.isNotBlank()) {
                             parentPrefs.parentAuthToken = token
+                            if (refreshToken.isNotBlank()) {
+                                parentPrefs.parentRefreshToken = refreshToken
+                            }
                             ApiClient.authToken = token
                             parentPrefs.parentEmail = email
                             isVerifying = false

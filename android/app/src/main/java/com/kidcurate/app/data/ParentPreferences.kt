@@ -47,6 +47,7 @@ class ParentPreferences(context: Context) {
 
     fun clearParentSession() {
         parentAuthToken = ""
+        parentRefreshToken = ""
         parentEmail = ""
         parentPin = ""
         cachedProfilesJson = ""
@@ -71,6 +72,10 @@ class ParentPreferences(context: Context) {
     var parentAuthToken: String
         get() = prefs.getString(KEY_PARENT_AUTH_TOKEN, "") ?: ""
         set(value) = prefs.edit().putString(KEY_PARENT_AUTH_TOKEN, value).apply()
+
+    var parentRefreshToken: String
+        get() = prefs.getString(KEY_PARENT_REFRESH_TOKEN, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_PARENT_REFRESH_TOKEN, value).apply()
 
     var parentEmail: String
         get() = prefs.getString(KEY_PARENT_EMAIL, "") ?: ""
@@ -165,6 +170,7 @@ class ParentPreferences(context: Context) {
         private const val KEY_APP_THEME = "app_theme"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_PARENT_AUTH_TOKEN = "parent_auth_token"
+        private const val KEY_PARENT_REFRESH_TOKEN = "parent_refresh_token"
         private const val KEY_PARENT_EMAIL = "parent_email"
         private const val KEY_DAILY_SCREEN_TIME_MINUTES = "daily_screen_time_minutes"
         private const val KEY_CURFEW_ENABLED = "curfew_enabled"

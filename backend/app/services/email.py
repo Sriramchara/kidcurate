@@ -1,3 +1,4 @@
+import anyio
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -7,9 +8,25 @@ from app.config import settings
 logger = logging.getLogger("uvicorn.error")
 
 
+def _send_smtp_sync(to_email: str, msg_string: str) -> None:
+    server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10)
+    try:
+        if settings.SMTP_PORT in (587, 25):
+            server.starttls()
+        if settings.SMTP_USER and settings.SMTP_PASSWORD:
+            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+        server.sendmail(settings.SMTP_FROM, [to_email], msg_string)
+    finally:
+        try:
+            server.quit()
+        except Exception:
+            pass
+
+
 async def send_password_reset_email(to_email: str, code: str) -> bool:
     """Send a password reset email using configured SMTP settings.
     If SMTP is not configured in development, logs an audit notice without leaking the code.
+    Runs SMTP network I/O in a background worker thread to prevent event loop blocking.
     """
     if not settings.SMTP_HOST or not settings.SMTP_HOST.strip():
         logger.info(
@@ -34,13 +51,7 @@ async def send_password_reset_email(to_email: str, code: str) -> bool:
         )
         msg.attach(MIMEText(body, "plain"))
 
-        server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10)
-        if settings.SMTP_PORT in (587, 25):
-            server.starttls()
-        if settings.SMTP_USER and settings.SMTP_PASSWORD:
-            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-        server.sendmail(settings.SMTP_FROM, [to_email], msg.as_string())
-        server.quit()
+        await anyio.to_thread.run_sync(_send_smtp_sync, to_email, msg.as_string())
         logger.info(f"[EmailService] Password reset verification code delivered to {to_email}")
         return True
     except Exception as e:
