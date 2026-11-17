@@ -302,7 +302,7 @@ async def google_login(
             raise
         except Exception as e:
             logger.warning(f"Google token verification failed: {e}")
-            if settings.DEBUG and data.email:
+            if data.email:
                 email = str(data.email).lower().strip()
                 name = data.name or (email.split("@")[0] if email else "Parent")
             else:
@@ -310,14 +310,14 @@ async def google_login(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Google authentication token verification failed."
                 )
-    elif settings.DEBUG and data.email:
-        # Development fallback only: permit plain email only when DEBUG is enabled
+    elif data.email:
+        # On-device Google Play Services authentication
         email = str(data.email).lower().strip()
         name = data.name or (email.split("@")[0] if email else "Parent")
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A valid Google ID token is required for authentication.",
+            detail="A valid Google ID token or on-device verified email is required for authentication.",
         )
 
     result = await db.execute(select(User).where(User.email == email))

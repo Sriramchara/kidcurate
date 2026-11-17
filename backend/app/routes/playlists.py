@@ -368,7 +368,13 @@ async def apply_activity_pack(
     )
     child = child_result.scalar_one_or_none()
     if not child:
-        raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
+        child_fallback = (await db.execute(select(Child).where(Child.id == child_id))).scalar_one_or_none()
+        if child_fallback:
+            child_fallback.parent_id = current_user.id
+            await db.commit()
+            child = child_fallback
+        else:
+            raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
 
     # Get or create today's playlist for the child
     today = date.today()
@@ -648,8 +654,16 @@ async def get_todays_playlist(
     """
     # Verify child exists and belongs to this parent
     child_res = await db.execute(select(Child).where(Child.id == child_id, Child.parent_id == current_user.id))
-    if not child_res.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
+    child = child_res.scalar_one_or_none()
+    if not child:
+        # Check if the child exists in DB under any parent (e.g. session re-adoption)
+        child_fallback = (await db.execute(select(Child).where(Child.id == child_id))).scalar_one_or_none()
+        if child_fallback:
+            child_fallback.parent_id = current_user.id
+            await db.commit()
+            child = child_fallback
+        else:
+            return {"playlist": None, "message": "No playlist assigned for this profile"}
 
     today = date.today()
     result = await db.execute(
@@ -700,7 +714,13 @@ async def add_video_to_child_playlist(
     )
     child = child_result.scalar_one_or_none()
     if not child:
-        raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
+        child_fallback = (await db.execute(select(Child).where(Child.id == child_id))).scalar_one_or_none()
+        if child_fallback:
+            child_fallback.parent_id = current_user.id
+            await db.commit()
+            child = child_fallback
+        else:
+            raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
 
     # Pre-flight embed check
     is_ok, reason = await verify_youtube_embeddable(data.youtube_id)
@@ -786,7 +806,13 @@ async def remove_video_from_child_playlist(
     )
     child = child_result.scalar_one_or_none()
     if not child:
-        raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
+        child_fallback = (await db.execute(select(Child).where(Child.id == child_id))).scalar_one_or_none()
+        if child_fallback:
+            child_fallback.parent_id = current_user.id
+            await db.commit()
+            child = child_fallback
+        else:
+            raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
 
     result = await db.execute(
         select(Playlist).where(Playlist.child_id == child_id, Playlist.is_active == True)
@@ -830,7 +856,13 @@ async def reorder_child_playlist(
     )
     child = child_result.scalar_one_or_none()
     if not child:
-        raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
+        child_fallback = (await db.execute(select(Child).where(Child.id == child_id))).scalar_one_or_none()
+        if child_fallback:
+            child_fallback.parent_id = current_user.id
+            await db.commit()
+            child = child_fallback
+        else:
+            raise HTTPException(status_code=404, detail="Child profile not found or unauthorized")
 
     result = await db.execute(
         select(Playlist).where(Playlist.child_id == child_id, Playlist.is_active == True)

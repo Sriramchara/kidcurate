@@ -107,8 +107,9 @@ data class ChildManageItem(
     val name: String,
     val age: Int,
     val avatar: String,
-    val pin: String,
-    @SerializedName("parent_id") val parentId: String?,
+    val pin: String? = "••••",
+    @SerializedName("has_pin") val hasPin: Boolean? = true,
+    @SerializedName("parent_id") val parentId: String? = null,
 )
 
 data class ChildCreateRequest(

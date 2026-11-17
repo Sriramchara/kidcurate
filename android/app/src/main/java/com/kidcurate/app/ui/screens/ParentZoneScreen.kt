@@ -97,12 +97,60 @@ fun ParentZoneScreen(
         scope.launch {
             try {
                 val list = ApiClient.api.getManageChildren()
-                managedChildren = list
-                if (selectedChildId.isEmpty() && list.isNotEmpty()) {
-                    selectedChildId = list.first().id
-                    selectedChildName = list.first().name
+                if (list.isNotEmpty()) {
+                    managedChildren = list
+                    val cachedList = list.map { ChildProfileItem(id = it.id, name = it.name, avatar = it.avatar) }
+                    parentPrefs.cachedProfilesJson = com.google.gson.Gson().toJson(cachedList)
+                    if (selectedChildId.isEmpty()) {
+                        selectedChildId = list.first().id
+                        selectedChildName = list.first().name
+                    }
+                } else if (managedChildren.isEmpty() && parentPrefs.cachedProfilesJson.isNotBlank()) {
+                    try {
+                        val listType = object : com.google.gson.reflect.TypeToken<List<ChildProfileItem>>() {}.type
+                        val cached: List<ChildProfileItem> = com.google.gson.Gson().fromJson(parentPrefs.cachedProfilesJson, listType)
+                        if (cached.isNotEmpty()) {
+                            managedChildren = cached.map {
+                                ChildManageItem(
+                                    id = it.id,
+                                    name = it.name,
+                                    age = 7,
+                                    avatar = it.avatar,
+                                    pin = "••••",
+                                    parentId = null,
+                                )
+                            }
+                            if (selectedChildId.isEmpty()) {
+                                selectedChildId = cached.first().id
+                                selectedChildName = cached.first().name
+                            }
+                        }
+                    } catch (_: Exception) {}
                 }
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                if (managedChildren.isEmpty() && parentPrefs.cachedProfilesJson.isNotBlank()) {
+                    try {
+                        val listType = object : com.google.gson.reflect.TypeToken<List<ChildProfileItem>>() {}.type
+                        val cached: List<ChildProfileItem> = com.google.gson.Gson().fromJson(parentPrefs.cachedProfilesJson, listType)
+                        if (cached.isNotEmpty()) {
+                            managedChildren = cached.map {
+                                ChildManageItem(
+                                    id = it.id,
+                                    name = it.name,
+                                    age = 7,
+                                    avatar = it.avatar,
+                                    pin = "••••",
+                                    parentId = null,
+                                )
+                            }
+                            if (selectedChildId.isEmpty()) {
+                                selectedChildId = cached.first().id
+                                selectedChildName = cached.first().name
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
         }
     }
 
@@ -114,7 +162,10 @@ fun ParentZoneScreen(
                 val resp = ApiClient.api.getTodaysPlaylist(childId)
                 currentPlaylist = resp.playlist
             } catch (e: Exception) {
-                statusMessage = "Could not load playlist: ${e.message}"
+                val msg = e.message ?: ""
+                if (!msg.contains("404")) {
+                    statusMessage = "Could not load playlist: $msg"
+                }
             } finally {
                 isLoadingPlaylist = false
             }
@@ -502,7 +553,9 @@ fun ParentZoneScreen(
         val child = showEditChildDialog!!
         var nameInput by remember { mutableStateOf(child.name) }
         var ageInput by remember { mutableStateOf(child.age.toString()) }
-        var pinInput by remember { mutableStateOf(child.pin) }
+        val rawPin = child.pin.orEmpty()
+        val initialPin = if (rawPin.isNotBlank() && rawPin != "••••" && !rawPin.startsWith("$2") && rawPin.all { it.isDigit() }) rawPin else ""
+        var pinInput by remember { mutableStateOf(initialPin) }
         var isPinVisible by remember { mutableStateOf(false) }
         var avatarInput by remember { mutableStateOf(child.avatar) }
         val avatarChoices = listOf("compass", "sparkles", "rocket", "heart", "waves", "flame", "shield", "palette", "star")
@@ -530,8 +583,8 @@ fun ParentZoneScreen(
                     OutlinedTextField(
                         value = pinInput,
                         onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) pinInput = it },
-                        label = { Text("Child 4-digit PIN") },
-                        placeholder = { Text("Enter 4-digit PIN") },
+                        label = { Text("Child 4-digit PIN (Leave blank to keep current)") },
+                        placeholder = { Text("••••") },
                         visualTransformation = if (isPinVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(onClick = { isPinVisible = !isPinVisible }) {
@@ -605,15 +658,20 @@ fun ParentZoneScreen(
                                     showEditChildDialog = null
                                     return@launch
                                 }
-                                ApiClient.api.updateChild(
+                                val updatedPin = if (pinInput.isNotBlank() && pinInput.length == 4) pinInput.trim() else null
+                                val updatedChild = ApiClient.api.updateChild(
                                     child.id,
                                     ChildUpdateRequest(
                                         name = nameInput.trim(),
                                         age = parsedAge,
                                         avatar = avatarInput,
-                                        pin = pinInput.trim(),
+                                        pin = updatedPin,
                                     ),
                                 )
+                                val updatedList = managedChildren.map { if (it.id == child.id) updatedChild else it }
+                                managedChildren = updatedList
+                                val cachedList = updatedList.map { ChildProfileItem(id = it.id, name = it.name, avatar = it.avatar) }
+                                parentPrefs.cachedProfilesJson = com.google.gson.Gson().toJson(cachedList)
                                 statusMessage = "Updated profile for ${nameInput.trim()}!"
                                 refreshManagedChildren()
                             } catch (e: Exception) {
@@ -750,7 +808,7 @@ fun ParentZoneScreen(
                                     showAddChildDialog = false
                                     return@launch
                                 }
-                                ApiClient.api.createChild(
+                                val created = ApiClient.api.createChild(
                                     ChildCreateRequest(
                                         name = nameInput.trim(),
                                         age = parsedAge,
@@ -758,6 +816,10 @@ fun ParentZoneScreen(
                                         pin = pinInput.trim(),
                                     ),
                                 )
+                                val updated = managedChildren + created
+                                managedChildren = updated
+                                val cachedList = updated.map { ChildProfileItem(id = it.id, name = it.name, avatar = it.avatar) }
+                                parentPrefs.cachedProfilesJson = com.google.gson.Gson().toJson(cachedList)
                                 statusMessage = "Created profile for ${nameInput.trim()}!"
                                 refreshManagedChildren()
                             } catch (e: Exception) {
@@ -801,6 +863,10 @@ fun ParentZoneScreen(
                         scope.launch {
                             try {
                                 ApiClient.api.deleteChild(child.id)
+                                val updated = managedChildren.filter { it.id != child.id }
+                                managedChildren = updated
+                                val cachedList = updated.map { ChildProfileItem(id = it.id, name = it.name, avatar = it.avatar) }
+                                parentPrefs.cachedProfilesJson = com.google.gson.Gson().toJson(cachedList)
                                 statusMessage = "${child.name}'s profile was deleted."
                                 refreshManagedChildren()
                             } catch (e: Exception) {
@@ -1507,12 +1573,14 @@ fun ChildProfilesTab(
                                 )
                                 Text("•", fontSize = 12.sp, color = TextSecondary)
                                 var showPin by remember { mutableStateOf(false) }
+                                val rawPin = child.pin.orEmpty()
+                                val displayPin = if (rawPin.isNotBlank() && rawPin != "null" && rawPin != "••••" && !rawPin.startsWith("$2") && rawPin.all { it.isDigit() }) rawPin else "Set"
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.clickable { showPin = !showPin }
                                 ) {
                                     Text(
-                                        text = if (showPin) "PIN: ${child.pin}" else "PIN: ••••",
+                                        text = if (showPin) "PIN: $displayPin" else "PIN: ••••",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = BrandPrimary,

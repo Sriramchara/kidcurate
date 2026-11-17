@@ -83,6 +83,17 @@ async def create_child(
     db.add(child)
     await db.commit()
     await db.refresh(child)
+
+    from app.models import Playlist
+    starter_playlist = Playlist(
+        id=str(uuid.uuid4()),
+        child_id=str(child.id),
+        title=f"{child.name}'s Adventure Playlist",
+        is_active=True,
+        total_duration_seconds=0,
+    )
+    db.add(starter_playlist)
+    await db.commit()
     return ChildResponse(
         id=str(child.id), name=child.name, age=child.age,
         avatar=normalize_avatar(child.avatar), parent_id=str(child.parent_id)
@@ -102,6 +113,7 @@ class ChildManageResponse(BaseModel):
     name: str
     age: int
     avatar: str
+    pin: Optional[str] = "••••"
     has_pin: bool = True
     parent_id: Optional[str] = None
 
@@ -120,6 +132,7 @@ async def list_manage_children(
             name=c.name,
             age=c.age,
             avatar=normalize_avatar(c.avatar),
+            pin=None,
             has_pin=bool(c.pin),
             parent_id=str(c.parent_id) if c.parent_id else None
         )
@@ -147,16 +160,30 @@ async def create_manage_child(
         name=data.name.strip(),
         age=data.age,
         avatar=normalize_avatar(data.avatar or "compass"),
-        pin=hash_password(data.pin),
+        pin=data.pin,
     )
     db.add(child)
     await db.commit()
     await db.refresh(child)
+
+    # Initialize a default starter playlist so today's playlist is always ready
+    from app.models import Playlist
+    starter_playlist = Playlist(
+        id=str(uuid.uuid4()),
+        child_id=str(child.id),
+        title=f"{child.name}'s Adventure Playlist",
+        is_active=True,
+        total_duration_seconds=0,
+    )
+    db.add(starter_playlist)
+    await db.commit()
+
     return ChildManageResponse(
         id=str(child.id),
         name=child.name,
         age=child.age,
         avatar=normalize_avatar(child.avatar),
+        pin=None,
         has_pin=True,
         parent_id=str(child.parent_id)
     )
@@ -185,10 +212,10 @@ async def update_manage_child(
         child.age = data.age
     if data.avatar is not None:
         child.avatar = normalize_avatar(data.avatar)
-    if data.pin is not None:
+    if data.pin is not None and data.pin.strip() and data.pin != "••••":
         if len(data.pin) != 4 or not data.pin.isdigit():
             raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
-        child.pin = hash_password(data.pin)
+        child.pin = data.pin
 
     await db.commit()
     await db.refresh(child)
@@ -197,6 +224,7 @@ async def update_manage_child(
         name=child.name,
         age=child.age,
         avatar=normalize_avatar(child.avatar),
+        pin=None,
         has_pin=bool(child.pin),
         parent_id=str(child.parent_id)
     )
@@ -340,10 +368,6 @@ async def verify_child_pin(data: ChildPINVerify, db: AsyncSession = Depends(get_
         is_valid = verify_password(data.pin, child.pin)
     else:
         is_valid = (child.pin == data.pin)
-        if is_valid:
-            # Upgrade legacy plaintext PIN to bcrypt hash automatically upon first login
-            child.pin = hash_password(data.pin)
-            await db.commit()
 
     if not is_valid:
         entry = PIN_LOCKOUT_STORE.setdefault(cid, {"attempts": 0, "locked_until": now})
