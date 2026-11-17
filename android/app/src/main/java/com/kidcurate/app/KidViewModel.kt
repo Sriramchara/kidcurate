@@ -187,6 +187,22 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    fun resetAllAccountData() {
+        parentPrefs.clearParentSession()
+        parentPrefs.cachedProfilesJson = ""
+        ApiClient.authToken = ""
+        _state.value = KidAppState(
+            screen = AppScreen.ChildSelect,
+            availableProfiles = emptyList(),
+            isLoading = false,
+            error = null,
+            playlist = null,
+            childName = "",
+            childAvatar = "compass",
+            childId = "",
+        )
+    }
+
     suspend fun verifyPin(childId: String, pin: String): Boolean {
         _state.value = _state.value.copy(isLoading = true, error = null)
         return try {

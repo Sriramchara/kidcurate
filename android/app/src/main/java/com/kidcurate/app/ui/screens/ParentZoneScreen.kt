@@ -59,6 +59,7 @@ fun ParentZoneScreen(
     profiles: List<ChildProfileItem>,
     onThemeChanged: (String) -> Unit = {},
     onBackToChildMode: () -> Unit,
+    onAccountDeleted: () -> Unit = onBackToChildMode,
 ) {
     BackHandler(onBack = onBackToChildMode)
 
@@ -543,6 +544,7 @@ fun ParentZoneScreen(
                     parentPrefs = parentPrefs,
                     onThemeChanged = onThemeChanged,
                     onBackToChildMode = onBackToChildMode,
+                    onAccountDeleted = onAccountDeleted,
                 )
             }
         }

@@ -40,6 +40,7 @@ fun SecurityTab(
     onPinUpdated: () -> Unit = {},
     onThemeChanged: (String) -> Unit = {},
     onBackToChildMode: () -> Unit = {},
+    onAccountDeleted: () -> Unit = onBackToChildMode,
 ) {
     val appContext = LocalContext.current
     var selectedTheme by remember { mutableStateOf(parentPrefs.appTheme) }
@@ -449,9 +450,8 @@ fun SecurityTab(
                                         parentPrefs.clearParentSession()
                                         currentToken = ""
                                         ApiClient.authToken = ""
-                                        accountStatusMessage = "Account and all data deleted permanently."
                                         showDeleteAccountDialog = false
-                                        onBackToChildMode()
+                                        onAccountDeleted()
                                     }
                                 } catch (e: Exception) {
                                     val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).requestEmail().build()
@@ -460,7 +460,7 @@ fun SecurityTab(
                                         currentToken = ""
                                         ApiClient.authToken = ""
                                         showDeleteAccountDialog = false
-                                        onBackToChildMode()
+                                        onAccountDeleted()
                                     }
                                 } finally {
                                     isDeletingAccount = false

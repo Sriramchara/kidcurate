@@ -102,6 +102,9 @@ fun KidApp(
                         viewModel.loadProfiles()
                         viewModel.backToChildSelect()
                     },
+                    onAccountDeleted = {
+                        viewModel.resetAllAccountData()
+                    },
                 )
             }
 
