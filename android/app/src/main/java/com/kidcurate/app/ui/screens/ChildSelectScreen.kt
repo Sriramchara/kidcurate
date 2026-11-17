@@ -52,6 +52,8 @@ fun ChildSelectScreen(
     var showOnboardingTour by remember { mutableStateOf(!parentPrefs.hasSeenOnboardingTour) }
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
     Box(
         modifier = Modifier
@@ -64,13 +66,13 @@ fun ChildSelectScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 20.dp),
+                .padding(horizontal = if (isLandscape) 40.dp else 24.dp, vertical = if (isLandscape) 8.dp else 20.dp),
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxSize(),
             ) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(if (isLandscape) 4.dp else 12.dp))
 
             // Brand Tag & Server Settings Row
             Row(
@@ -86,12 +88,12 @@ fun ChildSelectScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(if (isLandscape) 6.dp else 16.dp))
 
             Text(
                 text = "Who's ready to explore?",
                 color = MaterialTheme.colorScheme.onBackground,
-                fontSize = 28.sp,
+                fontSize = if (isLandscape) 22.sp else 28.sp,
                 fontWeight = FontWeight.ExtraBold,
                 textAlign = TextAlign.Center,
             )
@@ -99,9 +101,9 @@ fun ChildSelectScreen(
             Text(
                 text = "Pick your profile to jump into today's fun adventure!",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 15.sp,
+                fontSize = if (isLandscape) 13.sp else 15.sp,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 6.dp, bottom = 28.dp),
+                modifier = Modifier.padding(top = 2.dp, bottom = if (isLandscape) 8.dp else 28.dp),
             )
 
             if (isLoading) {
@@ -126,14 +128,14 @@ fun ChildSelectScreen(
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(28.dp),
+                        modifier = Modifier.padding(if (isLandscape) 12.dp else 28.dp),
                     ) {
                         val isError = errorMessage != null
                         Icon(
                             if (isError) Icons.Rounded.CloudOff else Icons.Rounded.RocketLaunch,
                             contentDescription = null,
                             tint = BrandPrimary,
-                            modifier = Modifier.size(52.dp),
+                            modifier = Modifier.size(if (isLandscape) 36.dp else 52.dp),
                         )
                         Spacer(modifier = Modifier.height(14.dp))
                         Text(
@@ -225,13 +227,13 @@ fun ChildSelectScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 28.dp, horizontal = 20.dp),
+                                .padding(vertical = if (isLandscape) 12.dp else 28.dp, horizontal = 20.dp),
                         ) {
                             ThematicAvatar(
                                 name = profile.name,
                                 avatar = profile.avatar,
-                                size = 88.dp,
-                                iconSize = 44.dp,
+                                size = if (isLandscape) 64.dp else 88.dp,
+                                iconSize = if (isLandscape) 32.dp else 44.dp,
                             )
 
                             Spacer(modifier = Modifier.height(14.dp))
@@ -363,7 +365,7 @@ fun ChildSelectScreen(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(if (isLandscape) 42.dp else 52.dp),
             ) {
                 Icon(
                     Icons.Rounded.Lock,

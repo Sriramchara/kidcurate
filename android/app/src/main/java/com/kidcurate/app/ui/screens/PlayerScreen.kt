@@ -146,9 +146,22 @@ fun PlayerScreen(
         }
     }
 
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isDeviceLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val effectiveFullscreen = isFullscreen || isDeviceLandscape
+
     fun attemptBack() {
-        if (isFullscreen) {
-            isFullscreen = false
+        if (effectiveFullscreen) {
+            if (isFullscreen) {
+                isFullscreen = false
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
+            } else {
+                if (isChildLockActive) {
+                    showParentPasswordDialog = true
+                } else {
+                    onBack()
+                }
+            }
         } else if (isChildLockActive) {
             showParentPasswordDialog = true
         } else {
@@ -160,26 +173,32 @@ fun PlayerScreen(
         attemptBack()
     }
 
-    LaunchedEffect(isFullscreen) {
+    LaunchedEffect(effectiveFullscreen) {
         activity?.window?.let { window ->
             val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-            if (isFullscreen) {
-                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            if (effectiveFullscreen) {
                 insetsController.hide(WindowInsetsCompat.Type.systemBars())
                 insetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             } else {
-                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
             }
         }
     }
 
-    // Always reset orientation and release wake lock when leaving the screen
+    LaunchedEffect(isFullscreen) {
+        if (isFullscreen) {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
+        }
+    }
+
+    // Reset orientation to user preference and release wake lock when leaving the screen
     DisposableEffect(Unit) {
         activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose {
             activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
             activity?.window?.let {
                 WindowCompat.getInsetsController(it, it.decorView).show(WindowInsetsCompat.Type.systemBars())
             }
@@ -196,20 +215,20 @@ fun PlayerScreen(
             // YouTube Player Component
             if (currentVideo != null) {
                 Box(
-                    modifier = if (isFullscreen) Modifier.fillMaxSize() else Modifier
+                    modifier = if (effectiveFullscreen) Modifier.fillMaxSize() else Modifier
                         .fillMaxWidth()
                         .aspectRatio(16f / 9f)
                 ) {
                     OptimizedVideoPlayer(
                         video = currentVideo,
-                        isFullscreen = isFullscreen,
+                        isFullscreen = effectiveFullscreen,
                         subtitlesEnabled = subtitlesEnabled,
                         onToggleSubtitles = {
                             val newState = !subtitlesEnabled
                             subtitlesEnabled = newState
                             parentPrefs.subtitlesEnabled = newState
                         },
-                        onToggleFullscreen = { isFullscreen = !isFullscreen },
+                        onToggleFullscreen = { isFullscreen = !effectiveFullscreen },
                         onVideoEnded = { _ ->
                             isCurrentVideoCompleted = true
                             if (videoQuiz != null && videoQuiz!!.questions.isNotEmpty()) {
@@ -247,7 +266,7 @@ fun PlayerScreen(
             }
 
             // Playlist info & controls (hidden in fullscreen)
-            if (!isFullscreen && currentVideo != null) {
+            if (!effectiveFullscreen && currentVideo != null) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -607,7 +626,7 @@ fun PlayerScreen(
         }
 
         // Floating Back button over the player (hidden in fullscreen)
-        if (!isFullscreen) {
+        if (!effectiveFullscreen) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)

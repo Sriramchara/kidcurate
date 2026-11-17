@@ -354,6 +354,8 @@ fun YouTubeVideoCard(
     index: Int,
     onClick: () -> Unit,
 ) {
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(16.dp),
@@ -362,7 +364,7 @@ fun YouTubeVideoCard(
         shadowElevation = 2.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = if (isLandscape) 48.dp else 16.dp, vertical = 8.dp),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // 16:9 Thumbnail with duration overlay

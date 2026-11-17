@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -151,39 +150,6 @@ fun SearchAndAddTab(
                         }
                     }
                 }
-            } else if (searchQuery.isBlank()) {
-                Spacer(Modifier.height(10.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val topics = listOf(
-                        "Space & Planets",
-                        "Moral Stories",
-                        "Heidi Cartoons",
-                        "Math Fun",
-                        "Phonics ABC",
-                        "Science Experiments",
-                        "Origami Crafts",
-                        "Dinosaurs for Kids"
-                    )
-                    items(topics) { topic ->
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = SurfaceCard,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
-                            onClick = {
-                                onSearchQueryChange(topic)
-                                onPerformSearch()
-                            },
-                        ) {
-                            Text(
-                                text = topic,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = BrandPrimary,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            )
-                        }
-                    }
-                }
             }
         }
 
@@ -232,7 +198,7 @@ fun SearchAndAddTab(
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            text = "Tip: You can search topics like 'Heidi cartoon', 'Phonics', 'Solar system' or paste ANY direct YouTube video link to add it instantly!",
+                            text = "Tip: You can search any educational topic or paste ANY direct YouTube video link to add it instantly!",
                             fontSize = 12.sp,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -21,6 +21,7 @@ import com.kidcurate.app.ui.theme.KidCurateTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER
         enableEdgeToEdge()
         val prefs = ParentPreferences.get(this)
         if (prefs.serverUrl.isNotBlank()) {
