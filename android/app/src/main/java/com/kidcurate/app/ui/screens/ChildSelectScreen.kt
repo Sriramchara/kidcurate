@@ -384,7 +384,7 @@ fun ChildSelectScreen(
     if (showParentGate) {
         ParentPasswordDialog(
             title = "Parent Verification",
-            subtitle = "Enter parent password to access Parent Control Center",
+            subtitle = "Sign in with Google or enter your 4-digit Parent PIN",
             onSuccess = {
                 showParentGate = false
                 onOpenParentZone()

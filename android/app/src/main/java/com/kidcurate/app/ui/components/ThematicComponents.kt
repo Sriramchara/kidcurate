@@ -36,6 +36,7 @@ import retrofit2.HttpException
 import com.kidcurate.app.data.ApiClient
 import com.kidcurate.app.data.ParentPreferences
 import com.kidcurate.app.ui.theme.*
+import androidx.compose.material3.HorizontalDivider
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -385,7 +386,9 @@ fun ParentPasswordDialog(
             gsoBuilder.requestIdToken(clientId)
         }
         val client = GoogleSignIn.getClient(appContext, gsoBuilder.build())
-        googleLauncher.launch(client.signInIntent)
+        client.signOut().addOnCompleteListener {
+            googleLauncher.launch(client.signInIntent)
+        }
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -424,7 +427,7 @@ fun ParentPasswordDialog(
                 // Title and Subtitle based on state
                 Text(
                     text = when (currentMode) {
-                        ParentGateMode.PIN_UNLOCK -> "Enter Parent PIN"
+                        ParentGateMode.PIN_UNLOCK -> "Parent Verification"
                         ParentGateMode.SET_PIN -> "Create 4-Digit Parent PIN"
                         ParentGateMode.GOOGLE_LOGIN -> "Parent Sign In"
                     },
@@ -435,7 +438,7 @@ fun ParentPasswordDialog(
 
                 Text(
                     text = when (currentMode) {
-                        ParentGateMode.PIN_UNLOCK -> "Enter your 4-digit PIN to access Parent Controls"
+                        ParentGateMode.PIN_UNLOCK -> "Sign in with Google or enter your 4-digit Parent PIN"
                         ParentGateMode.SET_PIN -> "Choose a 4-digit PIN for quick 1-second Parent Zone access."
                         ParentGateMode.GOOGLE_LOGIN -> "Sign in with your Google account to set up child profiles and safe playlists."
                     },
@@ -448,6 +451,60 @@ fun ParentPasswordDialog(
                 // Mode-specific content
                 when (currentMode) {
                     ParentGateMode.PIN_UNLOCK -> {
+                        // Prominent Continue with Google button
+                        OutlinedButton(
+                            onClick = {
+                                errorMessage = null
+                                triggerGoogleSignIn()
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                            ),
+                            enabled = !isVerifying,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                Icon(
+                                    Icons.Rounded.AccountCircle,
+                                    contentDescription = null,
+                                    tint = BrandPrimary,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = if (isVerifying) "Signing in with Google..." else "Continue with Google",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(14.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                            Text(
+                                text = "  OR USE 4-DIGIT PIN  ",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                        }
+
+                        Spacer(Modifier.height(14.dp))
+
                         OutlinedTextField(
                             value = pinInput,
                             onValueChange = {
@@ -471,23 +528,6 @@ fun ParentPasswordDialog(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
                         )
-
-                        Spacer(Modifier.height(10.dp))
-
-                        TextButton(
-                            onClick = {
-                                errorMessage = null
-                                isResettingPin = true
-                                triggerGoogleSignIn()
-                            },
-                        ) {
-                            Text(
-                                "Forgot PIN? Reset with Google",
-                                fontSize = 12.sp,
-                                color = BrandPrimary,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
                     }
 
                     ParentGateMode.SET_PIN -> {

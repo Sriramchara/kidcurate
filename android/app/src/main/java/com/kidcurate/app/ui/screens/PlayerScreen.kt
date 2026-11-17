@@ -611,7 +611,7 @@ fun PlayerScreen(
     if (showParentPasswordDialog) {
         ParentPasswordDialog(
             title = "Parent Unlock",
-            subtitle = "Enter parent account password to exit video player",
+            subtitle = "Sign in with Google or enter your 4-digit Parent PIN to exit video player",
             onSuccess = {
                 showParentPasswordDialog = false
                 isChildLockActive = false
