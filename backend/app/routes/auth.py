@@ -266,7 +266,7 @@ async def update_profile(
 
 
 class GoogleLoginRequest(BaseModel):
-    id_token: Optional[str] = None
+    id_token: str
     email: Optional[EmailStr] = None
     name: Optional[str] = None
 
@@ -285,39 +285,35 @@ async def google_login(
     name = "Parent"
     target_audience = (settings.GOOGLE_CLIENT_ID or "179684236627-d7j0s15cvkj6li430jku6easqma5q81l.apps.googleusercontent.com").strip()
 
-    if data.id_token and data.id_token.strip():
-        from google.oauth2 import id_token
-        from google.auth.transport import requests
-        try:
-            id_info = id_token.verify_oauth2_token(data.id_token, requests.Request(), audience=target_audience)
-            if id_info.get("iss") not in ["accounts.google.com", "https://accounts.google.com"]:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token issuer")
-            verified_email = id_info.get("email", "").lower().strip()
-            email_verified = id_info.get("email_verified", False)
-            if not verified_email or not email_verified:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verified Google email required")
-            email = verified_email
-            name = id_info.get("name") or (email.split("@")[0] if email else "Parent")
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.warning(f"Google token verification failed: {e}")
-            if data.email:
-                email = str(data.email).lower().strip()
-                name = data.name or (email.split("@")[0] if email else "Parent")
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Google authentication token verification failed."
-                )
-    elif data.email:
-        # On-device Google Play Services authentication
-        email = str(data.email).lower().strip()
-        name = data.name or (email.split("@")[0] if email else "Parent")
-    else:
+    if not data.id_token.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A valid Google ID token or on-device verified email is required for authentication.",
+            detail="A Google ID token is required for authentication.",
+        )
+
+    from google.oauth2 import id_token
+    from google.auth.transport import requests
+    try:
+        id_info = id_token.verify_oauth2_token(
+            data.id_token,
+            requests.Request(),
+            audience=target_audience,
+        )
+        if id_info.get("iss") not in ["accounts.google.com", "https://accounts.google.com"]:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token issuer")
+        verified_email = id_info.get("email", "").lower().strip()
+        email_verified = id_info.get("email_verified", False)
+        if not verified_email or not email_verified:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verified Google email required")
+        email = verified_email
+        name = id_info.get("name") or email.split("@")[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Google token verification failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google authentication token verification failed.",
         )
 
     result = await db.execute(select(User).where(User.email == email))
@@ -469,7 +465,12 @@ async def delete_account(
     current_user: User = Depends(get_current_user),
 ):
     """Permanently delete parent account and all associated children, playlists, and watch data."""
-    from app.models import Child, Playlist, PlaylistItem, WatchProgress
+    from app.models import Child, Playlist, PlaylistItem, WatchProgress, CurationLog
+
+    # Delete all curation audit logs for this parent
+    res_logs = await db.execute(select(CurationLog).where(CurationLog.parent_id == current_user.id))
+    for log_entry in res_logs.scalars().all():
+        await db.delete(log_entry)
 
     res_children = await db.execute(select(Child).where(Child.parent_id == current_user.id))
     children = res_children.scalars().all()

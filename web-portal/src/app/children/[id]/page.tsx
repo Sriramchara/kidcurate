@@ -7,7 +7,6 @@ import ThemeToggle from '@/components/ThemeToggle';
 import ThematicAvatar from '@/components/ThematicAvatar';
 import { 
   ArrowLeft, 
-  Sparkles, 
   BarChart3, 
   Search, 
   Plus, 
@@ -20,8 +19,6 @@ import {
   Clock, 
   BookOpen,
   GripVertical,
-  CheckCircle2,
-  Wand2,
   X
 } from 'lucide-react';
 
@@ -33,7 +30,6 @@ interface VideoItem {
   channel_name: string;
   thumbnail_url: string;
   duration_seconds?: number;
-  overall_score?: number;
 }
 
 interface Playlist {
@@ -61,7 +57,6 @@ export default function ChildDetailPage() {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showCurriculumModal, setShowCurriculumModal] = useState(false);
   const [previewVideo, setPreviewVideo] = useState<{ id: string; title: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -190,13 +185,6 @@ export default function ChildDetailPage() {
               </div>
             </div>
             <div className="flex gap-2.5 flex-wrap">
-              <button 
-                onClick={() => setShowCurriculumModal(true)}
-                className="btn-primary !py-2 !px-3.5 text-xs shadow-sm"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                <span>AI Story & Quest Planner</span>
-              </button>
               <Link 
                 href={`/children/${childId}/reports`}
                 className="btn-secondary !py-2 !px-3.5 text-xs"
@@ -305,7 +293,7 @@ export default function ChildDetailPage() {
                       <BookOpen className="w-6 h-6" />
                     </div>
                     <p className="text-sm font-semibold text-[var(--text-primary)] mb-1">No videos in this playlist</p>
-                    <p className="text-xs text-[var(--text-secondary)] mb-4">Discover wholesome videos or generate an AI story quest</p>
+                    <p className="text-xs text-[var(--text-secondary)] mb-4">Find videos to review and add to your child’s playlist</p>
                     <Link 
                       href={`/children/${childId}/search`}
                       className="btn-primary !py-2 !px-4 text-xs inline-flex items-center gap-1.5"
@@ -371,19 +359,6 @@ export default function ChildDetailPage() {
                             </p>
                           )}
                         </div>
-
-                        {/* Score */}
-                        {item.overall_score && (
-                          <div className="text-center flex-shrink-0">
-                            <div 
-                              className="text-lg font-extrabold"
-                              style={{ color: item.overall_score >= 80 ? 'var(--brand-success)' : item.overall_score >= 60 ? 'var(--brand-accent)' : '#EF4444' }}
-                            >
-                              {item.overall_score}
-                            </div>
-                            <div className="text-xs text-[var(--text-muted)]">score</div>
-                          </div>
-                        )}
 
                         {/* Actions */}
                         <div className="flex items-center gap-2 flex-shrink-0">
@@ -454,13 +429,7 @@ export default function ChildDetailPage() {
         />
       )}
 
-      {showCurriculumModal && child && (
-        <CurriculumModal
-          child={child}
-          onClose={() => setShowCurriculumModal(false)}
-          onCurriculumApplied={() => { loadData(); }}
-        />
-      )}
+
     </div>
   );
 }
@@ -534,187 +503,6 @@ function CreatePlaylistModal({ childId, onClose, onCreated }: { childId: string;
             </button>
           </div>
         </form>
-      </div>
-    </div>
-  );
-}
-
-function CurriculumModal({ child, onClose, onCurriculumApplied }: { child: Child; onClose: () => void; onCurriculumApplied?: () => void }) {
-  const [subject, setSubject] = useState('');
-  const [goals, setGoals] = useState('');
-  const [days, setDays] = useState(3);
-  const [loading, setLoading] = useState(false);
-  const [applying, setApplying] = useState(false);
-  const [appliedSuccess, setAppliedSuccess] = useState(false);
-  const [curriculum, setCurriculum] = useState<any | null>(null);
-  const [error, setError] = useState('');
-
-  async function handleApplyCurriculum() {
-    if (!curriculum) return;
-    setApplying(true);
-    setError('');
-    try {
-      await api.applyCurriculum(child.id, curriculum);
-      setAppliedSuccess(true);
-      if (onCurriculumApplied) onCurriculumApplied();
-    } catch (err: any) {
-      setError(err.message || 'Failed to auto-create playlists');
-    } finally {
-      setApplying(false);
-    }
-  }
-
-  async function handleGenerate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!subject.trim()) return;
-    setLoading(true);
-    setError('');
-    try {
-      const res = await api.generateCurriculum({
-        child_age: child.age,
-        subject,
-        goals,
-        num_days: Number(days),
-      });
-      setCurriculum(res);
-    } catch (err: any) {
-      setError(err.message || 'Failed to generate curriculum');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div 
-      className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/60 backdrop-blur-sm fade-in-up"
-    >
-      <div className="glass-card !bg-[var(--bg-card)] p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-[var(--border-highlight)] shadow-2xl">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-amber-400" /> 
-            <span>AI Adventure & Activity Planner for {child.name}</span>
-          </h2>
-          <button 
-            onClick={onClose} 
-            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1.5 rounded-lg hover:bg-[var(--surface-card)] transition-colors cursor-pointer"
-            title="Close"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {!curriculum ? (
-          <form onSubmit={handleGenerate} className="space-y-4">
-            <p className="text-xs text-[var(--text-secondary)]">
-              Powered by AI. Enter any activity, hobby, or curiosity your child loves (crafts, drawing, science magic, sports, cooking, building), and AI will craft a fun, wholesome multi-day quest!
-            </p>
-            <div>
-              <label className="block text-sm text-[var(--text-secondary)] mb-1 font-medium">Activity / Curiosity Topic</label>
-              <input 
-                type="text" 
-                value={subject} 
-                onChange={e => setSubject(e.target.value)} 
-                required
-                placeholder="e.g. Moral Stories on Kindness & Honesty, How to Draw Cartoons, Paper Glider Origami"
-                className="input-field"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-[var(--text-secondary)] mb-1 font-medium">Special Request / Focus (Optional)</label>
-              <input 
-                type="text" 
-                value={goals} 
-                onChange={e => setGoals(e.target.value)}
-                placeholder="e.g. Include hands-on paper folding or physical drawing challenges"
-                className="input-field"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-[var(--text-secondary)] mb-1 font-medium">Quest Duration</label>
-              <select 
-                value={days} 
-                onChange={e => setDays(Number(e.target.value))}
-                className="input-field cursor-pointer"
-              >
-                <option value={3}>3-Day Fun Mini-Quest</option>
-                <option value={5}>5-Day Weekly Adventure</option>
-                <option value={7}>7-Day Exploration Journey</option>
-              </select>
-            </div>
-            {error && <p className="text-rose-500 text-sm font-medium">{error}</p>}
-            <div className="flex gap-3 pt-3">
-              <button 
-                type="button" 
-                onClick={onClose}
-                className="flex-1 btn-secondary text-sm"
-              >
-                Cancel
-              </button>
-              <button 
-                type="submit" 
-                disabled={loading}
-                className="flex-1 btn-primary text-sm shadow-sm"
-              >
-                {loading ? 'Creating Adventure...' : 'Build Activity Quest'}
-              </button>
-            </div>
-          </form>
-        ) : (
-          <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-[var(--surface-card)] border border-[var(--border-subtle)]">
-              <h3 className="font-bold text-[var(--text-primary)] mb-1 text-sm">{curriculum.subject}</h3>
-              <p className="text-xs text-[var(--text-secondary)]">{curriculum.summary || 'Wholesome multi-day story quest'}</p>
-            </div>
-            <div className="space-y-3">
-              {curriculum.days?.map((d: any, i: number) => (
-                <div key={i} className="p-4 rounded-xl bg-[var(--surface-card)] border border-[var(--border-subtle)]">
-                  <div className="text-xs font-bold text-[var(--brand-primary)] uppercase tracking-wider mb-1">Day {d.day || i + 1}: {d.title}</div>
-                  <p className="text-xs text-[var(--text-secondary)] mb-2">{d.objective}</p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-[var(--text-muted)] font-medium">Search Keyword:</span>
-                    <span className="text-xs font-mono font-bold text-[var(--text-primary)] bg-[var(--bg-dark)] px-2 py-0.5 rounded border border-[var(--border-subtle)]">
-                      {d.youtube_query || d.title}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 pt-2">
-              <button 
-                type="button" 
-                onClick={() => { setCurriculum(null); setAppliedSuccess(false); }} 
-                className="btn-secondary text-xs"
-              >
-                Generate Another
-              </button>
-
-              {appliedSuccess ? (
-                <div className="flex-1 p-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-500 font-bold text-xs flex items-center justify-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Playlists Created & Scheduled!</span>
-                </div>
-              ) : (
-                <button 
-                  type="button" 
-                  onClick={handleApplyCurriculum} 
-                  disabled={applying}
-                  className="flex-1 btn-primary text-xs shadow-md flex items-center justify-center gap-1.5"
-                >
-                  <Wand2 className="w-3.5 h-3.5 text-amber-300" />
-                  <span>{applying ? 'Finding Videos & Building...' : 'Auto-Build Playlists from Roadmap'}</span>
-                </button>
-              )}
-
-              <button 
-                type="button" 
-                onClick={onClose} 
-                className="btn-secondary text-xs"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

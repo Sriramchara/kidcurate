@@ -1,18 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import event
-from sqlalchemy.engine import Engine
 from app.config import settings
-
-@event.listens_for(Engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    try:
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA busy_timeout=30000")
-        cursor.close()
-    except Exception as e:
-        import logging
-        logging.getLogger("uvicorn.error").warning(f"Could not apply SQLite pragmas: {e}")
 
 # Normalize Render/Heroku postgres:// URLs to asyncpg
 db_url = (settings.DATABASE_URL or "sqlite+aiosqlite:///kidcurate.db").strip()
@@ -27,6 +15,16 @@ if db_url.startswith("sqlite"):
         echo=settings.DEBUG,
         connect_args={"timeout": 30.0},
     )
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        try:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=30000")
+            cursor.close()
+        except Exception:
+            pass
 else:
     engine = create_async_engine(
         db_url,

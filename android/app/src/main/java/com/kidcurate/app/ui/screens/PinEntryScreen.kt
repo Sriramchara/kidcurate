@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -28,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import com.kidcurate.app.ui.components.ParentPasswordDialog
 import com.kidcurate.app.ui.components.SoundHaptics
 import com.kidcurate.app.ui.components.ThematicAvatar
+import com.kidcurate.app.data.ResponsiveLayoutPolicy
 import com.kidcurate.app.ui.theme.*
 
 @Composable
@@ -48,6 +51,11 @@ fun PinEntryScreen(
     var showPin by remember { mutableStateOf(false) }
     var showParentGate by remember { mutableStateOf(false) }
     var hasFailedAttempt by remember { mutableStateOf(false) }
+    val configuration = LocalConfiguration.current
+    val compactLandscape = ResponsiveLayoutPolicy.isCompactLandscape(
+        configuration.screenWidthDp,
+        configuration.screenHeightDp,
+    )
 
     Box(
         modifier = Modifier
@@ -74,39 +82,47 @@ fun PinEntryScreen(
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+            verticalArrangement = if (compactLandscape) Arrangement.Top else Arrangement.Center,
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+                .padding(
+                    horizontal = if (compactLandscape) 72.dp else 16.dp,
+                    vertical = if (compactLandscape) 12.dp else 64.dp,
+                ),
         ) {
-            ThematicAvatar(
-                name = childName,
-                avatar = childAvatar,
-                size = 84.dp,
-                iconSize = 42.dp,
-            )
+            if (!compactLandscape) {
+                ThematicAvatar(
+                    name = childName,
+                    avatar = childAvatar,
+                    size = 84.dp,
+                    iconSize = 42.dp,
+                )
 
-            Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+            }
 
             Text(
                 text = if (childName.isNotEmpty()) "Welcome back, $childName!" else "Welcome!",
-                fontSize = 24.sp,
+                fontSize = if (compactLandscape) 18.sp else 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
             )
 
             Text(
                 text = "Enter your secret PIN to unlock today's session",
-                fontSize = 14.sp,
+                fontSize = if (compactLandscape) 11.sp else 14.sp,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
+                modifier = Modifier.padding(
+                    top = if (compactLandscape) 1.dp else 4.dp,
+                    bottom = if (compactLandscape) 6.dp else 20.dp,
+                ),
             )
 
             // PIN Boxes with Eye Visibility Toggle
             Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 repeat(4) { index ->
@@ -114,7 +130,7 @@ fun PinEntryScreen(
                     val digitChar = if (isFilled) pin[index].toString() else ""
                     Box(
                         modifier = Modifier
-                            .size(46.dp)
+                            .size(if (compactLandscape) 34.dp else 42.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(if (isFilled) BrandPrimary.copy(alpha = 0.12f) else BackgroundCard)
                             .border(
@@ -128,14 +144,14 @@ fun PinEntryScreen(
                             if (showPin) {
                                 Text(
                                     text = digitChar,
-                                    fontSize = 20.sp,
+                                    fontSize = if (compactLandscape) 16.sp else 20.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (hasFailedAttempt) BrandCoral else BrandPrimary,
                                 )
                             } else {
                                 Box(
                                     modifier = Modifier
-                                        .size(12.dp)
+                                        .size(if (compactLandscape) 9.dp else 12.dp)
                                         .clip(CircleShape)
                                         .background(if (hasFailedAttempt) BrandCoral else BrandPrimary)
                                 )
@@ -149,7 +165,7 @@ fun PinEntryScreen(
                 IconButton(
                     onClick = { showPin = !showPin },
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(if (compactLandscape) 34.dp else 42.dp)
                         .clip(CircleShape)
                         .background(if (showPin) BrandPrimary.copy(alpha = 0.15f) else BackgroundCard)
                         .border(1.dp, SurfaceCardBorder, CircleShape),
@@ -158,7 +174,7 @@ fun PinEntryScreen(
                         imageVector = if (showPin) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
                         contentDescription = if (showPin) "Hide PIN" else "Show PIN",
                         tint = if (showPin) BrandPrimary else TextSecondary,
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(if (compactLandscape) 17.dp else 20.dp),
                     )
                 }
             }
@@ -168,7 +184,7 @@ fun PinEntryScreen(
                 visible = errorMessage != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
-                modifier = Modifier.height(36.dp),
+                modifier = Modifier.height(if (compactLandscape) 24.dp else 36.dp),
             ) {
                 Text(
                     text = errorMessage ?: "",
@@ -181,14 +197,14 @@ fun PinEntryScreen(
 
             // Number pad
             NumberPadLight(
+                buttonSize = if (compactLandscape) 42.dp else 76.dp,
+                rowSpacing = if (compactLandscape) 4.dp else 10.dp,
+                columnSpacing = if (compactLandscape) 10.dp else 16.dp,
                 onDigitPress = { digit ->
                     if (!isLoading) {
                         hasFailedAttempt = false
                         if (pin.length < 4) {
                             pin += digit
-                        } else {
-                            // If previously reached 4 and failed, replace with new first digit
-                            pin = digit
                         }
                     }
                 },
@@ -200,7 +216,7 @@ fun PinEntryScreen(
                 },
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(if (compactLandscape) 2.dp else 10.dp))
 
             TextButton(
                 onClick = { showParentGate = true },
@@ -252,6 +268,9 @@ fun PinEntryScreen(
 
 @Composable
 fun NumberPadLight(
+    buttonSize: androidx.compose.ui.unit.Dp = 76.dp,
+    rowSpacing: androidx.compose.ui.unit.Dp = 10.dp,
+    columnSpacing: androidx.compose.ui.unit.Dp = 16.dp,
     onDigitPress: (String) -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -261,37 +280,46 @@ fun NumberPadLight(
         listOf("1", "2", "3"),
         listOf("4", "5", "6"),
         listOf("7", "8", "9"),
-        listOf("", "0", "⌫"),
+        listOf("", "0", "delete"),
     )
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(rowSpacing)) {
         digits.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(columnSpacing)) {
                 row.forEach { digit ->
                     if (digit.isEmpty()) {
-                        Spacer(modifier = Modifier.size(76.dp))
+                        Spacer(modifier = Modifier.size(buttonSize))
                     } else {
                         Surface(
                             onClick = {
                                 SoundHaptics.playTactileClick(view, haptic)
-                                if (digit == "⌫") onDelete() else onDigitPress(digit)
+                                if (digit == "delete") onDelete() else onDigitPress(digit)
                             },
                             shape = CircleShape,
                             color = BackgroundCard,
                             border = androidx.compose.foundation.BorderStroke(1.5.dp, SurfaceCardBorder),
-                            modifier = Modifier.size(76.dp),
+                            modifier = Modifier.size(buttonSize),
                             shadowElevation = 2.dp,
                         ) {
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier.fillMaxSize(),
                             ) {
-                                Text(
-                                    text = digit,
-                                    fontSize = if (digit == "⌫") 22.sp else 24.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (digit == "⌫") BrandCoral else TextPrimary,
-                                )
+                                if (digit == "delete") {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Backspace,
+                                        contentDescription = "Delete last digit",
+                                        tint = BrandCoral,
+                                        modifier = Modifier.size(buttonSize * 0.36f),
+                                    )
+                                } else {
+                                    Text(
+                                        text = digit,
+                                        fontSize = if (buttonSize < 60.dp) 18.sp else 24.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary,
+                                    )
+                                }
                             }
                         }
                     }

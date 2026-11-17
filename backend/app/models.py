@@ -80,7 +80,7 @@ class Child(Base):
 
 
 class Video(Base):
-    """Cached YouTube video metadata + AI scores"""
+    """Cached YouTube video metadata"""
     __tablename__ = "videos"
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -101,14 +101,7 @@ class Video(Base):
     age_min = Column(Integer)
     age_max = Column(Integer)
 
-    # AI scores (0-100)
-    educational_score = Column(Integer)
-    safety_score = Column(Integer)
-    clarity_score = Column(Integer)
-    overall_score = Column(Integer)
 
-    # AI analysis
-    ai_summary = Column(Text)
     red_flags = Column(Text)  # JSON array stored as text
     is_safe = Column(Boolean, default=True)
 
@@ -116,7 +109,6 @@ class Video(Base):
     published_at = Column(DateTime(timezone=True))
     view_count = Column(Integer)
     cached_at = Column(DateTime(timezone=True), server_default=func.now())
-    ai_analyzed_at = Column(DateTime(timezone=True))
 
     # Relationships
     playlist_items = relationship("PlaylistItem", back_populates="video")

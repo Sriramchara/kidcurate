@@ -33,7 +33,6 @@ Following rigorous iterations, the authentication and access security model foll
 | :--- | :--- | :--- |
 | **Total Source Lines of Code** | **15,205 lines** | Active Kotlin, Python, and TypeScript code (excludes vendor packages and lockfiles) |
 | **Android Application (Kotlin)** | **8,618 lines** | Jetpack Compose UI, Navigation, Retrofit API, Encrypted Preferences |
-| **Backend API (Python / FastAPI)** | **3,811 lines** | RESTful endpoints, SQLAlchemy Async ORM, AI Scorer, YouTube Scraper |
 | **Web Management Portal (Next.js)** | **2,656 lines** | React 19, Tailwind CSS, Confetti Canvas, Lucide UI Components |
 | **Git Commit History** | **50 Commits** | Full evolutionary history from initial prototype to production release |
 | **API Endpoints** | **47 Endpoints** | Distributed across 6 FastAPI modular routers |
@@ -123,14 +122,12 @@ kidcurate/
 │   │   ├── main.py                            # FastAPI application factory, CORS, security middleware
 │   │   ├── models.py                          # Declarative SQLAlchemy ORM entities
 │   │   ├── routes/
-│   │   │   ├── ai.py                          # AI content assessment and video classification
 │   │   │   ├── auth.py                        # Google OAuth, parent auth, JWT refresh, account deletion
 │   │   │   ├── children.py                    # Child profile management, PIN verification
 │   │   │   ├── playlists.py                   # Playlist CRUD, zero-flicker reorder, curation logs
 │   │   │   ├── progress.py                    # Watch progress updates, daily summaries
 │   │   │   └── videos.py                      # YouTube Data API v3 search, scraper fallback, caching
 │   │   └── services/
-│   │       ├── ai_scorer.py                   # Automated video educational & safety scoring
 │   │       └── email.py                       # SMTP notification and password reset sender
 │   └── tests/
 │       ├── test_api_integration.py           # Remote live cloud API integration tests
@@ -201,8 +198,6 @@ erDiagram
         int duration_seconds
         string thumbnail_url
         string subject
-        int educational_score
-        int safety_score
         boolean is_safe
         timestamp cached_at
     }
@@ -289,22 +284,16 @@ erDiagram
 - `GET /api/playlists/child/{child_id}/curation-history`: Filtered curation log for a single child.
 - `GET /api/playlists/activity-packs`: Catalog of pre-curated thematic bundles (Space Explorers, Dinosaur World, Phonics Adventures).
 - `POST /api/playlists/child/{child_id}/apply-pack/{pack_id}`: 1-click batch import of an activity pack into a child's queue.
-- `POST /api/playlists/curriculum`: AI-powered curriculum generation based on child age and topic.
-- `POST /api/playlists/curriculum/apply`: Batch apply curriculum to child playlist.
 
 ### 5.4. Videos Router (`/api/videos`)
 - `GET /api/videos/search`: Safe YouTube search query executing against YouTube Data API v3 with automatic fallbacks and quota balancing.
 - `GET /api/videos/suggestions`: Fast autocomplete search suggestions for parent curation queries.
-- `POST /api/videos/cache/{youtube_id}`: Cache video metadata and trigger background AI scoring.
 
 ### 5.5. Progress Router (`/api/progress`)
 - `POST /api/progress/update`: Secure progress beacon reporting seconds watched and completion status.
 - `GET /api/progress/child/{child_id}/summary`: Aggregate statistics (total minutes watched, videos completed today).
 - `GET /api/progress/child/{child_id}/history`: Detailed watch history listing watched videos with timestamps.
 
-### 5.6. AI Router (`/api/ai`)
-- `POST /api/ai/score`: Evaluate video transcript and metadata for age-appropriateness, educational value, and red flags.
-- `POST /api/ai/curate`: Generate AI recommendations tailored to a child's learning goals.
 
 ---
 
@@ -352,13 +341,6 @@ flowchart TD
 Across the 50 development iterations, every user request, bug fix, and structural improvement was executed cleanly:
 
 ### Iteration Stage 1: Legacy Code Cleanup & De-Gamification
-- **Removal of Gamification & Clutter**: Removed quests, coins, streaks, and quiz overlays. Children should enjoy pure, uninterrupted educational entertainment.
-- **YouTube Quiz Debris Elimination**:
-  - Deleted `quiz_json` column from `Video` model in `backend/app/models.py`.
-  - Deleted `/api/ai/quiz/{youtube_id}` route in `backend/app/routes/ai.py`.
-  - Deleted `generate_quiz` and `_fallback_quiz` in `backend/app/services/ai_scorer.py`.
-  - Deleted `QuizQuestion` and `QuizData` data models in `ApiClient.kt` and `Models.kt`.
-  - Removed 173 lines of quiz UI dialogs and handlers from `PlayerScreen.kt`.
 
 ### Iteration Stage 2: Feature Additions & Enhancements
 - **Search History**: Stored recent parent search queries in `ParentPreferences` with clear and delete capabilities.

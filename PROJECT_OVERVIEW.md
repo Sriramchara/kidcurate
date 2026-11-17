@@ -1,7 +1,6 @@
 # KidCurate: Complete System Dossier & ChatGPT Master Context
 
 > **How to use this file with ChatGPT:**  
-> Copy and paste this document into any ChatGPT or Claude conversation to give the AI full architectural, database, API, and codebase context. It includes a ready-to-use **System Prompt Directive**, architecture diagrams, exact file maps, and prompt recipes for adding new features.
 
 ---
 
@@ -13,7 +12,6 @@
 You are the Lead Staff Engineer on "KidCurate", an ad-free, parent-controlled YouTube educational platform for kids.
 
 KidCurate consists of three tiers:
-1. Backend: Python 3.11+, FastAPI, SQLAlchemy 2.0 (Async), PostgreSQL/SQLite with custom cross-platform GUID type, Google Gemini 1.5 Flash (google-generativeai), YouTube Data API v3, youtube-transcript-api.
 2. Parent Web Portal: Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, Lucide Icons, Axios.
 3. Child Android App: Native Kotlin, Jetpack Compose, Material 3, Retrofit 2 + OkHttp, PierfrancescoSoffritti/android-youtube-player.
 
@@ -22,7 +20,6 @@ Engineering Rules you must ALWAYS follow when generating code:
 - Cross-DB GUID Type: All primary and foreign keys use the GUID() TypeDecorator to support both PostgreSQL native UUID and SQLite CHAR(36) transparently without hex conversion crashes.
 - Next.js 16 App Router: Any component utilizing React hooks (useState, useEffect, useParams, useRouter) must declare 'use client'; at the very top.
 - Distraction-Free Child Security: Under NO circumstance should YouTube recommendations, external links, comments, or autoplay ads be accessible to the child on the Android client. Playback must be locked to parent-curated playlists.
-- AI Graceful Degradation: If Gemini or YouTube transcript API fails or is rate-limited, fallback responses and safe search results must always ensure a child or parent is never locked out or faced with unhandled 500 exceptions.
 ```
 
 ---
@@ -31,8 +28,6 @@ Engineering Rules you must ALWAYS follow when generating code:
 
 Traditional YouTube is unsuited for independent child learning due to commercial advertising, clickbait thumbnails, algorithm rabbit holes, and distracting comment sections. 
 
-**KidCurate** solves this through a parent-in-the-loop, AI-guided learning architecture:
-* **The Parent Curies:** Parents search YouTube through safe, embeddable-only filters, inspect AI educational/safety ratings (0–100), generate multi-day AI curriculums, organize playlists with drag-and-drop, and track watch progress.
 * **The Child Learns:** Kids log in using their personal 4-digit PIN on a tablet or phone, view only parent-approved playlists for the day, watch videos in a distraction-free player, and earn their star completion reward with seamless playback across the curated playlist.
 
 ---
@@ -43,7 +38,6 @@ Traditional YouTube is unsuited for independent child learning due to commercial
 | :--- | :--- | :--- | :--- |
 | **Backend** | API Server | Python 3.11+, FastAPI | Asynchronous routes, Pydantic v2 schemas, JWT Bearer tokens |
 | **Backend** | Database & ORM | PostgreSQL / SQLite | SQLAlchemy 2.0 Async, `asyncpg`, `aiosqlite`, cross-platform `GUID` |
-| **Backend** | AI & Video | Google Gemini 1.5 Flash | `google-generativeai`, YouTube Data API v3, `youtube-transcript-api` |
 | **Frontend** | Parent Portal | Next.js 16, React 19 | Tailwind CSS v4, Radix UI, Lucide Icons, Axios, embedded video modal |
 | **Mobile** | Child App | Kotlin, Jetpack Compose | Material 3, Retrofit 2 + Gson, Coroutines StateFlow, YouTube IFrame Player |
 
@@ -59,7 +53,6 @@ sequenceDiagram
     participant Android as Jetpack Compose Client
     participant API as FastAPI Backend
     participant DB as Database (Postgres/SQLite)
-    participant Gemini as Google Gemini 1.5
 
     Kid->>Android: Opens app & selects profile (e.g. Aarav)
     Android->>API: GET /api/children/profiles
@@ -86,7 +79,6 @@ sequenceDiagram
     Android->>Kid: Celebratory Star Countdown & Next Video!
 ```
 
-### B. Parent Video Discovery & AI Curriculum Flow
 ```mermaid
 sequenceDiagram
     autonumber
@@ -94,16 +86,12 @@ sequenceDiagram
     participant Web as Next.js 16 Web Portal
     participant API as FastAPI Backend
     participant YT as YouTube Data API v3
-    participant Gemini as Google Gemini 1.5
 
-    Parent->>Web: Searches "Solar System for Grade 2" + AI Score toggle
     Web->>API: GET /api/videos/search?q=...&ai_score=true
     API->>YT: search.list(safeSearch=strict, videoEmbeddable=true)
     YT-->>API: Video candidates
     API->>YT: videos.list(duration, licensing, statistics)
     YT-->>API: Filtered duration (>60s, <60m)
-    API->>Gemini: Evaluate educational value, clarity, and safety flags
-    Gemini-->>API: {educational: 92, safety: 98, overall: 94, tags, summary}
     API-->>Web: Video search cards with score badges
     
     Parent->>Web: Clicks "Preview"
@@ -120,7 +108,6 @@ sequenceDiagram
 ```
 kidcurate/
 ├── PROJECT_OVERVIEW.md       # Master project documentation for LLMs & developers
-├── backend/                  # FastAPI Application & AI Pipeline
 │   ├── app/
 │   │   ├── routes/
 │   │   │   ├── auth.py       # Parent signup (/register), login (/login), current user (/me)
@@ -128,9 +115,7 @@ kidcurate/
 │   │   │   ├── videos.py     # YouTube search with strict filtering, caching & scoring
 │   │   │   ├── playlists.py  # Playlist CRUD, drag-and-drop reordering, /child/{id}/today
 │   │   │   ├── progress.py   # Progress update, watch history & analytics summary
-│   │   │   └── ai.py         # /api/ai/curriculum (roadmap generator)
 │   │   ├── services/
-│   │   │   └── ai_scorer.py  # Gemini prompts & curriculum generator
 │   │   ├── auth.py           # Password hashing (bcrypt) & JWT decoding dependencies
 │   │   ├── config.py         # Settings loaded from backend/.env via Pydantic
 │   │   ├── database.py       # Async engine & sessionmaker, startup create_tables()
@@ -146,8 +131,6 @@ kidcurate/
 │   │   │   ├── page.tsx      # Sign In / Create Account landing page
 │   │   │   ├── dashboard/    # Parent dashboard: child cards, quick stats, add child modal
 │   │   │   └── children/[id]/
-│   │   │       ├── page.tsx  # Playlist manager, in-modal preview, AI Curriculum Designer
-│   │   │       ├── search/   # Safe YouTube search, AI score pills, preview player
 │   │   │       └── reports/  # Watch duration progress bars, completion rates, history log
 │   │   └── lib/
 │   │       └── api.ts        # Typed fetch client with automated JWT Bearer injection
@@ -217,11 +200,7 @@ erDiagram
         string channel_name
         int duration_seconds
         string thumbnail_url
-        int educational_score "0-100"
-        int safety_score "0-100"
         int clarity_score "0-100"
-        int overall_score "0-100"
-        text ai_summary
         json subject_tags
         boolean is_safe
     }
@@ -303,7 +282,6 @@ class GUID(TypeDecorator):
 | `PUT` | `/api/children/{id}` | Bearer Token | Update child name, age, avatar, or 4-digit PIN |
 | `DELETE`| `/api/children/{id}` | Bearer Token | Delete child profile and cascade-delete child playlists |
 | `POST` | `/api/children/verify-pin` | **Public** | Verify child's 4-digit PIN before granting playback access |
-| `GET` | `/api/videos/search` | Bearer Token | Safe YouTube search (`q`, `age`, `ai_score=true/false`) with AI rating |
 | `POST` | `/api/videos/cache/{id}` | Bearer Token | Cache YouTube metadata in database |
 | `GET` | `/api/playlists/` | Bearer Token | List playlists filtered by `child_id` and/or `scheduled_date` |
 | `POST` | `/api/playlists/` | Bearer Token | Create daily playlist or reusable template |
@@ -317,17 +295,13 @@ class GUID(TypeDecorator):
 | `POST` | `/api/progress/update` | **Public** | Record child watch time (`watched_seconds`) & completion status |
 | `GET` | `/api/progress/child/{id}/summary` | Bearer Token | Aggregate analytics (total hours, completed count, top subjects) |
 | `GET` | `/api/progress/child/{id}/history` | Bearer Token | Reverse-chronological watch activity log |
-| `POST` | `/api/ai/curriculum` | Bearer Token | Generate multi-day AI learning roadmap (`child_age`, `subject`, `goals`, `num_days`) |
 
 ---
 
-## 7. AI Pipeline & Safety Heuristics
 
 ### Video Scoring Formula
-Videos evaluated with Gemini 1.5 Flash receive scores from 0 to 100:
 $$\text{Overall Score} = (0.5 \times \text{Educational}) + (0.3 \times \text{Safety}) + (0.2 \times \text{Clarity})$$
 
-1. **Educational Score:** Measures explanation pacing, active demonstration, curriculum alignment, and conceptual rigor.
 2. **Safety Score:** Penalizes profanity, jump scares, commercial marketing/excessive toy ads, clickbait, and unverified claims.
 3. **Clarity Score:** Audio cleanliness, age-level vocabulary, and visual clarity.
 
@@ -353,7 +327,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES=10080
 
 # External API Keys
 YOUTUBE_API_KEY=AIzaSy...
-GEMINI_API_KEY=AIzaSy...
 ```
 
 ### Parent Web Portal (`web-portal/.env.local`)

@@ -36,7 +36,6 @@ cp .env.example .env
 # - DATABASE_URL
 # - SECRET_KEY (generate: python -c "import secrets; print(secrets.token_hex(32))")
 # - YOUTUBE_API_KEY
-# - GEMINI_API_KEY
 ```
 
 ### 4. Run the Server
@@ -66,7 +65,6 @@ API docs available at: http://localhost:8000/docs
 | GET | /api/playlists/child/{id}/today | Today's playlist (Android) |
 | POST | /api/progress/update | Update watch progress (Android) |
 | GET | /api/progress/child/{id}/summary | Progress summary |
-| POST | /api/ai/curriculum | Generate AI curriculum |
 
 ## Project Structure
 
@@ -84,9 +82,7 @@ backend/
 │   │   ├── videos.py    # /api/videos/*
 │   │   ├── playlists.py # /api/playlists/*
 │   │   ├── progress.py  # /api/progress/*
-│   │   └── ai.py        # /api/ai/*
 │   └── services/
-│       └── ai_scorer.py # Gemini video scoring
 ├── pyproject.toml
 └── .env.example
 ```

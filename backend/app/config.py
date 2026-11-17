@@ -32,7 +32,6 @@ class Settings(BaseSettings):
     # External APIs & Authentication
     GOOGLE_CLIENT_ID: str = "179684236627-d7j0s15cvkj6li430jku6easqma5q81l.apps.googleusercontent.com"
     YOUTUBE_API_KEY: str = ""
-    GEMINI_API_KEY: str = ""
 
     # Email SMTP Settings (for password resets and notifications)
     SMTP_HOST: str = ""
@@ -47,6 +46,10 @@ class Settings(BaseSettings):
         if is_prod:
             if "change-this-in-production" in self.SECRET_KEY or len(self.SECRET_KEY) < 32:
                 raise ValueError("FATAL: In production, SECRET_KEY must be a cryptographically secure random string of at least 32 characters.")
+            if self.DATABASE_URL.strip().lower().startswith("sqlite"):
+                raise ValueError("FATAL: Production must use persistent PostgreSQL storage, not local SQLite.")
+            if not self.GOOGLE_CLIENT_ID.endswith(".apps.googleusercontent.com"):
+                raise ValueError("FATAL: GOOGLE_CLIENT_ID must be a valid Google OAuth web client ID.")
         return self
 
     @property

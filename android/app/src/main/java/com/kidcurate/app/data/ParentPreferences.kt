@@ -39,6 +39,10 @@ class ParentPreferences(context: Context) {
         get() = prefs.getString(KEY_PARENT_PIN, "") ?: ""
         set(value) = prefs.edit().putString(KEY_PARENT_PIN, value).apply()
 
+    var parentPinOwnerEmail: String
+        get() = prefs.getString(KEY_PARENT_PIN_OWNER_EMAIL, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_PARENT_PIN_OWNER_EMAIL, value.trim().lowercase()).apply()
+
     val hasParentPin: Boolean
         get() = parentPin.isNotBlank()
 
@@ -50,12 +54,37 @@ class ParentPreferences(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_HAS_SEEN_ONBOARDING, value).apply()
 
     fun clearParentSession() {
+        if (hasParentPin && parentPinOwnerEmail.isBlank() && parentEmail.isNotBlank()) {
+            parentPinOwnerEmail = parentEmail
+        }
         parentAuthToken = ""
         parentRefreshToken = ""
         parentEmail = ""
         parentName = ""
-        parentPin = ""
         cachedProfilesJson = ""
+    }
+
+    /** Clears account-owned secrets and cached child data after permanent account deletion. */
+    fun clearAccountData() {
+        val editor = prefs.edit()
+        prefs.all.keys
+            .filter {
+                it.startsWith(KEY_CHILD_PIN_PREFIX) ||
+                    it.startsWith(KEY_CACHED_PLAYLIST_PREFIX)
+            }
+            .forEach(editor::remove)
+        editor
+            .remove(KEY_PARENT_AUTH_TOKEN)
+            .remove(KEY_PARENT_REFRESH_TOKEN)
+            .remove(KEY_PARENT_EMAIL)
+            .remove(KEY_PARENT_NAME)
+            .remove(KEY_PARENT_PIN)
+            .remove(KEY_PARENT_PIN_OWNER_EMAIL)
+            .remove(KEY_CACHED_PROFILES)
+            .remove(KEY_RECENT_SEARCHES)
+            .remove(KEY_LAST_WATCHED_DATE)
+            .remove(KEY_TODAY_WATCHED_SECONDS)
+            .apply()
     }
 
     var appTheme: String
@@ -226,6 +255,7 @@ class ParentPreferences(context: Context) {
         private const val KEY_RECENT_SEARCHES = "recent_searches_json"
         private const val KEY_VIDEO_QUALITY = "video_quality"
         private const val KEY_PARENT_PIN = "parent_pin"
+        private const val KEY_PARENT_PIN_OWNER_EMAIL = "parent_pin_owner_email"
         private const val KEY_APP_THEME = "app_theme"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_PARENT_AUTH_TOKEN = "parent_auth_token"

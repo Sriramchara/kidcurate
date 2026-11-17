@@ -371,7 +371,7 @@ fun SearchAndAddTab(
                                         modifier = Modifier.size(12.dp)
                                     )
                                     Text(
-                                        text = "${video.overallScore ?: 95}% Safe",
+                                        text = "Parent review required",
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White,
                                         fontSize = 11.sp,

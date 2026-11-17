@@ -34,7 +34,6 @@ data class VideoItem(
     @SerializedName("channel_name") val channelName: String,
     @SerializedName("thumbnail_url") val thumbnailUrl: String,
     @SerializedName("duration_seconds") val durationSeconds: Int?,
-    @SerializedName("overall_score") val overallScore: Int?,
     @SerializedName("subject_tags") val subjectTags: List<String>?,
 )
 
@@ -75,9 +74,6 @@ data class VideoSearchResultItem(
     @SerializedName("thumbnail_url") val thumbnailUrl: String,
     @SerializedName("duration_seconds") val durationSeconds: Int?,
     val description: String?,
-    @SerializedName("overall_score") val overallScore: Int?,
-    @SerializedName("educational_score") val educationalScore: Int?,
-    @SerializedName("safety_score") val safetyScore: Int?,
     @SerializedName("is_safe") val isSafe: Boolean?,
 )
 

@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
@@ -14,6 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kidcurate.app.data.ParentPreferences
 import com.kidcurate.app.ui.screens.*
 import com.kidcurate.app.ui.theme.KidCurateTheme
@@ -43,7 +47,7 @@ class MainActivity : ComponentActivity() {
 
             KidCurateTheme(darkTheme = isDark) {
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().displayCutoutPadding(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
                     KidApp(
@@ -64,6 +68,17 @@ fun KidApp(
 ) {
     val viewModel: KidViewModel = viewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.ensureParentSession()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     AnimatedContent(
         targetState = state.screen,
@@ -99,6 +114,7 @@ fun KidApp(
                     profiles = state.availableProfiles,
                     onThemeChanged = onThemeChanged,
                     onBackToChildMode = {
+                        viewModel.ensureParentSession()
                         viewModel.loadProfiles()
                         viewModel.backToChildSelect()
                     },

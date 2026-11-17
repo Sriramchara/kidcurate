@@ -12,7 +12,6 @@ from app.database import get_db
 from app.models import User, Video
 from app.auth import get_optional_current_user
 from app.config import settings
-from app.services.ai_scorer import score_video
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +28,6 @@ class VideoSearchResult(BaseModel):
     thumbnail_url: str
     duration_seconds: Optional[int] = None
     description: Optional[str] = None
-    educational_score: Optional[int] = None
-    safety_score: Optional[int] = None
-    overall_score: Optional[int] = None
-    ai_summary: Optional[str] = None
     is_safe: Optional[bool] = None
     subject_tags: Optional[List[str]] = None
     is_licensed: Optional[bool] = None
@@ -77,7 +72,6 @@ async def search_videos(
     q: str = Query(..., description="Search query, e.g. 'Moral Stories for Kids'"),
     age: Optional[int] = Query(None, description="Optional child age hint"),
     max_results: int = Query(20, le=50),
-    ai_score: bool = Query(False, description="Run AI scoring on results"),
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
@@ -105,9 +99,6 @@ async def search_videos(
                         thumbnail_url=oe_data.get("thumbnail_url", f"https://img.youtube.com/vi/{extracted_id}/hqdefault.jpg"),
                         duration_seconds=360,
                         description="Directly added YouTube educational video",
-                        educational_score=9,
-                        safety_score=10,
-                        overall_score=9,
                         is_safe=True,
                         is_licensed=True,
                         is_embeddable=True,
@@ -190,30 +181,6 @@ async def search_videos(
                                     is_embeddable=is_embeddable,
                                 )
 
-                                if cached_video and cached_video.overall_score is not None:
-                                    res_item.educational_score = cached_video.educational_score
-                                    res_item.safety_score = cached_video.safety_score
-                                    res_item.overall_score = cached_video.overall_score
-                                    res_item.ai_summary = cached_video.ai_summary
-                                    res_item.is_safe = cached_video.is_safe
-                                    res_item.subject_tags = json.loads(cached_video.subject_tags or "[]")
-                                elif ai_score:
-                                    scores = await score_video(
-                                        youtube_id=vid_id,
-                                        title=res_item.title,
-                                        description=res_item.description or "",
-                                        channel_name=res_item.channel_name,
-                                        duration_seconds=duration_secs,
-                                        target_age=age,
-                                    )
-                                    if scores:
-                                        res_item.educational_score = scores.get("educational_score")
-                                        res_item.safety_score = scores.get("safety_score")
-                                        res_item.overall_score = scores.get("overall_score")
-                                        res_item.ai_summary = scores.get("summary")
-                                        res_item.is_safe = scores.get("is_safe", True)
-                                        res_item.subject_tags = scores.get("subject_tags", [])
-
                                 results.append(res_item)
                             data_source = "youtube-api"
                 else:
@@ -278,9 +245,6 @@ async def search_videos(
                                                     thumbnail_url=f"https://img.youtube.com/vi/{vid}/hqdefault.jpg",
                                                     duration_seconds=dur_sec,
                                                     description=desc[:500],
-                                                    educational_score=9,
-                                                    safety_score=9,
-                                                    overall_score=9,
                                                     is_safe=True,
                                                     subject_tags=["Kids", "Educational"],
                                                     is_licensed=True,
@@ -321,10 +285,6 @@ async def search_videos(
                         thumbnail_url=cv.thumbnail_url or f"https://img.youtube.com/vi/{cv.youtube_id}/hqdefault.jpg",
                         duration_seconds=cv.duration_seconds or 300,
                         description=cv.description,
-                        educational_score=cv.educational_score,
-                        safety_score=cv.safety_score,
-                        overall_score=cv.overall_score,
-                        ai_summary=cv.ai_summary,
                         is_safe=cv.is_safe,
                         subject_tags=json.loads(cv.subject_tags or "[]"),
                         is_licensed=True,

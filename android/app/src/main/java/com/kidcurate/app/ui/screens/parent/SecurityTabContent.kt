@@ -1,7 +1,5 @@
 package com.kidcurate.app.ui.screens.parent
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -24,15 +22,15 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.ApiException
 import com.kidcurate.app.data.ApiClient
 import com.kidcurate.app.data.DbSummaryResponse
+import com.kidcurate.app.data.GoogleCredentialAuth
+import com.kidcurate.app.data.ParentSessionPolicy
 import com.kidcurate.app.data.ParentPreferences
 import com.kidcurate.app.ui.components.OnboardingTourDialog
 import com.kidcurate.app.ui.theme.*
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 
 @Composable
 fun SecurityTab(
@@ -308,60 +306,60 @@ fun SecurityTab(
         var isDeletingAccount by remember { mutableStateOf(false) }
         var showChangeParentPinDialog by remember { mutableStateOf(false) }
 
-        val googleLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.StartActivityForResult()
-        ) { result ->
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-            try {
-                val account = task.getResult(ApiException::class.java)
-                val email = account?.email ?: ""
-                if (email.isNotBlank()) {
-                    isAccountLoading = true
-                    accountStatusMessage = null
-                    scope.launch {
-                        try {
-                            val extractedName = account.displayName?.trim()?.ifBlank { null }
-                                ?: account.givenName?.trim()?.ifBlank { null }
-                                ?: email.substringBefore("@").replaceFirstChar { it.uppercase() }
-                            parentPrefs.parentName = extractedName
-                            parentPrefs.parentEmail = email
+        fun connectGoogleAccount() {
+            scope.launch {
+                isAccountLoading = true
+                accountStatusMessage = null
+                try {
+                    val account = GoogleCredentialAuth.signIn(
+                        context = appContext,
+                        serverClientId = parentPrefs.googleClientId.trim(),
+                    )
+                    val email = account.email
+                    val savedPinMatchesAccount = ParentSessionPolicy.canReusePin(
+                        hasPin = parentPrefs.hasParentPin,
+                        pinOwnerEmail = parentPrefs.parentPinOwnerEmail,
+                        currentAccountEmail = parentPrefs.parentEmail,
+                        signingInEmail = email,
+                    )
+                    parentPrefs.parentName = account.name
+                    parentPrefs.parentEmail = email
 
-                            val payload = mutableMapOf<String, String>()
-                            account.idToken?.let { if (it.isNotBlank()) payload["id_token"] = it }
-                            payload["email"] = email
-                            payload["name"] = extractedName
-                            val resp = ApiClient.api.googleLogin(payload)
-                            val token = resp["access_token"] as? String ?: ""
-                            val refreshToken = resp["refresh_token"] as? String ?: ""
-                            val serverName = (resp["name"] as? String)?.trim() ?: ""
-                            if (serverName.isNotBlank() && serverName != "Parent") {
-                                parentPrefs.parentName = serverName
-                            }
-                            if (token.isNotBlank()) {
-                                parentPrefs.parentAuthToken = token
-                                if (refreshToken.isNotBlank()) {
-                                    parentPrefs.parentRefreshToken = refreshToken
-                                }
-                                currentToken = token
-                                ApiClient.authToken = token
-                                accountStatusMessage = "Connected Google Account: $email"
-                                if (!parentPrefs.hasParentPin) {
-                                    showChangeParentPinDialog = true
-                                }
-                            } else {
-                                accountStatusMessage = "Server did not issue an access token."
-                            }
-                        } catch (e: Exception) {
-                            accountStatusMessage = "Login failed: ${e.message}"
-                        } finally {
-                            isAccountLoading = false
-                        }
+                    val resp = ApiClient.api.googleLogin(
+                        mapOf(
+                            "id_token" to account.idToken,
+                            "email" to email,
+                            "name" to account.name,
+                        )
+                    )
+                    val token = resp["access_token"] as? String ?: ""
+                    val refreshToken = resp["refresh_token"] as? String ?: ""
+                    val serverName = (resp["name"] as? String)?.trim() ?: ""
+                    if (serverName.isNotBlank() && serverName != "Parent") {
+                        parentPrefs.parentName = serverName
                     }
-                } else {
-                    accountStatusMessage = "Google sign-in was cancelled."
+                    if (token.isBlank()) {
+                        accountStatusMessage = "Server did not issue an access token."
+                        return@launch
+                    }
+
+                    parentPrefs.parentAuthToken = token
+                    parentPrefs.parentRefreshToken = refreshToken
+                    currentToken = token
+                    ApiClient.authToken = token
+                    accountStatusMessage = "Connected Google Account: $email"
+                    if (!savedPinMatchesAccount) {
+                        parentPrefs.parentPin = ""
+                        parentPrefs.parentPinOwnerEmail = ""
+                        showChangeParentPinDialog = true
+                    } else {
+                        parentPrefs.parentPinOwnerEmail = email
+                    }
+                } catch (e: Exception) {
+                    accountStatusMessage = GoogleCredentialAuth.userMessage(e)
+                } finally {
+                    isAccountLoading = false
                 }
-            } catch (e: ApiException) {
-                accountStatusMessage = "Google Sign-In failed (${e.statusCode}): ${e.message}"
             }
         }
 
@@ -430,8 +428,8 @@ fun SecurityTab(
                                 }
                                 Button(
                                     onClick = {
-                                        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).requestEmail().build()
-                                        GoogleSignIn.getClient(appContext, gso).signOut().addOnCompleteListener {
+                                        scope.launch {
+                                            runCatching { GoogleCredentialAuth.signOut(appContext) }
                                             parentPrefs.clearParentSession()
                                             currentToken = ""
                                             ApiClient.authToken = ""
@@ -473,16 +471,7 @@ fun SecurityTab(
                     }
                 } else {
                     OutlinedButton(
-                        onClick = {
-                            val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                                .requestEmail()
-                            val clientId = parentPrefs.googleClientId.trim()
-                            if (clientId.isNotBlank()) {
-                                gsoBuilder.requestIdToken(clientId)
-                            }
-                            val client = GoogleSignIn.getClient(appContext, gsoBuilder.build())
-                            googleLauncher.launch(client.signInIntent)
-                        },
+                        onClick = { connectGoogleAccount() },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(48.dp),
@@ -553,23 +542,26 @@ fun SecurityTab(
                                 isDeletingAccount = true
                                 try {
                                     ApiClient.api.deleteAccount()
-                                    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).requestEmail().build()
-                                    GoogleSignIn.getClient(appContext, gso).signOut().addOnCompleteListener {
-                                        parentPrefs.clearParentSession()
+                                    runCatching { GoogleCredentialAuth.signOut(appContext) }
+                                    parentPrefs.clearAccountData()
+                                    currentToken = ""
+                                    ApiClient.authToken = ""
+                                    showDeleteAccountDialog = false
+                                    onAccountDeleted()
+                                } catch (e: HttpException) {
+                                    if (e.code() == 401 || e.code() == 404) {
+                                        // The cloud account is already absent or the session no longer exists.
+                                        runCatching { GoogleCredentialAuth.signOut(appContext) }
+                                        parentPrefs.clearAccountData()
                                         currentToken = ""
                                         ApiClient.authToken = ""
                                         showDeleteAccountDialog = false
                                         onAccountDeleted()
+                                    } else {
+                                        accountStatusMessage = "Account deletion failed. Please try again."
                                     }
-                                } catch (e: Exception) {
-                                    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).requestEmail().build()
-                                    GoogleSignIn.getClient(appContext, gso).signOut().addOnCompleteListener {
-                                        parentPrefs.clearParentSession()
-                                        currentToken = ""
-                                        ApiClient.authToken = ""
-                                        showDeleteAccountDialog = false
-                                        onAccountDeleted()
-                                    }
+                                } catch (_: Exception) {
+                                    accountStatusMessage = "Could not contact the server. Your account was not deleted."
                                 } finally {
                                     isDeletingAccount = false
                                 }
@@ -978,6 +970,7 @@ fun SecurityTab(
                                         return@Button
                                     }
                                     parentPrefs.parentPin = newPinInput
+                                    parentPrefs.parentPinOwnerEmail = parentPrefs.parentEmail
                                     pinSuccessMessage = "Parent Master PIN changed successfully!"
                                     showChangeParentPinDialog = false
                                     onPinUpdated()

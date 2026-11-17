@@ -6,7 +6,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta, timezone
 from app.database import get_db
 from app.models import User, Child
-from app.auth import get_current_user, get_optional_current_user, verify_password, hash_password
+from app.auth import get_current_user, verify_password, hash_password
 import uuid
 
 router = APIRouter(prefix="/api/children", tags=["Children"])
@@ -261,11 +261,9 @@ async def delete_manage_child(
 @router.get("/profiles", response_model=List[ChildPublicProfile])
 async def list_public_child_profiles(
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """Used by Android app to display available children for login. Scoped strictly to authenticated parent."""
-    if not current_user:
-        return []
     result = await db.execute(select(Child).where(Child.parent_id == current_user.id))
     children = result.scalars().all()
     return [
@@ -342,8 +340,12 @@ async def delete_child(
 
 
 @router.post("/verify-pin")
-async def verify_child_pin(data: ChildPINVerify, db: AsyncSession = Depends(get_db)):
-    """Used by Android app to verify child PIN before showing their playlist. Protected against brute-force attacks."""
+async def verify_child_pin(
+    data: ChildPINVerify,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Verify a child PIN only inside the authenticated account that owns the child."""
     cid = data.child_id
     lockout = PIN_LOCKOUT_STORE.get(cid)
     now = datetime.now(timezone.utc)
@@ -357,7 +359,9 @@ async def verify_child_pin(data: ChildPINVerify, db: AsyncSession = Depends(get_
         elif now >= lockout["locked_until"]:
             del PIN_LOCKOUT_STORE[cid]
 
-    result = await db.execute(select(Child).where(Child.id == cid))
+    result = await db.execute(
+        select(Child).where(Child.id == cid, Child.parent_id == current_user.id)
+    )
     child = result.scalar_one_or_none()
     if not child:
         raise HTTPException(status_code=404, detail="Child not found")

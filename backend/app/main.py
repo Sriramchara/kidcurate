@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.config import settings
 from app.database import create_tables
-from app.routes import auth, children, videos, playlists, progress, ai
+from app.routes import auth, children, videos, playlists, progress
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -68,7 +68,6 @@ app.include_router(children.router)
 app.include_router(videos.router)
 app.include_router(playlists.router)
 app.include_router(progress.router)
-app.include_router(ai.router)
 
 
 @app.exception_handler(Exception)

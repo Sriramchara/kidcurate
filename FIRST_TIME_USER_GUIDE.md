@@ -28,7 +28,6 @@ Welcome to **KidCurate**! This guide walks you through setting up your account, 
 ### Step 5: Curate Educational Videos
 1. In the Parent Zone, go to **`Search & Add Videos`**.
 2. Type any educational topic (e.g. *"Solar System for kids"*, *"Phonics sounds"*, *"Dinosaurs for preschool"*).
-3. Tap **`Score with AI`** — the Gemini AI automatically evaluates the video for educational value, age appropriateness, and safety.
 4. Tap **`Add to Playlist`** to assign it to your child.
 
 ### Step 6: Hand the Device to Your Child! 🎉
@@ -52,7 +51,6 @@ You can also manage everything conveniently from your laptop or PC:
 3. In the **Parent Dashboard**:
    - View your children's profiles and recent watch history.
    - Search YouTube and curate educational playlists.
-   - View AI learning summaries and safety scores generated for each video.
    - Adjust screen-time limits and subject filters.
 
 ---
@@ -60,6 +58,5 @@ You can also manage everything conveniently from your laptop or PC:
 ## 🛡️ Key Safety & Parental Features
 
 - **Parent Gate**: Any attempt to leave the child player or open settings requires the Parent Password.
-- **AI Safety Scoring**: Every video is analyzed across multiple metrics: educational depth, language safety, cognitive engagement, and age suitability.
 - **Cross-Device Sync**: Any video added on the web portal appears on the child's mobile app instantly.
 

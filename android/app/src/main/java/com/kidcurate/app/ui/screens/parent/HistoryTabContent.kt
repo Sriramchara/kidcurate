@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAddCheck
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -198,7 +199,7 @@ fun HistoryTabContent(
                             modifier = Modifier.padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Icon(Icons.Rounded.PlaylistAddCheck, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(40.dp))
+                            Icon(Icons.AutoMirrored.Rounded.PlaylistAddCheck, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(40.dp))
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 text = "No Curated History Yet",

@@ -1,5 +1,7 @@
 package com.kidcurate.app.ui.components
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,21 +30,21 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import com.kidcurate.app.data.ApiClient
+import com.kidcurate.app.data.GoogleCredentialAuth
+import com.kidcurate.app.data.ParentSessionPolicy
+import com.kidcurate.app.data.ResponsiveLayoutPolicy
 import com.kidcurate.app.data.ParentPreferences
 import com.kidcurate.app.ui.theme.*
 import androidx.compose.material3.HorizontalDivider
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.ApiException
 
 /**
  * Clean, thematic character avatar without raw emojis.
@@ -307,12 +309,17 @@ fun ParentPasswordDialog(
 ) {
     val appContext = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val parentPrefs = remember { ParentPreferences(appContext) }
+    val parentPrefs = remember { ParentPreferences.get(appContext) }
 
     val initialMode = remember {
         if (forceGoogleOnly || (!parentPrefs.isParentLoggedIn && allowGoogleSignIn)) {
             ParentGateMode.GOOGLE_LOGIN
-        } else if (parentPrefs.hasParentPin) {
+        } else if (ParentSessionPolicy.canReusePin(
+                hasPin = parentPrefs.hasParentPin,
+                pinOwnerEmail = parentPrefs.parentPinOwnerEmail,
+                currentAccountEmail = parentPrefs.parentEmail,
+                signingInEmail = parentPrefs.parentEmail,
+            )) {
             ParentGateMode.PIN_UNLOCK
         } else if (!allowGoogleSignIn || parentPrefs.isParentLoggedIn) {
             ParentGateMode.SET_PIN
@@ -330,96 +337,95 @@ fun ParentPasswordDialog(
     var isResettingPin by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    val googleLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-        try {
-            val account = task.getResult(ApiException::class.java)
-            val email = account?.email ?: ""
-            if (email.isNotBlank()) {
-                isVerifying = true
-                errorMessage = null
-                val extractedName = account.displayName?.trim()?.ifBlank { null }
-                    ?: account.givenName?.trim()?.ifBlank { null }
-                    ?: email.substringBefore("@").replaceFirstChar { it.uppercase() }
-                parentPrefs.parentName = extractedName
+    fun triggerGoogleSignIn() {
+        coroutineScope.launch {
+            isVerifying = true
+            errorMessage = null
+            try {
+                val account = GoogleCredentialAuth.signIn(
+                    context = appContext,
+                    serverClientId = parentPrefs.googleClientId.trim(),
+                )
+                val email = account.email
+                val savedPinMatchesAccount = ParentSessionPolicy.canReusePin(
+                    hasPin = parentPrefs.hasParentPin,
+                    pinOwnerEmail = parentPrefs.parentPinOwnerEmail,
+                    currentAccountEmail = parentPrefs.parentEmail,
+                    signingInEmail = email,
+                )
+                parentPrefs.parentName = account.name
                 parentPrefs.parentEmail = email
 
-                coroutineScope.launch {
-                    try {
-                        val payload = mutableMapOf<String, String>()
-                        account.idToken?.let { if (it.isNotBlank()) payload["id_token"] = it }
-                        payload["email"] = email
-                        payload["name"] = extractedName
-                        val resp = ApiClient.api.googleLogin(payload)
-                        val token = resp["access_token"] as? String ?: ""
-                        val refreshToken = resp["refresh_token"] as? String ?: ""
-                        val serverName = (resp["name"] as? String)?.trim() ?: ""
-                        if (serverName.isNotBlank() && serverName != "Parent") {
-                            parentPrefs.parentName = serverName
-                        }
-                        if (token.isNotBlank()) {
-                            parentPrefs.parentAuthToken = token
-                            if (refreshToken.isNotBlank()) {
-                                parentPrefs.parentRefreshToken = refreshToken
-                            }
-                            ApiClient.authToken = token
-                            isVerifying = false
-                            if (isResettingPin || !parentPrefs.hasParentPin) {
-                                parentPrefs.parentPin = ""
-                                newPinInput = ""
-                                confirmPinInput = ""
-                                isResettingPin = false
-                                currentMode = ParentGateMode.SET_PIN
-                            } else {
-                                onSuccess()
-                            }
-                        } else {
-                            isVerifying = false
-                            errorMessage = "Server did not issue a session token."
-                        }
-                    } catch (e: Exception) {
-                        isVerifying = false
-                        errorMessage = "Login error: ${e.message}"
-                    }
+                val resp = ApiClient.api.googleLogin(
+                    mapOf(
+                        "id_token" to account.idToken,
+                        "email" to email,
+                        "name" to account.name,
+                    )
+                )
+                val token = resp["access_token"] as? String ?: ""
+                val refreshToken = resp["refresh_token"] as? String ?: ""
+                val serverName = (resp["name"] as? String)?.trim() ?: ""
+                if (serverName.isNotBlank() && serverName != "Parent") {
+                    parentPrefs.parentName = serverName
                 }
-            } else {
-                errorMessage = "Google sign-in was cancelled."
+                if (token.isBlank()) {
+                    errorMessage = "Server did not issue a session token."
+                    return@launch
+                }
+
+                parentPrefs.parentAuthToken = token
+                parentPrefs.parentRefreshToken = refreshToken
+                ApiClient.authToken = token
+                if (isResettingPin || !savedPinMatchesAccount) {
+                    parentPrefs.parentPin = ""
+                    parentPrefs.parentPinOwnerEmail = ""
+                    newPinInput = ""
+                    confirmPinInput = ""
+                    isResettingPin = false
+                    currentMode = ParentGateMode.SET_PIN
+                } else {
+                    parentPrefs.parentPinOwnerEmail = email
+                    onSuccess()
+                }
+            } catch (e: Exception) {
+                errorMessage = GoogleCredentialAuth.userMessage(e)
+            } finally {
+                isVerifying = false
             }
-        } catch (e: ApiException) {
-            errorMessage = "Google Sign-In failed (${e.statusCode}): ${e.message}"
         }
     }
 
-    fun triggerGoogleSignIn() {
-        val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestEmail()
-        val clientId = parentPrefs.googleClientId.trim()
-        if (clientId.isNotBlank()) {
-            gsoBuilder.requestIdToken(clientId)
-        }
-        val client = GoogleSignIn.getClient(appContext, gsoBuilder.build())
-        client.signOut().addOnCompleteListener {
-            googleLauncher.launch(client.signInIntent)
-        }
-    }
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
+    val compactHeight = ResponsiveLayoutPolicy.isCompactLandscape(
+        configuration.screenWidthDp,
+        configuration.screenHeightDp,
+    )
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
         GlassCard(
             shape = RoundedCornerShape(28.dp),
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+                .fillMaxWidth(if (isLandscape) 0.52f else 0.92f)
+                .widthIn(max = 520.dp)
+                .padding(if (compactHeight) 8.dp else 16.dp),
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
+                modifier = Modifier
+                    .heightIn(max = (configuration.screenHeightDp * 0.9f).dp)
+                    .verticalScroll(rememberScrollState())
+                    .imePadding()
+                    .padding(if (compactHeight) 12.dp else 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // Icon Header
                 Box(
                     modifier = Modifier
-                        .size(56.dp)
+                        .size(if (compactHeight) 40.dp else 56.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center,
@@ -432,11 +438,11 @@ fun ParentPasswordDialog(
                         },
                         contentDescription = "Parent Gate",
                         tint = BrandPrimary,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(if (compactHeight) 22.dp else 28.dp),
                     )
                 }
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(if (compactHeight) 6.dp else 14.dp))
 
                 // Title and Subtitle based on state
                 Text(
@@ -463,7 +469,10 @@ fun ParentPasswordDialog(
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
+                    modifier = Modifier.padding(
+                        top = if (compactHeight) 2.dp else 4.dp,
+                        bottom = if (compactHeight) 8.dp else 16.dp,
+                    ),
                 )
 
                 // Mode-specific content
@@ -665,7 +674,7 @@ fun ParentPasswordDialog(
                     )
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(if (compactHeight) 8.dp else 16.dp))
 
                 // Bottom Action Buttons
                 Row(
@@ -708,6 +717,7 @@ fun ParentPasswordDialog(
                                         errorMessage = "PINs do not match."
                                     } else {
                                         parentPrefs.parentPin = newPinInput
+                                        parentPrefs.parentPinOwnerEmail = parentPrefs.parentEmail
                                         onSuccess()
                                     }
                                 },

@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.kidcurate.app.data.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -62,13 +61,16 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadProfiles() {
         viewModelScope.launch {
-            if (parentPrefs.parentAuthToken.isNotBlank()) {
-                ApiClient.authToken = parentPrefs.parentAuthToken
+            if (!parentPrefs.isParentLoggedIn) {
+                ApiClient.authToken = ""
+                _state.value = KidAppState(screen = AppScreen.ChildSelect)
+                return@launch
             }
+            ApiClient.authToken = parentPrefs.parentAuthToken
             if (parentPrefs.serverUrl.isNotBlank()) {
                 ApiClient.updateBaseUrl(parentPrefs.serverUrl)
             }
-            // 1. Immediately restore cached profiles if available for instant offline / startup UI
+            // Restore cached profiles only while an authenticated parent session exists.
             if (parentPrefs.cachedProfilesJson.isNotBlank()) {
                 try {
                     val listType = object : TypeToken<List<ChildProfileItem>>() {}.type
@@ -111,6 +113,12 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
+            if (!parentPrefs.isParentLoggedIn) {
+                ApiClient.authToken = ""
+                _state.value = KidAppState(screen = AppScreen.ChildSelect)
+                return@launch
+            }
+
             if (fetchedProfiles != null) {
                 if (fetchedProfiles.isNotEmpty()) {
                     parentPrefs.cachedProfilesJson = gson.toJson(fetchedProfiles)
@@ -130,26 +138,14 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                             screen = AppScreen.ChildSelect,
                         )
                     } else {
-                        // Local device has child profiles, but cloud returned 0 (e.g. after container restart)
-                        // Seamlessly re-synchronize cached children to restore cloud persistence
-                        if (parentPrefs.parentAuthToken.isNotBlank()) {
-                            val cachedToSync = _state.value.availableProfiles
-                            viewModelScope.launch(Dispatchers.IO) {
-                                for (p in cachedToSync) {
-                                    try {
-                                        ApiClient.api.createChild(
-                                            ChildCreateRequest(
-                                                name = p.name,
-                                                age = 7,
-                                                avatar = p.avatar,
-                                                pin = "1234",
-                                            )
-                                        )
-                                    } catch (_: Exception) {}
-                                }
-                            }
-                        }
-                        _state.value = _state.value.copy(isLoading = false, error = null)
+                        // The cloud is authoritative. Never recreate profiles with a default PIN.
+                        parentPrefs.cachedProfilesJson = ""
+                        _state.value = _state.value.copy(
+                            availableProfiles = emptyList(),
+                            isLoading = false,
+                            error = null,
+                            screen = AppScreen.ChildSelect,
+                        )
                     }
                 }
             } else {
@@ -171,6 +167,13 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectProfile(profile: ChildProfileItem) {
+        if (!parentPrefs.isParentLoggedIn) {
+            _state.value = KidAppState(
+                screen = AppScreen.ChildSelect,
+                error = "Parent Google sign-in is required before opening a child profile.",
+            )
+            return
+        }
         _state.value = _state.value.copy(
             childId = profile.id,
             childName = profile.name,
@@ -187,9 +190,15 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    fun ensureParentSession() {
+        if (!parentPrefs.isParentLoggedIn) {
+            ApiClient.authToken = ""
+            _state.value = KidAppState(screen = AppScreen.ChildSelect)
+        }
+    }
+
     fun resetAllAccountData() {
-        parentPrefs.clearParentSession()
-        parentPrefs.cachedProfilesJson = ""
+        parentPrefs.clearAccountData()
         ApiClient.authToken = ""
         _state.value = KidAppState(
             screen = AppScreen.ChildSelect,
@@ -204,42 +213,28 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     suspend fun verifyPin(childId: String, pin: String): Boolean {
+        if (!parentPrefs.isParentLoggedIn) {
+            ApiClient.authToken = ""
+            _state.value = KidAppState(
+                screen = AppScreen.ChildSelect,
+                error = "Parent Google sign-in is required before opening a child profile.",
+            )
+            return false
+        }
         _state.value = _state.value.copy(isLoading = true, error = null)
 
-        // 1. Fast offline verification: check local encrypted preferences first
-        val localPin = parentPrefs.getChildLocalPin(childId)
-        if (localPin.isNotBlank() && localPin == pin) {
-            val child = _state.value.availableProfiles.find { it.id == childId }
-            val name = child?.name ?: _state.value.childName
-            val avatar = child?.avatar ?: _state.value.childAvatar
-            _state.value = _state.value.copy(
-                childId = childId,
-                childName = name,
-                childAvatar = avatar,
-                screen = AppScreen.Playlist(
-                    childId = childId,
-                    childName = name,
-                    childAvatar = avatar,
-                ),
-                isLoading = false,
-                error = null,
-            )
-            loadTodaysPlaylist(childId)
-            return true
-        }
-
-        // 2. Cloud verification with fallback
+        // Always verify against the authenticated parent account. A cached child PIN
+        // must never outlive a signed-out or deleted parent account.
         return try {
             val response = ApiClient.api.verifyPin(
                 ChildVerifyRequest(childId = childId, pin = pin)
             )
             if (response.verified) {
-                // Cache verified PIN locally for instant offline unlocks
-                parentPrefs.setChildLocalPin(childId, pin)
                 _state.value = _state.value.copy(
                     childId = response.childId,
                     childName = response.name,
                     childAvatar = response.avatar,
+                    playlist = null,
                     screen = AppScreen.Playlist(
                         childId = response.childId,
                         childName = response.name,
@@ -258,6 +253,15 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 false
             }
         } catch (e: retrofit2.HttpException) {
+            if (e.code() == 401) {
+                parentPrefs.clearParentSession()
+                ApiClient.authToken = ""
+                _state.value = KidAppState(
+                    screen = AppScreen.ChildSelect,
+                    error = "Your parent session ended. Sign in with Google to continue.",
+                )
+                return false
+            }
             val detail = try {
                 val body = e.response()?.errorBody()?.string() ?: ""
                 org.json.JSONObject(body).optString("detail", "")
@@ -291,10 +295,18 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun unlockChildDirectly(childId: String, name: String, avatar: String) {
+        if (!parentPrefs.isParentLoggedIn) {
+            _state.value = KidAppState(
+                screen = AppScreen.ChildSelect,
+                error = "Parent Google sign-in is required before opening a child profile.",
+            )
+            return
+        }
         _state.value = _state.value.copy(
             childId = childId,
             childName = name,
             childAvatar = avatar,
+            playlist = null,
             screen = AppScreen.Playlist(
                 childId = childId,
                 childName = name,
@@ -308,25 +320,35 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadTodaysPlaylist(childId: String) {
         viewModelScope.launch {
-            // Restore per-child cached playlist first if available
-            val cachedJson = parentPrefs.getCachedPlaylist(childId)
-            if (cachedJson.isNotBlank()) {
-                try {
-                    val cached: PlaylistData = gson.fromJson(cachedJson, PlaylistData::class.java)
-                    if (cached.items.isNotEmpty()) {
-                        _state.value = _state.value.copy(playlist = cached)
-                    }
-                } catch (_: Exception) {}
+            if (!parentPrefs.isParentLoggedIn) {
+                _state.value = KidAppState(
+                    screen = AppScreen.ChildSelect,
+                    error = "Parent Google sign-in is required before opening a child profile.",
+                )
+                return@launch
             }
-
             try {
                 val response = ApiClient.api.getTodaysPlaylist(childId)
-                parentPrefs.setCachedPlaylist(childId, gson.toJson(response.playlist))
                 _state.value = _state.value.copy(playlist = response.playlist, error = null)
-            } catch (e: Exception) {
-                if (_state.value.playlist == null) {
-                    _state.value = _state.value.copy(error = "Could not load playlist")
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 401) {
+                    parentPrefs.clearParentSession()
+                    ApiClient.authToken = ""
+                    _state.value = KidAppState(
+                        screen = AppScreen.ChildSelect,
+                        error = "Your parent session ended. Sign in with Google to continue.",
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        playlist = null,
+                        error = "Could not load playlist. Please try again.",
+                    )
                 }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    playlist = null,
+                    error = "Could not load playlist. Please check your connection.",
+                )
             }
         }
     }

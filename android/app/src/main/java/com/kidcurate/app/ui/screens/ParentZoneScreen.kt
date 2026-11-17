@@ -1,8 +1,6 @@
 package com.kidcurate.app.ui.screens
 
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,6 +18,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,9 +40,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.ApiException
 import com.kidcurate.app.data.*
 import com.kidcurate.app.ui.screens.parent.*
 import com.kidcurate.app.ui.components.GlassBackgroundAura
@@ -289,7 +285,7 @@ fun ParentZoneScreen(
                                 modifier = Modifier.size(36.dp),
                             ) {
                                 Icon(
-                                    Icons.Rounded.HelpOutline,
+                                    Icons.AutoMirrored.Rounded.HelpOutline,
                                     contentDescription = "App Tour & Guide",
                                     tint = BrandPrimary,
                                     modifier = Modifier.size(20.dp),
@@ -340,7 +336,7 @@ fun ParentZoneScreen(
                                 text = {
                                     Text(
                                         text = title,
-                                        fontSize = 12.sp,
+                                        fontSize = 10.sp,
                                         fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Medium,
                                         maxLines = 1,
                                     )

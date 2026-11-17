@@ -1,10 +1,22 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
 layout.buildDirectory.set(file("C:/tmp/kidcurate-build/app"))
+
+val localSigningProperties = Properties().apply {
+    val propertiesFile = rootProject.file("keystore.properties")
+    if (propertiesFile.exists()) {
+        propertiesFile.inputStream().use(::load)
+    }
+}
+val releaseStorePassword = System.getenv("KIDCURATE_STORE_PASSWORD")
+    ?: localSigningProperties.getProperty("storePassword")
+val releaseKeyPassword = System.getenv("KIDCURATE_KEY_PASSWORD")
+    ?: localSigningProperties.getProperty("keyPassword")
 
 // Force IDE Sync prompt
 android {
@@ -29,9 +41,13 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file("keystore/kidcurate-release.jks")
-            storePassword = "kidcurate2026"
+            storePassword = requireNotNull(releaseStorePassword) {
+                "Set KIDCURATE_STORE_PASSWORD or android/keystore.properties before building a release."
+            }
             keyAlias = "kidcurate"
-            keyPassword = "kidcurate2026"
+            keyPassword = requireNotNull(releaseKeyPassword) {
+                "Set KIDCURATE_KEY_PASSWORD or android/keystore.properties before building a release."
+            }
         }
     }
 
@@ -56,13 +72,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    kotlinOptions {
-        jvmTarget = "11"
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true
     }
 }
 
@@ -96,8 +109,10 @@ dependencies {
     // Encrypted SharedPreferences backed by Android Keystore
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
-    // Google Sign-In SDK
-    implementation("com.google.android.gms:play-services-auth:21.2.0")
+    // Google Sign-In through Android Credential Manager
+    implementation("androidx.credentials:credentials:1.6.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.2.0")
 
     // Image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
@@ -111,4 +126,5 @@ dependencies {
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    testImplementation("junit:junit:4.13.2")
 }

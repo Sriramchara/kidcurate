@@ -50,6 +50,7 @@ build/
 android/build/
 android/app/build/
 android/local.properties
+android/keystore.properties
 captures/
 .externalNativeBuild/
 .cxx/

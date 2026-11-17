@@ -25,10 +25,6 @@ interface Video {
   channel_name: string;
   thumbnail_url: string;
   duration_seconds: number;
-  educational_score?: number;
-  safety_score?: number;
-  overall_score?: number;
-  ai_summary?: string;
   is_safe?: boolean;
   subject_tags?: string[];
   description?: string;
@@ -48,8 +44,7 @@ export default function VideoSearchPage() {
   const { id: childId } = useParams<{ id: string }>();
   const router = useRouter();
   const [query, setQuery] = useState('');
-  const [age, setAge] = useState('');
-  const [useAI, setUseAI] = useState(false);
+  const [age] = useState('');
   const [licenseFilter, setLicenseFilter] = useState<'all' | 'licensed' | 'unlicensed'>('all');
   const [results, setResults] = useState<Video[]>([]);
   const [searching, setSearching] = useState(false);
@@ -80,7 +75,7 @@ export default function VideoSearchPage() {
     setError('');
     setResults([]);
     try {
-      const data = await api.searchVideos(query, age ? parseInt(age) : undefined, useAI);
+      const data = await api.searchVideos(query, age ? parseInt(age) : undefined);
       setResults(data);
     } catch (err: any) {
       setError(err.message || 'Search failed');
@@ -111,12 +106,6 @@ export default function VideoSearchPage() {
     }
   }
 
-  function scoreColor(score?: number) {
-    if (!score) return 'var(--text-muted)';
-    if (score >= 80) return 'var(--brand-success)';
-    if (score >= 60) return 'var(--brand-accent)';
-    return '#EF4444';
-  }
 
   function formatDuration(secs: number) {
     const m = Math.floor(secs / 60);
@@ -190,43 +179,6 @@ export default function VideoSearchPage() {
 
               {/* Filters */}
               <div className="flex flex-wrap items-center gap-6 pt-2 border-t border-[var(--border-subtle)] text-xs">
-                <div className="flex items-center gap-2">
-                  <label className="text-[var(--text-secondary)] font-medium">Child Age:</label>
-                  <input 
-                    type="number" 
-                    value={age} 
-                    onChange={e => setAge(e.target.value)}
-                    placeholder="7" 
-                    min="1" 
-                    max="18" 
-                    className="w-16 px-2.5 py-1.5 rounded-lg bg-[var(--surface-card)] border border-[var(--border-subtle)] text-center text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
-                  />
-                </div>
-
-                <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                  <div className="relative">
-                    <input 
-                      type="checkbox" 
-                      checked={useAI} 
-                      onChange={e => setUseAI(e.target.checked)} 
-                      className="sr-only" 
-                    />
-                    <div 
-                      className="w-9 h-5 rounded-full transition-colors" 
-                      style={{ background: useAI ? 'var(--brand-primary)' : 'var(--border-subtle)' }}
-                    >
-                      <div 
-                        className="w-3.5 h-3.5 rounded-full bg-white absolute top-0.75 transition-transform shadow-xs"
-                        style={{ left: useAI ? '18px' : '3px' }} 
-                      />
-                    </div>
-                  </div>
-                  <span className="flex items-center gap-1 font-semibold text-[var(--text-secondary)]">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Gemini AI Scoring</span>
-                  </span>
-                </label>
-
                 <div className="flex items-center gap-2 ml-auto">
                   <label className="text-[var(--text-secondary)]">Content:</label>
                   <select
@@ -255,7 +207,7 @@ export default function VideoSearchPage() {
               <div className="glass-card text-center py-16 text-[var(--text-secondary)]">
                 <Loader2 className="w-10 h-10 animate-spin mx-auto text-[var(--brand-primary)] mb-3" />
                 <p className="font-semibold text-[var(--text-primary)]">
-                  {useAI ? 'Gemini AI is analyzing transcripts and content...' : 'Searching safe YouTube database...'}
+                  Searching YouTube...
                 </p>
                 <p className="text-xs text-[var(--text-muted)] mt-1">Filtering embeds and verifying child safety</p>
               </div>
@@ -305,15 +257,6 @@ export default function VideoSearchPage() {
                       {video.channel_name}
                     </p>
 
-                    {/* AI Score Pills */}
-                    {video.overall_score !== undefined && (
-                      <div className="flex flex-wrap gap-2 mb-2.5">
-                        <ScorePill label="Overall Score" value={video.overall_score} scoreColor={scoreColor} />
-                        <ScorePill label="Educational" value={video.educational_score} scoreColor={scoreColor} />
-                        <ScorePill label="Safety" value={video.safety_score} scoreColor={scoreColor} />
-                      </div>
-                    )}
-
                     {video.subject_tags && video.subject_tags.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mb-2">
                         {video.subject_tags.slice(0, 3).map(tag => (
@@ -327,11 +270,6 @@ export default function VideoSearchPage() {
                       </div>
                     )}
 
-                    {video.ai_summary && (
-                      <p className="text-xs text-[var(--text-muted)] line-clamp-2">
-                        {video.ai_summary}
-                      </p>
-                    )}
                   </div>
 
                   {/* Actions Column */}
@@ -385,7 +323,7 @@ export default function VideoSearchPage() {
                     Explore Safe Educational Topics
                   </h3>
                   <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto mb-6">
-                    Pick a popular subject below or enter a customized lesson query above to discover videos with AI comprehension scores.
+                    Pick a popular subject below or enter a customized lesson query above to discover videos for parent review.
                   </p>
                   <div className="flex flex-wrap justify-center gap-2.5 max-w-lg mx-auto">
                     {sampleTopics.map(topic => (
@@ -394,7 +332,7 @@ export default function VideoSearchPage() {
                         onClick={() => {
                           setQuery(topic);
                           setSearching(true);
-                          api.searchVideos(topic, age ? parseInt(age) : undefined, useAI)
+                          api.searchVideos(topic, age ? parseInt(age) : undefined)
                             .then(setResults)
                             .catch(e => setError(e.message))
                             .finally(() => setSearching(false));
@@ -530,17 +468,6 @@ export default function VideoSearchPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function ScorePill({ label, value, scoreColor }: { label: string; value?: number; scoreColor: (v?: number) => string }) {
-  return (
-    <div className="text-[11px] px-2.5 py-1 rounded-lg flex items-center gap-1.5 bg-[var(--surface-card)] border border-[var(--border-subtle)]">
-      <span className="text-[var(--text-secondary)] font-medium">{label}:</span>
-      <span className="font-bold font-mono" style={{ color: scoreColor(value) }}>
-        {value ?? '—'}
-      </span>
     </div>
   );
 }

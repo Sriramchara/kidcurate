@@ -108,8 +108,8 @@ export const api = {
   deleteChild: (id: string) => apiFetch(`/api/children/${id}`, { method: 'DELETE' }),
 
   // Videos
-  searchVideos: (q: string, age?: number, aiScore = false) => {
-    const params = new URLSearchParams({ q, ai_score: String(aiScore) });
+  searchVideos: (q: string, age?: number) => {
+    const params = new URLSearchParams({ q });
     if (age) params.append('age', String(age));
     return apiFetch(`/api/videos/search?${params}`);
   },
@@ -140,11 +140,7 @@ export const api = {
   getChildProgress: (childId: string) => apiFetch(`/api/progress/child/${childId}/summary`),
   getWatchHistory: (childId: string) => apiFetch(`/api/progress/child/${childId}/history`),
 
-  // AI
-  generateCurriculum: (data: { child_age: number; subject: string; goals?: string; num_days?: number }) =>
-    apiFetch('/api/ai/curriculum', { method: 'POST', body: JSON.stringify(data) }),
-  applyCurriculum: (childId: string, curriculum: any) =>
-    apiFetch('/api/ai/curriculum/apply', { method: 'POST', body: JSON.stringify({ child_id: childId, curriculum }) }),
+
 };
 
 export default api;

@@ -30,9 +30,8 @@ services:
       - "DATABASE_URL=postgresql+asyncpg://kidcurate:${DB_PASSWORD:?DB_PASSWORD must be set in environment}@postgres:5432/kidcurate_db"
       - "SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in environment}"
       - ALGORITHM=HS256
-      - ACCESS_TOKEN_EXPIRE_MINUTES=10080
+      - ACCESS_TOKEN_EXPIRE_MINUTES=15
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-179684236627-d7j0s15cvkj6li430jku6easqma5q81l.apps.googleusercontent.com}
       - 'CORS_ORIGINS=["https://app.kidcurate.com","http://localhost:3000"]'
       - DEBUG=false

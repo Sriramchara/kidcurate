@@ -15,11 +15,18 @@ services:
       - key: CORS_ORIGINS
         value: '["https://testeenspace.site","http://localhost:3000"]'
       - key: DATABASE_URL
-        value: sqlite+aiosqlite:///kidcurate.db
+        fromDatabase:
+          name: kidcurate-db
+          property: connectionString
       - key: SECRET_KEY
         generateValue: true
       - key: YOUTUBE_API_KEY
         sync: false
-      - key: GEMINI_API_KEY
-        sync: false
+
+databases:
+  - name: kidcurate-db
+    plan: free
+    databaseName: kidcurate
+    user: kidcurate
+    ipAllowList: []
 

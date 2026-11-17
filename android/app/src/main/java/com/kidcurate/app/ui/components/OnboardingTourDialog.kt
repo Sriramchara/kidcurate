@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Backspace
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.rounded.*
@@ -70,7 +71,7 @@ val TOUR_STEPS = listOf(
             ),
             ButtonGuideItem(
                 buttonName = "Backspace ⌫",
-                icon = Icons.Rounded.Backspace,
+                icon = Icons.AutoMirrored.Rounded.Backspace,
                 actionDescription = "Deletes digits one by one so mistakes can be easily fixed."
             ),
         ),

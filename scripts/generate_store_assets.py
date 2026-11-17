@@ -131,7 +131,6 @@ def generate_feature_graphic():
     # Feature Badges
     badges = [
         ("Shield", "100% Parent Controlled & Ad-Free", 280),
-        ("Sparkles", "AI-Curated Weekly Learning Quest", 330),
         ("Trophy", "Phonics Karaoke & Screen-Time Locks", 380),
     ]
     for icon_name, text, y_pos in badges:

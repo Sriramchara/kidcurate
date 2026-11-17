@@ -1,3 +1,7 @@
+import os
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+os.environ["ENVIRONMENT"] = "test"
+
 import sys
 from pathlib import Path
 
@@ -13,6 +17,7 @@ from httpx import AsyncClient, ASGITransport
 from app.main import app
 from app.database import engine, AsyncSessionLocal
 from app.models import Base, User, Child
+from app.config import Settings
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -37,6 +42,16 @@ async def test_root_and_health():
         health_resp = await ac.get("/health")
         assert health_resp.status_code == 200
         assert health_resp.json()["status"] == "ok"
+
+
+def test_production_rejects_ephemeral_sqlite_database():
+    with pytest.raises(ValueError, match="persistent PostgreSQL"):
+        Settings(
+            _env_file=None,
+            ENVIRONMENT="production",
+            DATABASE_URL="sqlite+aiosqlite:///kidcurate.db",
+            SECRET_KEY="a-secure-production-secret-that-is-long-enough",
+        )
 
 
 @pytest.mark.asyncio
@@ -68,6 +83,20 @@ async def test_auth_registration_and_login():
         })
         assert login_resp.status_code == 200
         assert "access_token" in login_resp.json()
+
+        # Google login must never trust a caller-supplied email without a valid ID token.
+        email_only = await ac.post("/api/auth/google", json={
+            "email": "attacker@example.com",
+            "name": "Attacker",
+        })
+        assert email_only.status_code == 422
+
+        invalid_google_token = await ac.post("/api/auth/google", json={
+            "id_token": "not-a-google-token",
+            "email": "attacker@example.com",
+            "name": "Attacker",
+        })
+        assert invalid_google_token.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -123,7 +152,7 @@ async def test_child_management_security_and_pin_hashing():
         assert child_data.get("has_pin") is True
 
         # 4. Verify PIN verification works
-        verify_resp = await ac.post("/api/children/verify-pin", json={
+        verify_resp = await ac.post("/api/children/verify-pin", headers=headers1, json={
             "child_id": child_id,
             "pin": "1234"
         })
@@ -131,11 +160,20 @@ async def test_child_management_security_and_pin_hashing():
         assert verify_resp.json()["verified"] is True
 
         # Wrong PIN returns 401
-        wrong_verify = await ac.post("/api/children/verify-pin", json={
+        wrong_verify = await ac.post("/api/children/verify-pin", headers=headers1, json={
             "child_id": child_id,
             "pin": "9999"
         })
         assert wrong_verify.status_code == 401
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as unauth_ac:
+            unauth_profiles = await unauth_ac.get("/api/children/profiles")
+            assert unauth_profiles.status_code == 401
+            unauth_verify = await unauth_ac.post("/api/children/verify-pin", json={
+                "child_id": child_id,
+                "pin": "1234",
+            })
+            assert unauth_verify.status_code == 401
 
         # 5. Register parent 2 and verify tenant isolation
         p2 = await ac.post("/api/auth/register", json={
@@ -145,6 +183,13 @@ async def test_child_management_security_and_pin_hashing():
         })
         token2 = p2.json()["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
+
+        cross_account_verify = await ac.post(
+            "/api/children/verify-pin",
+            headers=headers2,
+            json={"child_id": child_id, "pin": "1234"},
+        )
+        assert cross_account_verify.status_code == 404
 
         # Parent 2 should NOT see parent 1's child
         p2_children = await ac.get("/api/children/manage", headers=headers2)
@@ -436,57 +481,6 @@ async def test_apply_activity_pack_and_position_indexing():
         apply_resp = await ac.post(f"/api/playlists/child/{child_id}/apply-pack/{pack_id}", headers=headers)
         assert apply_resp.status_code == 200
         assert apply_resp.json()["status"] == "ok"
-
-
-@pytest.mark.asyncio
-async def test_apply_curriculum():
-    """Verify AI curriculum apply succeeds without video_count type error (BUG-002)."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        reg = await ac.post("/api/auth/register", json={
-            "email": "curriculum_test@example.com",
-            "password": "validpassword123",
-            "name": "Curriculum Parent"
-        })
-        assert reg.status_code == 201
-        headers = {"Authorization": f"Bearer {reg.json()['access_token']}"}
-
-        c_resp = await ac.post("/api/children/manage", headers=headers, json={
-            "name": "Curriculum Kid",
-            "age": 7,
-            "avatar": "book",
-            "pin": "9999"
-        })
-        assert c_resp.status_code == 200
-        child_id = c_resp.json()["id"]
-
-        apply_resp = await ac.post(
-            "/api/ai/curriculum/apply",
-            headers=headers,
-            json={
-                "child_id": child_id,
-                "curriculum": {
-                    "days": [
-                        {
-                            "day_number": 1,
-                            "topic": "Solar System Basics",
-                            "videos": [
-                                {
-                                    "youtube_id": "curr_vid_1",
-                                    "title": "Sun and Planets",
-                                    "channel_name": "SpaceKids",
-                                    "thumbnail_url": "https://img.youtube.com/vi/curr_vid_1/hqdefault.jpg",
-                                    "duration_seconds": 240
-                                }
-                            ]
-                        }
-                    ]
-                }
-            }
-        )
-        assert apply_resp.status_code == 200
-        res_data = apply_resp.json()
-        assert res_data["status"] == "success"
-        assert len(res_data["playlists"]) == 1
 
 
 @pytest.mark.asyncio

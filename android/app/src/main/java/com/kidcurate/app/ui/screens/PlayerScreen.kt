@@ -26,7 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -218,7 +218,7 @@ fun PlayerScreen(
                             if (currentIndex + 1 < videos.size) {
                                 showEndCelebration = true
                             } else {
-                                if (currentVideo != null) onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
+                                onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
                                 onAllCompleted()
                             }
                         },
@@ -239,7 +239,7 @@ fun PlayerScreen(
                             }
                         },
                         onSkipNext = if (currentIndex + 1 < videos.size && (isCurrentVideoCompleted || currentVideoHasError)) { { currentIndex++ } } else null,
-                        onFinishPlaylist = if (currentIndex + 1 >= videos.size) { { onAllCompleted() } } else null,
+                        onFinishPlaylist = if (currentIndex + 1 >= videos.size) { { onBack() } } else null,
                         onPlaybackError = { hasErr ->
                             currentVideoHasError = hasErr
                         },
@@ -544,7 +544,7 @@ fun PlayerScreen(
                         if (currentIndex + 1 < videos.size) {
                             Button(
                                 onClick = {
-                                    if (currentVideo != null && isCurrentVideoCompleted) onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
+                                    if (isCurrentVideoCompleted) onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
                                     currentIndex++
                                 },
                                 modifier = Modifier
@@ -560,8 +560,8 @@ fun PlayerScreen(
                         } else {
                             Button(
                                 onClick = {
-                                    if (currentVideo != null && isCurrentVideoCompleted) onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
-                                    onAllCompleted()
+                                    if (isCurrentVideoCompleted) onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
+                                    if (isCurrentVideoCompleted) onAllCompleted() else onBack()
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -571,7 +571,7 @@ fun PlayerScreen(
                             ) {
                                 Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Finish Playlist", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text(if (currentVideoHasError) "Back to Playlist" else "Finish Playlist", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
                         }
                     } else {
@@ -721,7 +721,7 @@ fun PlayerScreen(
                     Button(
                         onClick = {
                             showEndCelebration = false
-                            if (currentVideo != null) onVideoCompleted(currentVideo, 60)
+                            onVideoCompleted(currentVideo, 60)
                             if (currentIndex + 1 < videos.size) {
                                 currentIndex++
                             } else {
@@ -964,7 +964,6 @@ fun OptimizedVideoPlayer(
                             val wv = findWebView(this@apply)
                             wv?.settings?.apply {
                                 domStorageEnabled = true
-                                databaseEnabled = true
                                 mediaPlaybackRequiresUserGesture = false
                             }
                             try {
@@ -1037,7 +1036,6 @@ fun OptimizedVideoPlayer(
                 val wv = findWebView(playerView)
                 wv?.settings?.apply {
                     domStorageEnabled = true
-                    databaseEnabled = true
                     mediaPlaybackRequiresUserGesture = false
                 }
                 try {
