@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.kidcurate.app.data.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -129,6 +130,25 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                             screen = AppScreen.ChildSelect,
                         )
                     } else {
+                        // Local device has child profiles, but cloud returned 0 (e.g. after container restart)
+                        // Seamlessly re-synchronize cached children to restore cloud persistence
+                        if (parentPrefs.parentAuthToken.isNotBlank()) {
+                            val cachedToSync = _state.value.availableProfiles
+                            viewModelScope.launch(Dispatchers.IO) {
+                                for (p in cachedToSync) {
+                                    try {
+                                        ApiClient.api.createChild(
+                                            ChildCreateRequest(
+                                                name = p.name,
+                                                age = 7,
+                                                avatar = p.avatar,
+                                                pin = "1234",
+                                            )
+                                        )
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        }
                         _state.value = _state.value.copy(isLoading = false, error = null)
                     }
                 }
