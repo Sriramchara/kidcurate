@@ -489,5 +489,52 @@ async def test_apply_curriculum():
         assert len(res_data["playlists"]) == 1
 
 
+@pytest.mark.asyncio
+async def test_curation_history_endpoint():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        email = f"curate_hist_{uuid.uuid4().hex[:6]}@example.com"
+        reg = await ac.post("/api/auth/register", json={
+            "email": email,
+            "password": "Password123!",
+            "name": "Audit Parent"
+        })
+        assert reg.status_code == 201
+        headers = {"Authorization": f"Bearer {reg.json()['access_token']}"}
+
+        # Create child
+        c_resp = await ac.post("/api/children/manage", headers=headers, json={
+            "name": "Audit Kid",
+            "age": 6,
+            "avatar": "star",
+            "pin": "1234"
+        })
+        assert c_resp.status_code == 200
+        child_id = c_resp.json()["id"]
+
+        # 1. Add video directly with mock YouTube embed verification
+        with patch("app.routes.playlists.verify_youtube_embeddable", new=AsyncMock(return_value=(True, "OK"))):
+            add_resp = await ac.post(f"/api/playlists/child/{child_id}/add-video", headers=headers, json={
+                "youtube_id": "_7jhd4-o9gU",
+                "title": "Twinkle Twinkle Little Star",
+                "channel_name": "Super Simple Songs",
+                "thumbnail_url": "https://img.youtube.com/vi/_7jhd4-o9gU/hqdefault.jpg",
+                "duration_seconds": 180
+            })
+            assert add_resp.status_code == 200
+
+        # 2. Query curation history
+        hist_resp = await ac.get(f"/api/playlists/curation-history?child_id={child_id}", headers=headers)
+        assert hist_resp.status_code == 200
+        data = hist_resp.json()
+        assert "history" in data
+        assert len(data["history"]) >= 1
+        first_entry = data["history"][0]
+        assert first_entry["youtube_id"] == "_7jhd4-o9gU"
+        assert first_entry["title"] == "Twinkle Twinkle Little Star"
+        assert first_entry["action"] == "added"
+        assert first_entry["child_name"] == "Audit Kid"
+
+
+
 
 

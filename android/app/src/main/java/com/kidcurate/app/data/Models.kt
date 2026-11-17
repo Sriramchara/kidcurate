@@ -163,3 +163,40 @@ data class DbSummaryResponse(
     @SerializedName("account_created_at") val accountCreatedAt: String = "",
 )
 
+// ─── Curation & Watch History ───────────────────────────────────────────────
+
+@Immutable
+data class CuratedHistoryItem(
+    val id: String = "",
+    @SerializedName("child_id") val childId: String = "",
+    @SerializedName("child_name") val childName: String = "",
+    val action: String = "added", // "added", "removed", "pack_applied"
+    val title: String = "",
+    @SerializedName("youtube_id") val youtubeId: String = "",
+    @SerializedName("channel_name") val channelName: String = "",
+    @SerializedName("thumbnail_url") val thumbnailUrl: String = "",
+    @SerializedName("duration_seconds") val durationSeconds: Int = 0,
+    @SerializedName("created_at") val createdAt: String = "",
+)
+
+@Immutable
+data class CuratedHistoryResponse(
+    val history: List<CuratedHistoryItem> = emptyList(),
+)
+
+@Immutable
+data class WatchHistoryItem(
+    @SerializedName("youtube_id") val youtubeId: String = "",
+    val title: String = "",
+    @SerializedName("thumbnail_url") val thumbnailUrl: String = "",
+    @SerializedName("watched_seconds") val watchedSeconds: Int = 0,
+    @SerializedName("duration_seconds") val durationSeconds: Int? = null,
+    val completed: Boolean = false,
+    @SerializedName("watched_at") val watchedAt: String? = null,
+)
+
+@Immutable
+data class WatchHistoryResponse(
+    val history: List<WatchHistoryItem> = emptyList(),
+)
+

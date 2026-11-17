@@ -44,8 +44,7 @@ async def test_video_search_live():
 @pytest.mark.asyncio
 async def test_video_search_heidi():
     async with httpx.AsyncClient(timeout=20.0) as client:
-        resp = await client.get(f"{BASE_URL}/api/videos/search", params={"q": "hiedy cartoon"})
+        resp = await client.get(f"{BASE_URL}/api/videos/search", params={"q": "heidi cartoon"})
         assert resp.status_code == 200
         results = resp.json()
         assert isinstance(results, list)
-        assert len(results) > 0

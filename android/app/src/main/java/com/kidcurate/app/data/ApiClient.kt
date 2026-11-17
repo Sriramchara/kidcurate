@@ -82,6 +82,18 @@ interface KidCurateApi {
     @GET("api/playlists/activity-packs")
     suspend fun getActivityPacks(): List<ActivityPackItem>
 
+    @GET("api/playlists/curation-history")
+    suspend fun getCurationHistory(
+        @Query("child_id") childId: String? = null,
+        @Query("limit") limit: Int = 50,
+    ): CuratedHistoryResponse
+
+    @GET("api/progress/child/{child_id}/history")
+    suspend fun getWatchHistory(
+        @Path("child_id") childId: String,
+        @Query("limit") limit: Int = 50,
+    ): WatchHistoryResponse
+
     @POST("api/playlists/child/{child_id}/apply-pack/{pack_id}")
     suspend fun applyActivityPack(
         @Path("child_id") childId: String,

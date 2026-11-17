@@ -199,6 +199,105 @@ fun SecurityTab(
             }
         }
 
+        // Early Reader Subtitles & Phonics Card
+        var earlyReaderEnabled by remember { mutableStateOf(parentPrefs.earlyReaderSubtitles) }
+        var defaultSubtitlesEnabled by remember { mutableStateOf(parentPrefs.subtitlesEnabled) }
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = BackgroundCard,
+            border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
+            shadowElevation = 1.dp,
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(Icons.Rounded.ClosedCaption, contentDescription = null, tint = BrandPrimary)
+                    Text("Reading & Subtitles", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    text = "Reading support features to help children connect spoken words with written letters.",
+                    fontSize = 13.sp,
+                    color = TextSecondary,
+                )
+
+                Spacer(Modifier.height(14.dp))
+
+                // Karaoke Phonics Subtitles Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Early Reader Karaoke Phonics",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary,
+                        )
+                        Text(
+                            text = "Displays large, bold text with animated golden word-highlights synchronized to speech.",
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                        )
+                    }
+                    Switch(
+                        checked = earlyReaderEnabled,
+                        onCheckedChange = {
+                            earlyReaderEnabled = it
+                            parentPrefs.earlyReaderSubtitles = it
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = BrandPrimary,
+                        ),
+                    )
+                }
+
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider(color = SurfaceCardBorder)
+                Spacer(Modifier.height(10.dp))
+
+                // Default Subtitles Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Enable Subtitles by Default",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary,
+                        )
+                        Text(
+                            text = "Automatically activate English subtitles when starting any video.",
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                        )
+                    }
+                    Switch(
+                        checked = defaultSubtitlesEnabled,
+                        onCheckedChange = {
+                            defaultSubtitlesEnabled = it
+                            parentPrefs.subtitlesEnabled = it
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = BrandPrimary,
+                        ),
+                    )
+                }
+            }
+        }
+
         // Parent Cloud Account Card (Google Sign-In)
         val scope = rememberCoroutineScope()
         var accountStatusMessage by remember { mutableStateOf<String?>(null) }

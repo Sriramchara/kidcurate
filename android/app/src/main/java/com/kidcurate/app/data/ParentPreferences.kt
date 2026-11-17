@@ -27,6 +27,10 @@ class ParentPreferences(context: Context) {
         get() = prefs.getBoolean(KEY_SUBTITLES_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_SUBTITLES_ENABLED, value).apply()
 
+    var earlyReaderSubtitles: Boolean
+        get() = prefs.getBoolean(KEY_EARLY_READER_SUBTITLES, true)
+        set(value) = prefs.edit().putBoolean(KEY_EARLY_READER_SUBTITLES, value).apply()
+
     var videoQuality: String
         get() = prefs.getString(KEY_VIDEO_QUALITY, "auto") ?: "auto"
         set(value) = prefs.edit().putString(KEY_VIDEO_QUALITY, value).apply()
@@ -163,8 +167,50 @@ class ParentPreferences(context: Context) {
         return todayWatchedSeconds >= dailyScreenTimeMinutes * 60
     }
 
+    fun getRecentSearches(): List<String> {
+        val raw = prefs.getString(KEY_RECENT_SEARCHES, "") ?: ""
+        if (raw.isBlank()) return emptyList()
+        return try {
+            val arr = org.json.JSONArray(raw)
+            val list = mutableListOf<String>()
+            for (i in 0 until arr.length()) {
+                val item = arr.optString(i, "")
+                if (item.isNotBlank()) list.add(item)
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun addRecentSearch(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return
+        val current = getRecentSearches().toMutableList()
+        current.removeAll { it.equals(trimmed, ignoreCase = true) }
+        current.add(0, trimmed)
+        val limited = current.take(15)
+        val arr = org.json.JSONArray()
+        limited.forEach { arr.put(it) }
+        prefs.edit().putString(KEY_RECENT_SEARCHES, arr.toString()).apply()
+    }
+
+    fun removeRecentSearch(query: String) {
+        val current = getRecentSearches().toMutableList()
+        current.removeAll { it.equals(query.trim(), ignoreCase = true) }
+        val arr = org.json.JSONArray()
+        current.forEach { arr.put(it) }
+        prefs.edit().putString(KEY_RECENT_SEARCHES, arr.toString()).apply()
+    }
+
+    fun clearRecentSearches() {
+        prefs.edit().remove(KEY_RECENT_SEARCHES).apply()
+    }
+
     companion object {
         private const val KEY_SUBTITLES_ENABLED = "subtitles_enabled"
+        private const val KEY_EARLY_READER_SUBTITLES = "early_reader_subtitles"
+        private const val KEY_RECENT_SEARCHES = "recent_searches_json"
         private const val KEY_VIDEO_QUALITY = "video_quality"
         private const val KEY_PARENT_PIN = "parent_pin"
         private const val KEY_APP_THEME = "app_theme"

@@ -332,7 +332,9 @@ fun PlayerScreen(
                                     modifier = Modifier.size(15.dp)
                                 )
                                 Text(
-                                    text = if (subtitlesEnabled) "CC ON" else "CC OFF",
+                                    text = if (subtitlesEnabled) {
+                                        if (parentPrefs.earlyReaderSubtitles) "PHONICS CC" else "CC ON"
+                                    } else "CC OFF",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (subtitlesEnabled) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant
@@ -1016,15 +1018,59 @@ fun OptimizedVideoPlayer(
         showQualityDialog = false
     }
 
-    fun applySubtitles(enabled: Boolean) {
+    fun applySubtitles(enabled: Boolean, isKaraoke: Boolean = parentPrefs.earlyReaderSubtitles) {
         val script = if (enabled) {
+            val karaokeCss = if (isKaraoke) {
+                """
+                var styleId = 'kidcurate-karaoke-subtitles-style';
+                var styleEl = document.getElementById(styleId);
+                if (!styleEl) {
+                    styleEl = document.createElement('style');
+                    styleEl.id = styleId;
+                    styleEl.innerHTML = `
+                        .caption-window {
+                            background-color: rgba(15, 23, 42, 0.88) !important;
+                            border: 2px solid #F59E0B !important;
+                            border-radius: 14px !important;
+                            padding: 8px 16px !important;
+                            box-shadow: 0 4px 18px rgba(0,0,0,0.7) !important;
+                        }
+                        .ytp-caption-segment {
+                            font-size: 26px !important;
+                            line-height: 1.35 !important;
+                            font-weight: 800 !important;
+                            font-family: system-ui, -apple-system, Roboto, sans-serif !important;
+                            letter-spacing: 0.06em !important;
+                            word-spacing: 0.12em !important;
+                            color: #FFFFFF !important;
+                            text-shadow: 0 2px 4px rgba(0,0,0,0.9) !important;
+                        }
+                        .ytp-caption-segment:last-child {
+                            color: #FBBF24 !important;
+                            text-shadow: 0 0 12px rgba(251, 191, 36, 0.8), 0 2px 4px rgba(0,0,0,0.9) !important;
+                        }
+                    `;
+                    document.head.appendChild(styleEl);
+                }
+                """.trimIndent()
+            } else {
+                """
+                var oldStyle = document.getElementById('kidcurate-karaoke-subtitles-style');
+                if (oldStyle) oldStyle.remove();
+                """.trimIndent()
+            }
+
             """
             (function() {
                 try {
+                    $karaokeCss
                     if (typeof player !== 'undefined' && player) {
                         player.loadModule('captions');
                         player.setOption('captions', 'track', {'languageCode': 'en'});
                         player.setOption('captions', 'reload', true);
+                        if (player.setOption) {
+                            player.setOption('captions', 'fontSize', ${if (isKaraoke) 3 else 1});
+                        }
                     }
                 } catch(e) {}
             })();
@@ -1033,6 +1079,8 @@ fun OptimizedVideoPlayer(
             """
             (function() {
                 try {
+                    var oldStyle = document.getElementById('kidcurate-karaoke-subtitles-style');
+                    if (oldStyle) oldStyle.remove();
                     if (typeof player !== 'undefined' && player) {
                         player.unloadModule('captions');
                         player.setOption('captions', 'track', {});
@@ -1409,7 +1457,11 @@ fun OptimizedVideoPlayer(
                                 else Color.White.copy(alpha = 0.25f),
                                 onClick = {
                                     onToggleSubtitles()
-                                    toastMessage = if (!subtitlesEnabled) "Subtitles ON (English)" else "Subtitles OFF"
+                                    toastMessage = if (!subtitlesEnabled) {
+                                        if (parentPrefs.earlyReaderSubtitles) "Early Reader Karaoke CC ON" else "Subtitles ON (English)"
+                                    } else {
+                                        "Subtitles OFF"
+                                    }
                                 },
                                 modifier = Modifier.size(36.dp)
                             ) {

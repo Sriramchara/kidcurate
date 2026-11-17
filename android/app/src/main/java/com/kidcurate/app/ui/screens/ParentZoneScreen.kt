@@ -70,7 +70,7 @@ fun ParentZoneScreen(
     val parentPrefs = remember { ParentPreferences.get(appContext) }
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabTitles = listOf("Videos", "Search", "Profiles", "Settings")
+    val tabTitles = listOf("Videos", "Search", "History", "Profiles", "Settings")
 
     // Managed Children state
     var managedChildren by remember { mutableStateOf<List<ChildManageItem>>(emptyList()) }
@@ -310,7 +310,8 @@ fun ParentZoneScreen(
                                     val icon = when (index) {
                                         0 -> Icons.Rounded.PlayCircle
                                         1 -> Icons.Rounded.Search
-                                        2 -> Icons.Rounded.Face
+                                        2 -> Icons.Rounded.History
+                                        3 -> Icons.Rounded.Face
                                         else -> Icons.Rounded.Settings
                                     }
                                     Icon(icon, contentDescription = title, modifier = Modifier.size(18.dp))
@@ -533,14 +534,53 @@ fun ParentZoneScreen(
                     },
                 )
 
-                2 -> ChildProfilesTab(
+                2 -> HistoryTabContent(
+                    managedChildren = managedChildren,
+                    onSelectSearchTerm = { term ->
+                        searchQuery = term
+                        selectedTabIndex = 1
+                        scope.launch {
+                            isSearching = true
+                            try {
+                                searchResults = ApiClient.api.searchVideos(term)
+                            } catch (_: Exception) {
+                                searchResults = emptyList()
+                            } finally {
+                                isSearching = false
+                            }
+                        }
+                    },
+                    onReAddVideo = { historyItem ->
+                        scope.launch {
+                            try {
+                                val targetChild = if (historyItem.childId.isNotBlank()) historyItem.childId else selectedChildId
+                                ApiClient.api.addVideoToChildPlaylist(
+                                    targetChild,
+                                    AddVideoToChildRequest(
+                                        youtubeId = historyItem.youtubeId,
+                                        title = historyItem.title,
+                                        channelName = historyItem.channelName,
+                                        thumbnailUrl = historyItem.thumbnailUrl,
+                                        durationSeconds = historyItem.durationSeconds,
+                                    )
+                                )
+                                statusMessage = "Re-added \"${historyItem.title}\" to playlist!"
+                                loadChildPlaylist(selectedChildId)
+                            } catch (e: Exception) {
+                                statusMessage = "Could not re-add video: ${e.message}"
+                            }
+                        }
+                    }
+                )
+
+                3 -> ChildProfilesTab(
                     children = managedChildren,
                     onEditChild = { child -> showEditChildDialog = child },
                     onDeleteChild = { child -> showDeleteConfirmDialog = child },
                     onAddNewChild = { showAddChildDialog = true },
                 )
 
-                3 -> SecurityTab(
+                4 -> SecurityTab(
                     parentPrefs = parentPrefs,
                     onThemeChanged = onThemeChanged,
                     onBackToChildMode = onBackToChildMode,

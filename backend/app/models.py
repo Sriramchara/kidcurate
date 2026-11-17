@@ -193,3 +193,21 @@ class PasswordResetToken(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+
+class CurationLog(Base):
+    """Tracks curation actions by parents (videos added/removed, packs applied)"""
+    __tablename__ = "curation_logs"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    parent_id = Column(GUID(), ForeignKey("users.id"), nullable=False)
+    child_id = Column(GUID(), ForeignKey("children.id"), nullable=False)
+    video_id = Column(GUID(), ForeignKey("videos.id"), nullable=True)
+    action = Column(String(50), nullable=False)  # "added", "removed", "pack_applied"
+    title = Column(String(255), nullable=False)
+    youtube_id = Column(String(50), nullable=False)
+    channel_name = Column(String(255), nullable=True)
+    thumbnail_url = Column(Text, nullable=True)
+    duration_seconds = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+

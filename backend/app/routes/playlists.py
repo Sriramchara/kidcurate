@@ -7,7 +7,7 @@ from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional, List
 from app.database import get_db
-from app.models import User, Child, Playlist, PlaylistItem, Video
+from app.models import User, Child, Playlist, PlaylistItem, Video, CurationLog
 from app.auth import get_current_user
 
 router = APIRouter(prefix="/api/playlists", tags=["Playlists"])
@@ -435,6 +435,17 @@ async def apply_activity_pack(
             position=next_order,
         )
         db.add(item)
+        db.add(CurationLog(
+            parent_id=current_user.id,
+            child_id=child_id,
+            video_id=vid.id,
+            action="pack_applied",
+            title=v.title,
+            youtube_id=v.youtube_id,
+            channel_name=v.channel_name,
+            thumbnail_url=v.thumbnail_url,
+            duration_seconds=v.duration_seconds,
+        ))
         next_order += 1
         added_count += 1
 
@@ -501,6 +512,92 @@ async def create_playlist(
     await db.commit()
     await db.refresh(playlist, ["items"])
     return playlist_to_response(playlist)
+
+
+@router.get("/curation-history")
+@router.get("/child/{child_id}/curation-history")
+async def get_curation_history(
+    child_id: Optional[str] = None,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns history of videos curated by the parent (added, removed, or activity packs applied).
+    If no audit logs exist yet for that child, falls back to active playlist items so recent
+    curated videos are immediately visible.
+    """
+    children_res = await db.execute(
+        select(Child).where(Child.parent_id == current_user.id)
+    )
+    parent_children = children_res.scalars().all()
+    child_map = {str(c.id): c.name for c in parent_children}
+    valid_child_ids = set(child_map.keys())
+
+    if child_id and child_id not in valid_child_ids:
+        child_res = await db.execute(select(Child).where(Child.id == child_id))
+        cf = child_res.scalar_one_or_none()
+        if cf:
+            child_map[str(cf.id)] = cf.name
+            valid_child_ids.add(str(cf.id))
+        else:
+            raise HTTPException(status_code=404, detail="Child profile not found")
+
+    target_ids = [child_id] if child_id else list(valid_child_ids)
+    if not target_ids:
+        return {"history": []}
+
+    query = (
+        select(CurationLog)
+        .where(CurationLog.child_id.in_(target_ids))
+        .order_by(CurationLog.created_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    logs = result.scalars().all()
+
+    history = []
+    for l in logs:
+        history.append({
+            "id": str(l.id),
+            "child_id": str(l.child_id),
+            "child_name": child_map.get(str(l.child_id), "Child"),
+            "action": l.action,
+            "title": l.title,
+            "youtube_id": l.youtube_id,
+            "channel_name": l.channel_name or "",
+            "thumbnail_url": l.thumbnail_url or "",
+            "duration_seconds": l.duration_seconds or 0,
+            "created_at": l.created_at.isoformat() if l.created_at else "",
+        })
+
+    # If no logs recorded yet, synthesize from current playlist items so parent sees items
+    if not history:
+        pl_items_query = (
+            select(PlaylistItem, Playlist, Video)
+            .join(Playlist, PlaylistItem.playlist_id == Playlist.id)
+            .join(Video, PlaylistItem.video_id == Video.id)
+            .where(Playlist.child_id.in_(target_ids))
+            .order_by(Playlist.created_at.desc(), PlaylistItem.position.asc())
+            .limit(limit)
+        )
+        pi_res = await db.execute(pl_items_query)
+        for row in pi_res.all():
+            item, pl, vid = row
+            history.append({
+                "id": str(item.id),
+                "child_id": str(pl.child_id),
+                "child_name": child_map.get(str(pl.child_id), "Child"),
+                "action": "added",
+                "title": vid.title,
+                "youtube_id": vid.youtube_id,
+                "channel_name": vid.channel_name or "",
+                "thumbnail_url": vid.thumbnail_url or "",
+                "duration_seconds": vid.duration_seconds or 0,
+                "created_at": (pl.created_at or date.today()).isoformat() if hasattr(pl.created_at, 'isoformat') else str(pl.created_at or ""),
+            })
+
+    return {"history": history}
 
 
 @router.get("/{playlist_id}", response_model=PlaylistResponse)
@@ -783,6 +880,17 @@ async def add_video_to_child_playlist(
         position=new_pos,
     )
     db.add(new_item)
+    db.add(CurationLog(
+        parent_id=current_user.id,
+        child_id=child_id,
+        video_id=video.id,
+        action="added",
+        title=data.title,
+        youtube_id=data.youtube_id,
+        channel_name=data.channel_name,
+        thumbnail_url=data.thumbnail_url,
+        duration_seconds=data.duration_seconds,
+    ))
     playlist.total_duration_seconds = (playlist.total_duration_seconds or 0) + (data.duration_seconds or 0)
     await db.commit()
     await db.refresh(playlist, ["items"])
@@ -829,6 +937,19 @@ async def remove_video_from_child_playlist(
     await db.refresh(item, ["video"])
     if item.video and item.video.duration_seconds:
         playlist.total_duration_seconds = max(0, (playlist.total_duration_seconds or 0) - item.video.duration_seconds)
+
+    if item.video:
+        db.add(CurationLog(
+            parent_id=current_user.id,
+            child_id=child_id,
+            video_id=item.video.id,
+            action="removed",
+            title=item.video.title,
+            youtube_id=item.video.youtube_id,
+            channel_name=item.video.channel_name,
+            thumbnail_url=item.video.thumbnail_url,
+            duration_seconds=item.video.duration_seconds,
+        ))
 
     await db.delete(item)
     await db.commit()
@@ -882,6 +1003,8 @@ async def reorder_child_playlist(
     for i in playlist.items:
         await db.refresh(i, ["video"])
     return {"status": "ok", "playlist": playlist_to_response(playlist)}
+
+
 
 
 

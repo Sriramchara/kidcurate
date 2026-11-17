@@ -11,7 +11,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,9 +24,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.kidcurate.app.data.ParentPreferences
 import com.kidcurate.app.data.VideoSearchResultItem
 import com.kidcurate.app.ui.theme.*
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SearchAndAddTab(
     selectedChildName: String,
@@ -39,6 +41,18 @@ fun SearchAndAddTab(
     searchSuggestions: List<String> = emptyList(),
     existingVideoIds: Set<String> = emptySet(),
 ) {
+    val context = LocalContext.current
+    val parentPrefs = remember { ParentPreferences.get(context) }
+    var recentSearches by remember { mutableStateOf(parentPrefs.getRecentSearches()) }
+
+    val handleSearch: (String) -> Unit = { queryToSearch ->
+        val trimmed = queryToSearch.trim()
+        if (trimmed.isNotBlank()) {
+            parentPrefs.addRecentSearch(trimmed)
+            recentSearches = parentPrefs.getRecentSearches()
+        }
+        onPerformSearch()
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -76,7 +90,7 @@ fun SearchAndAddTab(
                             unfocusedIndicatorColor = Color.Transparent,
                         ),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = { onPerformSearch() }),
+                        keyboardActions = KeyboardActions(onSearch = { handleSearch(searchQuery) }),
                         modifier = Modifier.weight(1f),
                         singleLine = true,
                     )
@@ -94,7 +108,7 @@ fun SearchAndAddTab(
                         }
                         Spacer(Modifier.width(4.dp))
                         Button(
-                            onClick = onPerformSearch,
+                            onClick = { handleSearch(searchQuery) },
                             colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                             shape = RoundedCornerShape(10.dp),
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
@@ -128,7 +142,7 @@ fun SearchAndAddTab(
                                     .fillMaxWidth()
                                     .clickable {
                                         onSearchQueryChange(suggestion)
-                                        onPerformSearch()
+                                        handleSearch(suggestion)
                                     }
                                     .padding(horizontal = 14.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -177,11 +191,118 @@ fun SearchAndAddTab(
                 }
             }
         } else if (searchResults.isEmpty()) {
+            if (searchQuery.isBlank() && recentSearches.isNotEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Icon(
+                                    Icons.Rounded.History,
+                                    contentDescription = null,
+                                    tint = BrandPrimary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Text(
+                                    text = "Recent Searches",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary,
+                                )
+                            }
+                            TextButton(
+                                onClick = {
+                                    parentPrefs.clearRecentSearches()
+                                    recentSearches = emptyList()
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            ) {
+                                Text(
+                                    text = "Clear All",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            recentSearches.forEach { queryItem ->
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = BackgroundCard,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
+                                    shadowElevation = 1.dp,
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .clickable {
+                                                    onSearchQueryChange(queryItem)
+                                                    handleSearch(queryItem)
+                                                },
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.Search,
+                                                contentDescription = null,
+                                                tint = BrandPrimary,
+                                                modifier = Modifier.size(15.dp),
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                text = queryItem,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = TextPrimary,
+                                            )
+                                        }
+                                        Spacer(Modifier.width(4.dp))
+                                        IconButton(
+                                            onClick = {
+                                                parentPrefs.removeRecentSearch(queryItem)
+                                                recentSearches = parentPrefs.getRecentSearches()
+                                            },
+                                            modifier = Modifier.size(24.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.Close,
+                                                contentDescription = "Remove search",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                                modifier = Modifier.size(14.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             item {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
                 ) {
                     Column(
                         modifier = Modifier.padding(24.dp),
@@ -198,7 +319,7 @@ fun SearchAndAddTab(
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            text = "Tip: You can search any educational topic or paste ANY direct YouTube video link to add it instantly!",
+                            text = "Tip: You can search any educational topic (Phonics, Science, Animals) or paste ANY direct YouTube video link to add it instantly!",
                             fontSize = 12.sp,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
