@@ -272,7 +272,7 @@ fun ParentZoneScreen(
                                     )
                                 }
                                 Text(
-                                    text = "Control Center",
+                                    text = if (parentPrefs.parentName.isNotBlank()) "Hi, ${parentPrefs.parentName}" else "Control Center",
                                     fontSize = 11.sp,
                                     color = TextSecondary,
                                     maxLines = 1,

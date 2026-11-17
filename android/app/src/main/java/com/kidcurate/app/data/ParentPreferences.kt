@@ -53,6 +53,7 @@ class ParentPreferences(context: Context) {
         parentAuthToken = ""
         parentRefreshToken = ""
         parentEmail = ""
+        parentName = ""
         parentPin = ""
         cachedProfilesJson = ""
     }
@@ -84,6 +85,10 @@ class ParentPreferences(context: Context) {
     var parentEmail: String
         get() = prefs.getString(KEY_PARENT_EMAIL, "") ?: ""
         set(value) = prefs.edit().putString(KEY_PARENT_EMAIL, value).apply()
+
+    var parentName: String
+        get() = prefs.getString(KEY_PARENT_NAME, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_PARENT_NAME, value).apply()
 
     var googleClientId: String
         get() {
@@ -226,6 +231,7 @@ class ParentPreferences(context: Context) {
         private const val KEY_PARENT_AUTH_TOKEN = "parent_auth_token"
         private const val KEY_PARENT_REFRESH_TOKEN = "parent_refresh_token"
         private const val KEY_PARENT_EMAIL = "parent_email"
+        private const val KEY_PARENT_NAME = "parent_name"
         private const val KEY_DAILY_SCREEN_TIME_MINUTES = "daily_screen_time_minutes"
         private const val KEY_CURFEW_ENABLED = "curfew_enabled"
         private const val KEY_CURFEW_START_HOUR = "curfew_start_hour"

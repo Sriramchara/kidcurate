@@ -320,13 +320,23 @@ fun SecurityTab(
                     accountStatusMessage = null
                     scope.launch {
                         try {
+                            val extractedName = account.displayName?.trim()?.ifBlank { null }
+                                ?: account.givenName?.trim()?.ifBlank { null }
+                                ?: email.substringBefore("@").replaceFirstChar { it.uppercase() }
+                            parentPrefs.parentName = extractedName
+                            parentPrefs.parentEmail = email
+
                             val payload = mutableMapOf<String, String>()
                             account.idToken?.let { if (it.isNotBlank()) payload["id_token"] = it }
                             payload["email"] = email
-                            payload["name"] = account.displayName ?: email.substringBefore("@")
+                            payload["name"] = extractedName
                             val resp = ApiClient.api.googleLogin(payload)
                             val token = resp["access_token"] as? String ?: ""
                             val refreshToken = resp["refresh_token"] as? String ?: ""
+                            val serverName = (resp["name"] as? String)?.trim() ?: ""
+                            if (serverName.isNotBlank() && serverName != "Parent") {
+                                parentPrefs.parentName = serverName
+                            }
                             if (token.isNotBlank()) {
                                 parentPrefs.parentAuthToken = token
                                 if (refreshToken.isNotBlank()) {
@@ -334,7 +344,6 @@ fun SecurityTab(
                                 }
                                 currentToken = token
                                 ApiClient.authToken = token
-                                parentPrefs.parentEmail = email
                                 accountStatusMessage = "Connected Google Account: $email"
                                 if (!parentPrefs.hasParentPin) {
                                     showChangeParentPinDialog = true
@@ -412,7 +421,7 @@ fun SecurityTab(
                                             color = BrandPrimary,
                                         )
                                         Text(
-                                            text = parentPrefs.parentEmail.ifBlank { "Parent Account" },
+                                            text = if (parentPrefs.parentName.isNotBlank()) "${parentPrefs.parentName} (${parentPrefs.parentEmail})" else parentPrefs.parentEmail.ifBlank { "Parent Account" },
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = BrandPrimary,

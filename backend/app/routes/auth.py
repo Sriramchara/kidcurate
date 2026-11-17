@@ -331,6 +331,10 @@ async def google_login(
         db.add(user)
         await db.commit()
         await db.refresh(user)
+    elif name and name != "Parent" and (not user.name or user.name == "Parent" or user.name == email.split("@")[0]):
+        user.name = name
+        await db.commit()
+        await db.refresh(user)
 
     access_token = create_access_token({"sub": str(user.id)})
     refresh_token = create_refresh_token({"sub": str(user.id)})
