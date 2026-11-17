@@ -97,6 +97,7 @@ fun PlayerScreen(
 
     var isChildLockActive by remember { mutableStateOf(false) }
     var showParentPasswordDialog by remember { mutableStateOf(false) }
+    var isExitingPlayer by remember { mutableStateOf(false) }
 
     var lastRecordedSecond by remember { mutableIntStateOf(0) }
     var showEndCelebration by remember { mutableStateOf(false) }
@@ -138,12 +139,14 @@ fun PlayerScreen(
                 activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
             } else {
                 if (isChildLockActive) {
+                    isExitingPlayer = true
                     showParentPasswordDialog = true
                 } else {
                     onBack()
                 }
             }
         } else if (isChildLockActive) {
+            isExitingPlayer = true
             showParentPasswordDialog = true
         } else {
             onBack()
@@ -332,6 +335,7 @@ fun PlayerScreen(
                                 border = androidx.compose.foundation.BorderStroke(1.dp, if (isChildLockActive) BrandPrimary else MaterialTheme.colorScheme.outline),
                                 onClick = {
                                     if (isChildLockActive) {
+                                        isExitingPlayer = false
                                         showParentPasswordDialog = true
                                     } else {
                                         isChildLockActive = true
@@ -633,15 +637,22 @@ fun PlayerScreen(
 
     if (showParentPasswordDialog) {
         ParentPasswordDialog(
-            title = "Parent Unlock",
-            subtitle = "Sign in with Google or enter your 4-digit Parent PIN to exit video player",
+            title = if (isExitingPlayer) "Exit Video Player" else "Unlock Controls",
+            subtitle = "Enter 4-digit Parent PIN to ${if (isExitingPlayer) "exit player" else "unlock screen controls"}",
+            allowGoogleSignIn = false,
             onSuccess = {
                 showParentPasswordDialog = false
                 isChildLockActive = false
                 try { activity?.stopLockTask() } catch (_: Exception) {}
-                onBack()
+                if (isExitingPlayer) {
+                    isExitingPlayer = false
+                    onBack()
+                }
             },
-            onDismiss = { showParentPasswordDialog = false },
+            onDismiss = {
+                showParentPasswordDialog = false
+                isExitingPlayer = false
+            },
         )
     }
 

@@ -7,9 +7,13 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,62 +30,126 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.kidcurate.app.ui.theme.*
 
+data class ButtonGuideItem(
+    val buttonName: String,
+    val icon: ImageVector,
+    val actionDescription: String,
+)
+
 data class TourStep(
     val stepNumber: Int,
     val badge: String,
     val title: String,
     val description: String,
     val icon: ImageVector,
-    val highlights: List<String>,
+    val buttonGuides: List<ButtonGuideItem>,
 )
 
 val TOUR_STEPS = listOf(
     TourStep(
         stepNumber = 1,
-        badge = "WELCOME TO KIDCURATE",
-        title = "Safe Learning for Kids",
-        description = "Transform YouTube into an ad-free, wholesome learning environment. Children can only explore videos and playlists that you personally approve.",
-        icon = Icons.Rounded.SmartDisplay,
-        highlights = listOf(
-            "Zero random autoplay or comments",
-            "Strict child safety pre-filtering",
-            "Wholesome educational topics",
+        badge = "SCREEN 1: CHILD LOGIN & PIN PAD",
+        title = "Who's Ready to Explore?",
+        description = "Children tap their profile avatar and enter their secret 4-digit PIN to open their daily playlist.",
+        icon = Icons.Rounded.Lock,
+        buttonGuides = listOf(
+            ButtonGuideItem(
+                buttonName = "Child Avatar Card",
+                icon = Icons.Rounded.Face,
+                actionDescription = "Tap to open PIN pad and begin watching approved videos."
+            ),
+            ButtonGuideItem(
+                buttonName = "Eye Toggle Icon",
+                icon = Icons.Rounded.Visibility,
+                actionDescription = "Reveals or hides entered PIN digits so typos can be verified."
+            ),
+            ButtonGuideItem(
+                buttonName = "Parent Shield (Top Right)",
+                icon = Icons.Rounded.AdminPanelSettings,
+                actionDescription = "Opens Parent Zone using your 4-digit Parent PIN."
+            ),
+            ButtonGuideItem(
+                buttonName = "Backspace ⌫",
+                icon = Icons.Rounded.Backspace,
+                actionDescription = "Deletes digits one by one so mistakes can be easily fixed."
+            ),
         ),
     ),
     TourStep(
         stepNumber = 2,
-        badge = "STEP 1: PROFILES",
-        title = "Personalized Child Profiles",
-        description = "Create individual profiles for each child with age-appropriate filtering, customized space avatars, and their own 4-digit login PIN.",
-        icon = Icons.Rounded.Face,
-        highlights = listOf(
-            "Individual avatars and names",
-            "Custom child 4-digit PIN",
-            "Age-targeted video recommendations",
+        badge = "SCREEN 2: TODAY'S PLAYLIST",
+        title = "Today's Curated Queue",
+        description = "Distraction-free daily queue assigned by parents. Zero ads, no algorithmic autoplay, and no comments.",
+        icon = Icons.Rounded.VideoLibrary,
+        buttonGuides = listOf(
+            ButtonGuideItem(
+                buttonName = "Play All Button",
+                icon = Icons.Rounded.PlayArrow,
+                actionDescription = "Starts today's assigned videos in sequence from video 1."
+            ),
+            ButtonGuideItem(
+                buttonName = "Child Lock (Lock/Unlock)",
+                icon = Icons.Rounded.Lock,
+                actionDescription = "Locks touch controls to prevent kids from skipping or exiting."
+            ),
+            ButtonGuideItem(
+                buttonName = "Switch Profile",
+                icon = Icons.AutoMirrored.Filled.Logout,
+                actionDescription = "Quickly switch between brother and sister profiles without reloading."
+            ),
         ),
     ),
     TourStep(
         stepNumber = 3,
-        badge = "STEP 2: CURATION",
-        title = "Parent Curated Playlists",
-        description = "Search YouTube with live suggestions or paste ANY direct YouTube video link. Videos are automatically verified before adding.",
-        icon = Icons.Rounded.VideoLibrary,
-        highlights = listOf(
-            "Real-time type-ahead search suggestions",
-            "Direct YouTube link pasting",
-            "One-click 100% duplicate prevention",
+        badge = "SCREEN 3: VIDEO PLAYER",
+        title = "Safe Playback & Phonics",
+        description = "Pure fullscreen entertainment locked strictly to parent-approved playlists.",
+        icon = Icons.Rounded.SmartDisplay,
+        buttonGuides = listOf(
+            ButtonGuideItem(
+                buttonName = "CC Subtitles Button",
+                icon = Icons.Rounded.ClosedCaption,
+                actionDescription = "Toggles phonics karaoke subtitles with golden word highlight."
+            ),
+            ButtonGuideItem(
+                buttonName = "Lock Controls Button",
+                icon = Icons.Rounded.Lock,
+                actionDescription = "Unlock controls using your 4-digit Parent PIN (stays right on video)."
+            ),
+            ButtonGuideItem(
+                buttonName = "Next Video Button",
+                icon = Icons.Rounded.SkipNext,
+                actionDescription = "Advances to next video with 4-second star celebration overlay."
+            ),
         ),
     ),
     TourStep(
         stepNumber = 4,
-        badge = "STEP 3: SECURITY & LIMITS",
-        title = "Screen Time & Kiosk Lock",
-        description = "Enforce daily watch timers and bedtime curfews. Kiosk lock prevents kids from exiting or altering settings without your Parent PIN.",
-        icon = Icons.Rounded.Timer,
-        highlights = listOf(
-            "Customizable daily screen limits",
-            "Automatic bedtime curfew blackout",
-            "Fast 1-second Parent PIN unlock",
+        badge = "SCREEN 4: PARENT ZONE",
+        title = "Curation, Limits & History",
+        description = "Complete parent control: search YouTube, enforce screen-time limits, and review history.",
+        icon = Icons.Rounded.Settings,
+        buttonGuides = listOf(
+            ButtonGuideItem(
+                buttonName = "Search Tab",
+                icon = Icons.Rounded.Search,
+                actionDescription = "Safe YouTube search with 1-tap duplicate check before adding."
+            ),
+            ButtonGuideItem(
+                buttonName = "History Tab",
+                icon = Icons.Rounded.History,
+                actionDescription = "Real-time audit log of videos added, watched, and searched."
+            ),
+            ButtonGuideItem(
+                buttonName = "Profiles Tab",
+                icon = Icons.Rounded.Group,
+                actionDescription = "Create or edit children's names, avatars, and 4-digit PINs."
+            ),
+            ButtonGuideItem(
+                buttonName = "Kids Mode Button",
+                icon = Icons.Rounded.ChildCare,
+                actionDescription = "Instant 1-tap return back to child player."
+            ),
         ),
     ),
 )
@@ -100,12 +168,14 @@ fun OnboardingTourDialog(
         GlassCard(
             shape = RoundedCornerShape(28.dp),
             modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .wrapContentHeight()
-                .padding(vertical = 24.dp),
+                .fillMaxWidth(0.94f)
+                .fillMaxHeight(0.88f)
+                .padding(vertical = 16.dp),
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // Top Header: Step Indicator & Skip Button
@@ -119,7 +189,7 @@ fun OnboardingTourDialog(
                         color = MaterialTheme.colorScheme.primaryContainer,
                     ) {
                         Text(
-                            text = "Step ${step.stepNumber} of ${TOUR_STEPS.size}",
+                            text = "Page ${step.stepNumber} of ${TOUR_STEPS.size}",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = BrandPrimary,
@@ -129,7 +199,7 @@ fun OnboardingTourDialog(
 
                     TextButton(onClick = onDismiss) {
                         Text(
-                            text = "Skip Tour",
+                            text = "Close Guide",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -137,100 +207,139 @@ fun OnboardingTourDialog(
                     }
                 }
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(10.dp))
 
-                // Animated Slide Content
-                AnimatedContent(
-                    targetState = step,
-                    transitionSpec = {
-                        if (targetState.stepNumber > initialState.stepNumber) {
-                            slideInHorizontally { width -> width } togetherWith slideOutHorizontally { width -> -width }
-                        } else {
-                            slideInHorizontally { width -> -width } togetherWith slideOutHorizontally { width -> width }
-                        }
-                    },
-                    label = "TourSlideAnimation",
-                ) { targetStep ->
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        // Large Glowing Icon Circle
-                        Box(
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer)
-                                .border(1.5.dp, BrandPrimary.copy(alpha = 0.35f), CircleShape),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = targetStep.icon,
-                                contentDescription = null,
-                                tint = BrandPrimary,
-                                modifier = Modifier.size(36.dp),
-                            )
-                        }
-
-                        Spacer(Modifier.height(14.dp))
-
-                        Text(
-                            text = targetStep.badge,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = BrandPrimary,
-                            letterSpacing = 1.sp,
-                        )
-
-                        Spacer(Modifier.height(4.dp))
-
-                        Text(
-                            text = targetStep.title,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            textAlign = TextAlign.Center,
-                        )
-
-                        Spacer(Modifier.height(8.dp))
-
-                        Text(
-                            text = targetStep.description,
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 18.sp,
-                        )
-
-                        Spacer(Modifier.height(16.dp))
-
-                        // Highlight checklist cards
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                // Scrollable Body
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    // Animated Slide Content
+                    AnimatedContent(
+                        targetState = step,
+                        transitionSpec = {
+                            if (targetState.stepNumber > initialState.stepNumber) {
+                                slideInHorizontally { width -> width } togetherWith slideOutHorizontally { width -> -width }
+                            } else {
+                                slideInHorizontally { width -> -width } togetherWith slideOutHorizontally { width -> width }
+                            }
+                        },
+                        label = "TourSlideAnimation",
+                    ) { targetStep ->
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
+                            // Glowing Icon Circle
+                            Box(
+                                modifier = Modifier
+                                    .size(60.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer)
+                                    .border(1.5.dp, BrandPrimary.copy(alpha = 0.35f), CircleShape),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = targetStep.icon,
+                                    contentDescription = null,
+                                    tint = BrandPrimary,
+                                    modifier = Modifier.size(30.dp),
+                                )
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+
+                            Text(
+                                text = targetStep.badge,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = BrandPrimary,
+                                letterSpacing = 0.8.sp,
+                            )
+
+                            Spacer(Modifier.height(2.dp))
+
+                            Text(
+                                text = targetStep.title,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                textAlign = TextAlign.Center,
+                            )
+
+                            Spacer(Modifier.height(6.dp))
+
+                            Text(
+                                text = targetStep.description,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 17.sp,
+                            )
+
+                            Spacer(Modifier.height(14.dp))
+
+                            // Highlighted Buttons Guide Section
+                            Text(
+                                text = "BUTTONS & CONTROLS GUIDE",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 6.dp),
+                            )
+
                             Column(
-                                modifier = Modifier.padding(12.dp),
+                                modifier = Modifier.fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                targetStep.highlights.forEach { highlight ->
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                targetStep.buttonGuides.forEach { guide ->
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                        modifier = Modifier.fillMaxWidth(),
                                     ) {
-                                        Icon(
-                                            Icons.Rounded.CheckCircle,
-                                            contentDescription = null,
-                                            tint = BrandSuccess,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                        Text(
-                                            text = highlight,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                        )
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalAlignment = Alignment.Top,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        ) {
+                                            // Highlighted Button Badge
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = BrandPrimary,
+                                                modifier = Modifier.size(28.dp),
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = guide.icon,
+                                                        contentDescription = null,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(16.dp),
+                                                    )
+                                                }
+                                            }
+
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = guide.buttonName,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                )
+                                                Spacer(Modifier.height(2.dp))
+                                                Text(
+                                                    text = guide.actionDescription,
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    lineHeight = 15.sp,
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -238,7 +347,7 @@ fun OnboardingTourDialog(
                     }
                 }
 
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(14.dp))
 
                 // Step Indicator Dots
                 Row(
@@ -249,15 +358,15 @@ fun OnboardingTourDialog(
                         val isSelected = index == currentStepIndex
                         Box(
                             modifier = Modifier
-                                .height(8.dp)
-                                .width(if (isSelected) 22.dp else 8.dp)
+                                .height(6.dp)
+                                .width(if (isSelected) 20.dp else 6.dp)
                                 .clip(CircleShape)
                                 .background(if (isSelected) BrandPrimary else MaterialTheme.colorScheme.outlineVariant),
                         )
                     }
                 }
 
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(14.dp))
 
                 // Bottom Action Buttons
                 Row(
@@ -270,7 +379,7 @@ fun OnboardingTourDialog(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp),
                         ) {
-                            Text("Back", fontWeight = FontWeight.SemiBold)
+                            Text("Previous", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         }
                     }
 
@@ -287,8 +396,9 @@ fun OnboardingTourDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                     ) {
                         Text(
-                            text = if (currentStepIndex == TOUR_STEPS.size - 1) "Get Started" else "Next",
+                            text = if (currentStepIndex == TOUR_STEPS.size - 1) "Got It!" else "Next Screen",
                             fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
                         )
                     }
                 }

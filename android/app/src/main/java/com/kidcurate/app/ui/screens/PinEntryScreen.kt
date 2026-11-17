@@ -12,7 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,7 +45,9 @@ fun PinEntryScreen(
     BackHandler(onBack = onBack)
 
     var pin by remember { mutableStateOf("") }
+    var showPin by remember { mutableStateOf(false) }
     var showParentGate by remember { mutableStateOf(false) }
+    var hasFailedAttempt by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -99,26 +101,64 @@ fun PinEntryScreen(
                 fontSize = 14.sp,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 4.dp, bottom = 24.dp),
+                modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
             )
 
-            // PIN dots
+            // PIN Boxes with Eye Visibility Toggle
             Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 repeat(4) { index ->
                     val isFilled = index < pin.length
+                    val digitChar = if (isFilled) pin[index].toString() else ""
                     Box(
                         modifier = Modifier
-                            .size(20.dp)
-                            .clip(CircleShape)
-                            .background(if (isFilled) BrandPrimary else BackgroundCard)
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isFilled) BrandPrimary.copy(alpha = 0.12f) else BackgroundCard)
                             .border(
                                 2.dp,
-                                if (isFilled) BrandPrimary else SurfaceCardBorder,
-                                CircleShape
+                                if (hasFailedAttempt) BrandCoral else if (isFilled) BrandPrimary else SurfaceCardBorder,
+                                RoundedCornerShape(12.dp)
                             ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (isFilled) {
+                            if (showPin) {
+                                Text(
+                                    text = digitChar,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (hasFailedAttempt) BrandCoral else BrandPrimary,
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(12.dp)
+                                        .clip(CircleShape)
+                                        .background(if (hasFailedAttempt) BrandCoral else BrandPrimary)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.width(4.dp))
+
+                IconButton(
+                    onClick = { showPin = !showPin },
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(if (showPin) BrandPrimary.copy(alpha = 0.15f) else BackgroundCard)
+                        .border(1.dp, SurfaceCardBorder, CircleShape),
+                ) {
+                    Icon(
+                        imageVector = if (showPin) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                        contentDescription = if (showPin) "Hide PIN" else "Show PIN",
+                        tint = if (showPin) BrandPrimary else TextSecondary,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
@@ -142,12 +182,19 @@ fun PinEntryScreen(
             // Number pad
             NumberPadLight(
                 onDigitPress = { digit ->
-                    if (pin.length < 4 && !isLoading) {
-                        pin += digit
+                    if (!isLoading) {
+                        hasFailedAttempt = false
+                        if (pin.length < 4) {
+                            pin += digit
+                        } else {
+                            // If previously reached 4 and failed, replace with new first digit
+                            pin = digit
+                        }
                     }
                 },
                 onDelete = {
                     if (pin.isNotEmpty() && !isLoading) {
+                        hasFailedAttempt = false
                         pin = pin.dropLast(1)
                     }
                 },
@@ -179,7 +226,8 @@ fun PinEntryScreen(
         if (showParentGate) {
             ParentPasswordDialog(
                 title = "Parent Unlock",
-                subtitle = "Enter parent password to unlock ${if (childName.isNotBlank()) "$childName's" else "this"} playlist",
+                subtitle = "Enter 4-digit Parent PIN to unlock ${if (childName.isNotBlank()) "$childName's" else "this"} playlist",
+                allowGoogleSignIn = false,
                 onSuccess = {
                     showParentGate = false
                     onParentUnlock()
@@ -193,7 +241,10 @@ fun PinEntryScreen(
         if (pin.length == 4) {
             val verified = onVerifyPin(childId, pin)
             if (!verified) {
-                pin = ""
+                hasFailedAttempt = true
+                // Retain digits so child/parent can see with eye toggle and delete one-by-one!
+            } else {
+                hasFailedAttempt = false
             }
         }
     }

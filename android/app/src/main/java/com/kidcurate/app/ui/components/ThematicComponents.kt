@@ -300,6 +300,7 @@ enum class ParentGateMode {
 fun ParentPasswordDialog(
     title: String = "Parent Verification",
     subtitle: String = "Enter 4-digit Parent PIN",
+    allowGoogleSignIn: Boolean = true,
     onSuccess: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -308,9 +309,9 @@ fun ParentPasswordDialog(
     val parentPrefs = remember { ParentPreferences(appContext) }
 
     val initialMode = remember {
-        if (parentPrefs.isParentLoggedIn && parentPrefs.hasParentPin) {
+        if (parentPrefs.hasParentPin) {
             ParentGateMode.PIN_UNLOCK
-        } else if (parentPrefs.isParentLoggedIn && !parentPrefs.hasParentPin) {
+        } else if (!allowGoogleSignIn || parentPrefs.isParentLoggedIn) {
             ParentGateMode.SET_PIN
         } else {
             ParentGateMode.GOOGLE_LOGIN
@@ -321,6 +322,7 @@ fun ParentPasswordDialog(
     var pinInput by remember { mutableStateOf("") }
     var newPinInput by remember { mutableStateOf("") }
     var confirmPinInput by remember { mutableStateOf("") }
+    var showPinText by remember { mutableStateOf(false) }
     var isVerifying by remember { mutableStateOf(false) }
     var isResettingPin by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -451,59 +453,61 @@ fun ParentPasswordDialog(
                 // Mode-specific content
                 when (currentMode) {
                     ParentGateMode.PIN_UNLOCK -> {
-                        // Prominent Continue with Google button
-                        OutlinedButton(
-                            onClick = {
-                                errorMessage = null
-                                triggerGoogleSignIn()
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = MaterialTheme.colorScheme.surface,
-                            ),
-                            enabled = !isVerifying,
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
+                        if (allowGoogleSignIn) {
+                            // Prominent Continue with Google button
+                            OutlinedButton(
+                                onClick = {
+                                    errorMessage = null
+                                    triggerGoogleSignIn()
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                ),
+                                enabled = !isVerifying,
                             ) {
-                                Icon(
-                                    Icons.Rounded.AccountCircle,
-                                    contentDescription = null,
-                                    tint = BrandPrimary,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = if (isVerifying) "Signing in with Google..." else "Continue with Google",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.AccountCircle,
+                                        contentDescription = null,
+                                        tint = BrandPrimary,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = if (isVerifying) "Signing in with Google..." else "Continue with Google",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
                             }
+
+                            Spacer(Modifier.height(14.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                                Text(
+                                    text = "  OR USE 4-DIGIT PIN  ",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                            }
+
+                            Spacer(Modifier.height(14.dp))
                         }
-
-                        Spacer(Modifier.height(14.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
-                            Text(
-                                text = "  OR USE 4-DIGIT PIN  ",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
-                        }
-
-                        Spacer(Modifier.height(14.dp))
 
                         OutlinedTextField(
                             value = pinInput,
@@ -522,7 +526,17 @@ fun ParentPasswordDialog(
                             },
                             label = { Text("Parent PIN") },
                             placeholder = { Text("••••") },
-                            visualTransformation = PasswordVisualTransformation(),
+                            visualTransformation = if (showPinText) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { showPinText = !showPinText }) {
+                                    Icon(
+                                        if (showPinText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                        contentDescription = if (showPinText) "Hide PIN" else "Show PIN",
+                                        tint = if (showPinText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
@@ -541,7 +555,17 @@ fun ParentPasswordDialog(
                             },
                             label = { Text("New 4-digit PIN") },
                             placeholder = { Text("••••") },
-                            visualTransformation = PasswordVisualTransformation(),
+                            visualTransformation = if (showPinText) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { showPinText = !showPinText }) {
+                                    Icon(
+                                        if (showPinText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                        contentDescription = if (showPinText) "Hide PIN" else "Show PIN",
+                                        tint = if (showPinText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
@@ -560,7 +584,17 @@ fun ParentPasswordDialog(
                             },
                             label = { Text("Confirm 4-digit PIN") },
                             placeholder = { Text("••••") },
-                            visualTransformation = PasswordVisualTransformation(),
+                            visualTransformation = if (showPinText) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { showPinText = !showPinText }) {
+                                    Icon(
+                                        if (showPinText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                        contentDescription = if (showPinText) "Hide PIN" else "Show PIN",
+                                        tint = if (showPinText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),

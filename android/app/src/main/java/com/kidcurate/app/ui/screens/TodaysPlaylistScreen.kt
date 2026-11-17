@@ -140,6 +140,9 @@ fun TodaysPlaylistScreen(
         // Parent Unlock Dialog
         if (showParentPasswordDialog) {
             ParentPasswordDialog(
+                title = "Parent Unlock",
+                subtitle = "Enter 4-digit Parent PIN",
+                allowGoogleSignIn = false,
                 onSuccess = {
                     showParentPasswordDialog = false
                     pendingUnlockAction?.invoke()
@@ -173,7 +176,7 @@ fun FilledPlaylistLightView(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -183,47 +186,48 @@ fun FilledPlaylistLightView(
                     Row(
                         modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         ThematicAvatar(
                             name = childName,
                             avatar = childAvatar,
-                            size = 48.dp,
-                            iconSize = 24.dp
+                            size = 44.dp,
+                            iconSize = 22.dp
                         )
-                        Column(modifier = Modifier.weight(1f, fill = false)) {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Hi $childName!",
-                                fontSize = 20.sp,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onBackground,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
                             )
                             Text(
                                 text = "Choose a video to watch",
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }
 
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(6.dp))
 
-                    // Action buttons: Child Lock + Switch Profile
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Action buttons: Child Lock + Switch Profile (Adaptive compact layout)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         // Lock toggle indicator
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = if (isChildLockActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                             border = BorderStroke(1.dp, if (isChildLockActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
                             onClick = onToggleLock,
-                            modifier = Modifier.height(40.dp),
+                            modifier = Modifier.height(38.dp),
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
@@ -234,8 +238,8 @@ fun FilledPlaylistLightView(
                                     modifier = Modifier.size(16.dp),
                                 )
                                 Text(
-                                    text = if (isChildLockActive) "Locked" else "Unlock",
-                                    fontSize = 12.sp,
+                                    text = if (isChildLockActive) "Locked" else "Lock",
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isChildLockActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -251,8 +255,8 @@ fun FilledPlaylistLightView(
                                 contentColor = MaterialTheme.colorScheme.onBackground,
                             ),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                            modifier = Modifier.height(40.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier.height(38.dp),
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Logout,
@@ -261,7 +265,7 @@ fun FilledPlaylistLightView(
                                 modifier = Modifier.size(16.dp),
                             )
                             Spacer(Modifier.width(4.dp))
-                            Text("Switch", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Switch", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -289,8 +293,7 @@ fun FilledPlaylistLightView(
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onBackground,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                maxLines = 2,
                             )
                             val count = playlist.items.size
                             val mins = playlist.totalDurationSeconds / 60

@@ -143,6 +143,14 @@ class ParentPreferences(context: Context) {
         get() = prefs.getString(KEY_CACHED_PROFILES, "") ?: ""
         set(value) = prefs.edit().putString(KEY_CACHED_PROFILES, value).apply()
 
+    fun getChildLocalPin(childId: String): String {
+        return prefs.getString(KEY_CHILD_PIN_PREFIX + childId, "") ?: ""
+    }
+
+    fun setChildLocalPin(childId: String, pin: String) {
+        prefs.edit().putString(KEY_CHILD_PIN_PREFIX + childId, pin).apply()
+    }
+
     fun getCachedPlaylist(childId: String): String {
         return prefs.getString(KEY_CACHED_PLAYLIST_PREFIX + childId, "") ?: ""
     }
@@ -226,6 +234,7 @@ class ParentPreferences(context: Context) {
         private const val KEY_TODAY_WATCHED_SECONDS = "today_watched_seconds"
         private const val KEY_CACHED_PROFILES = "cached_profiles_json"
         private const val KEY_CACHED_PLAYLIST_PREFIX = "cached_playlist_json_"
+        private const val KEY_CHILD_PIN_PREFIX = "child_local_pin_"
         private const val KEY_HAS_SEEN_ONBOARDING = "has_seen_onboarding_tour"
 
         @Volatile

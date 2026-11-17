@@ -205,11 +205,37 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun verifyPin(childId: String, pin: String): Boolean {
         _state.value = _state.value.copy(isLoading = true, error = null)
+
+        // 1. Fast offline verification: check local encrypted preferences first
+        val localPin = parentPrefs.getChildLocalPin(childId)
+        if (localPin.isNotBlank() && localPin == pin) {
+            val child = _state.value.availableProfiles.find { it.id == childId }
+            val name = child?.name ?: _state.value.childName
+            val avatar = child?.avatar ?: _state.value.childAvatar
+            _state.value = _state.value.copy(
+                childId = childId,
+                childName = name,
+                childAvatar = avatar,
+                screen = AppScreen.Playlist(
+                    childId = childId,
+                    childName = name,
+                    childAvatar = avatar,
+                ),
+                isLoading = false,
+                error = null,
+            )
+            loadTodaysPlaylist(childId)
+            return true
+        }
+
+        // 2. Cloud verification with fallback
         return try {
             val response = ApiClient.api.verifyPin(
                 ChildVerifyRequest(childId = childId, pin = pin)
             )
             if (response.verified) {
+                // Cache verified PIN locally for instant offline unlocks
+                parentPrefs.setChildLocalPin(childId, pin)
                 _state.value = _state.value.copy(
                     childId = response.childId,
                     childName = response.name,
@@ -240,7 +266,8 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
             }
             val msg = when {
                 e.code() == 429 -> if (detail.isNotBlank()) detail else "Too many failed attempts. Account locked temporarily."
-                detail.isNotBlank() -> detail
+                e.code() == 404 -> "Incorrect PIN. Please try again."
+                detail.isNotBlank() && !detail.contains("not found", ignoreCase = true) -> detail
                 else -> "Incorrect PIN. Please try again."
             }
             _state.value = _state.value.copy(
@@ -257,7 +284,7 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
         } catch (e: Exception) {
             _state.value = _state.value.copy(
                 isLoading = false,
-                error = e.message ?: "Verification error. Please try again.",
+                error = "Verification error. Please try again.",
             )
             false
         }

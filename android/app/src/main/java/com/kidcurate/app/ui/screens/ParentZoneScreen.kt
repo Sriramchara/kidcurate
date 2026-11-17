@@ -91,6 +91,7 @@ fun ParentZoneScreen(
     var showEditChildDialog by remember { mutableStateOf<ChildManageItem?>(null) }
     var showAddChildDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf<ChildManageItem?>(null) }
+    var showTourDialog by remember { mutableStateOf(false) }
 
     // Status feedback
     var statusMessage by remember { mutableStateOf<String?>(null) }
@@ -232,16 +233,19 @@ fun ParentZoneScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Row(
-                            modifier = Modifier.weight(1f, fill = false),
+                            modifier = Modifier.weight(1f),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            IconButton(onClick = onBackToChildMode) {
+                            IconButton(
+                                onClick = onBackToChildMode,
+                                modifier = Modifier.size(36.dp),
+                            ) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "Back",
@@ -251,7 +255,7 @@ fun ParentZoneScreen(
                             Column {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 ) {
                                     Icon(
                                         Icons.Rounded.AdminPanelSettings,
@@ -260,39 +264,56 @@ fun ParentZoneScreen(
                                         modifier = Modifier.size(18.dp),
                                     )
                                     Text(
-                                        text = "Parent Control Center",
+                                        text = "Parent Zone",
                                         fontSize = 17.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = TextPrimary,
                                         maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
                                     )
                                 }
                                 Text(
-                                    text = "Manage playlists, videos & profiles",
+                                    text = "Control Center",
                                     fontSize = 11.sp,
                                     color = TextSecondary,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                         }
 
-                        FilledTonalButton(
-                            onClick = onBackToChildMode,
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            ),
-                            shape = RoundedCornerShape(12.dp),
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            Icon(
-                                Icons.Rounded.ChildCare,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text("Kids Mode", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            IconButton(
+                                onClick = { showTourDialog = true },
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                Icon(
+                                    Icons.Rounded.HelpOutline,
+                                    contentDescription = "App Tour & Guide",
+                                    tint = BrandPrimary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+
+                            FilledTonalButton(
+                                onClick = onBackToChildMode,
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier.height(36.dp),
+                            ) {
+                                Icon(
+                                    Icons.Rounded.ChildCare,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text("Kids Mode", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
                         }
                     }
 
@@ -509,26 +530,36 @@ fun ParentZoneScreen(
                     searchSuggestions = searchSuggestions,
                     existingVideoIds = existingVideoIds,
                     onAddVideo = { video ->
-                        scope.launch {
-                            try {
-                                val resp = ApiClient.api.addVideoToChildPlaylist(
-                                    selectedChildId,
-                                    AddVideoToChildRequest(
-                                        youtubeId = video.youtubeId,
-                                        title = video.title,
-                                        channelName = video.channelName,
-                                        thumbnailUrl = video.thumbnailUrl,
-                                        durationSeconds = video.durationSeconds ?: 300,
-                                    ),
-                                )
-                                if (resp["status"] == "already_added") {
-                                    statusMessage = "\"${video.title}\" is already in $selectedChildName's playlist."
-                                } else {
-                                    statusMessage = "Added \"${video.title}\" to $selectedChildName's playlist!"
-                                    loadChildPlaylist(selectedChildId)
+                        if (selectedChildId.isBlank() || managedChildren.isEmpty()) {
+                            statusMessage = "Please create a child profile under the Profile tab first before adding videos."
+                            selectedTabIndex = 3
+                        } else {
+                            scope.launch {
+                                try {
+                                    val resp = ApiClient.api.addVideoToChildPlaylist(
+                                        selectedChildId,
+                                        AddVideoToChildRequest(
+                                            youtubeId = video.youtubeId,
+                                            title = video.title,
+                                            channelName = video.channelName,
+                                            thumbnailUrl = video.thumbnailUrl,
+                                            durationSeconds = video.durationSeconds ?: 300,
+                                        ),
+                                    )
+                                    if (resp["status"] == "already_added") {
+                                        statusMessage = "\"${video.title}\" is already in $selectedChildName's playlist."
+                                    } else {
+                                        statusMessage = "Added \"${video.title}\" to $selectedChildName's playlist!"
+                                        loadChildPlaylist(selectedChildId)
+                                    }
+                                } catch (e: Exception) {
+                                    val msg = e.message ?: ""
+                                    statusMessage = when {
+                                        msg.contains("404") -> "Child profile not found. Please create a child profile under the Profile tab."
+                                        msg.contains("401") || msg.contains("403") -> "Session expired. Please verify your Parent PIN under Settings."
+                                        else -> "Could not add video. Please check your internet connection."
+                                    }
                                 }
-                            } catch (e: Exception) {
-                                statusMessage = "Error adding video: ${e.message}"
                             }
                         }
                     },
@@ -551,23 +582,33 @@ fun ParentZoneScreen(
                         }
                     },
                     onReAddVideo = { historyItem ->
-                        scope.launch {
-                            try {
-                                val targetChild = if (historyItem.childId.isNotBlank()) historyItem.childId else selectedChildId
-                                ApiClient.api.addVideoToChildPlaylist(
-                                    targetChild,
-                                    AddVideoToChildRequest(
-                                        youtubeId = historyItem.youtubeId,
-                                        title = historyItem.title,
-                                        channelName = historyItem.channelName,
-                                        thumbnailUrl = historyItem.thumbnailUrl,
-                                        durationSeconds = historyItem.durationSeconds,
+                        val targetChild = if (historyItem.childId.isNotBlank()) historyItem.childId else selectedChildId
+                        if (targetChild.isBlank() || managedChildren.isEmpty()) {
+                            statusMessage = "Please create a child profile under the Profile tab first."
+                            selectedTabIndex = 3
+                        } else {
+                            scope.launch {
+                                try {
+                                    ApiClient.api.addVideoToChildPlaylist(
+                                        targetChild,
+                                        AddVideoToChildRequest(
+                                            youtubeId = historyItem.youtubeId,
+                                            title = historyItem.title,
+                                            channelName = historyItem.channelName,
+                                            thumbnailUrl = historyItem.thumbnailUrl,
+                                            durationSeconds = historyItem.durationSeconds,
+                                        )
                                     )
-                                )
-                                statusMessage = "Re-added \"${historyItem.title}\" to playlist!"
-                                loadChildPlaylist(selectedChildId)
-                            } catch (e: Exception) {
-                                statusMessage = "Could not re-add video: ${e.message}"
+                                    statusMessage = "Re-added \"${historyItem.title}\" to playlist!"
+                                    loadChildPlaylist(selectedChildId)
+                                } catch (e: Exception) {
+                                    val msg = e.message ?: ""
+                                    statusMessage = when {
+                                        msg.contains("404") -> "Child profile not found. Please create a child profile under the Profile tab."
+                                        msg.contains("401") || msg.contains("403") -> "Session expired. Please verify your Parent PIN under Settings."
+                                        else -> "Could not re-add video. Please check your internet connection."
+                                    }
+                                }
                             }
                         }
                     }
@@ -715,6 +756,9 @@ fun ParentZoneScreen(
                                 managedChildren = updatedList
                                 val cachedList = updatedList.map { ChildProfileItem(id = it.id, name = it.name, avatar = it.avatar) }
                                 parentPrefs.cachedProfilesJson = com.google.gson.Gson().toJson(cachedList)
+                                if (updatedPin != null) {
+                                    parentPrefs.setChildLocalPin(child.id, updatedPin)
+                                }
                                 statusMessage = "Updated profile for ${nameInput.trim()}!"
                                 refreshManagedChildren()
                             } catch (e: Exception) {
@@ -863,6 +907,7 @@ fun ParentZoneScreen(
                                 managedChildren = updated
                                 val cachedList = updated.map { ChildProfileItem(id = it.id, name = it.name, avatar = it.avatar) }
                                 parentPrefs.cachedProfilesJson = com.google.gson.Gson().toJson(cachedList)
+                                parentPrefs.setChildLocalPin(created.id, pinInput.trim())
                                 statusMessage = "Created profile for ${nameInput.trim()}!"
                                 refreshManagedChildren()
                             } catch (e: Exception) {
@@ -930,5 +975,9 @@ fun ParentZoneScreen(
                 }
             },
         )
+    }
+
+    if (showTourDialog) {
+        OnboardingTourDialog(onDismiss = { showTourDialog = false })
     }
 }
