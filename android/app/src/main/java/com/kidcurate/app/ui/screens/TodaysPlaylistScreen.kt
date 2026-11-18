@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.kidcurate.app.data.ParentPreferences
 import com.kidcurate.app.data.PlaylistData
 import com.kidcurate.app.data.VideoItem
 import com.kidcurate.app.ui.components.GlassBackgroundAura
@@ -47,6 +50,12 @@ fun TodaysPlaylistScreen(
     var pendingUnlockAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     val context = LocalContext.current
     val activity = context as? Activity
+    val parentPrefs = remember { ParentPreferences.get(context) }
+    var curfewBypassed by remember { mutableStateOf(false) }
+    var dailyLimitBypassed by remember { mutableStateOf(false) }
+
+    val isCurfewBlocked = !curfewBypassed && parentPrefs.isCurfewActive()
+    val isDailyLimitBlocked = !dailyLimitBypassed && parentPrefs.isDailyLimitReached()
 
     // Defensive cleanup of screen pinning if navigating away or unmounting
     DisposableEffect(Unit) {
@@ -78,7 +87,26 @@ fun TodaysPlaylistScreen(
             .displayCutoutPadding(),
     ) {
         GlassBackgroundAura()
-        if (isLoading) {
+        if (isCurfewBlocked) {
+            CurfewRestView(
+                childName = childName,
+                onParentUnlock = {
+                    pendingUnlockAction = { curfewBypassed = true }
+                    showParentPasswordDialog = true
+                },
+                onBack = onBack
+            )
+        } else if (isDailyLimitBlocked) {
+            DailyLimitRestView(
+                childName = childName,
+                dailyMinutes = parentPrefs.dailyScreenTimeMinutes,
+                onParentUnlock = {
+                    pendingUnlockAction = { dailyLimitBypassed = true }
+                    showParentPasswordDialog = true
+                },
+                onBack = onBack
+            )
+        } else if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = BrandPrimary, modifier = Modifier.size(44.dp))
@@ -734,6 +762,151 @@ fun EmptyPlaylistLightView(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Exit / Switch Child Profile")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CurfewRestView(
+    childName: String,
+    onParentUnlock: () -> Unit,
+    onBack: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.widthIn(max = 440.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF6C5CE7).copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Bedtime,
+                    contentDescription = null,
+                    tint = Color(0xFF6C5CE7),
+                    modifier = Modifier.size(52.dp)
+                )
+            }
+            Spacer(Modifier.height(24.dp))
+            Text(
+                text = "Sweet Dreams, $childName! 🌙",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "It's bedtime curfew right now. Time to rest your eyes and recharge for tomorrow's learning adventures!",
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                lineHeight = 22.sp
+            )
+            Spacer(Modifier.height(32.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = onBack,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Text("Exit", fontWeight = FontWeight.SemiBold)
+                }
+                Button(
+                    onClick = onParentUnlock,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Text("Parent Unlock", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DailyLimitRestView(
+    childName: String,
+    dailyMinutes: Int,
+    onParentUnlock: () -> Unit,
+    onBack: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.widthIn(max = 440.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFF9F43).copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Timer,
+                    contentDescription = null,
+                    tint = Color(0xFFFF9F43),
+                    modifier = Modifier.size(52.dp)
+                )
+            }
+            Spacer(Modifier.height(24.dp))
+            Text(
+                text = "Great Learning Today, $childName! ⏱️",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "You've reached your daily screen time of $dailyMinutes minutes. Great job completing today's playlist!",
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                lineHeight = 22.sp
+            )
+            Spacer(Modifier.height(32.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = onBack,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Text("Exit", fontWeight = FontWeight.SemiBold)
+                }
+                Button(
+                    onClick = onParentUnlock,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Text("Parent Unlock", fontWeight = FontWeight.Bold)
                 }
             }
         }

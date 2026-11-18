@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
 from typing import Optional, List
 from app.database import get_db
@@ -69,7 +70,7 @@ async def search_suggestions(q: str = Query("", description="Query for autocompl
 @router.get("/search", response_model=List[VideoSearchResult])
 async def search_videos(
     response: Response,
-    q: str = Query(..., description="Search query, e.g. 'Moral Stories for Kids'"),
+    q: str = Query(..., min_length=1, max_length=120, description="Search query, e.g. 'Moral Stories for Kids'"),
     age: Optional[int] = Query(None, description="Optional child age hint"),
     max_results: int = Query(20, le=50),
     db: AsyncSession = Depends(get_db),
@@ -358,9 +359,19 @@ async def cache_video(
                             description=snippet.get("description", "")[:2000],
                         )
                         db.add(video)
-                        await db.commit()
-                        await db.refresh(video)
-                        return {"video_id": str(video.id), "cached": True}
+                        try:
+                            await db.commit()
+                            await db.refresh(video)
+                            return {"video_id": str(video.id), "cached": True}
+                        except IntegrityError:
+                            await db.rollback()
+                            res_race = await db.execute(select(Video).where(Video.youtube_id == youtube_id))
+                            race_existing = res_race.scalar_one_or_none()
+                            if race_existing:
+                                return {"video_id": str(race_existing.id), "cached": False, "message": "Already cached"}
+                            raise
+        except IntegrityError:
+            raise
         except Exception as e:
             logger.warning("Failed to fetch video details from YouTube API: %s", e)
 
@@ -374,6 +385,14 @@ async def cache_video(
         description="",
     )
     db.add(video)
-    await db.commit()
-    await db.refresh(video)
-    return {"video_id": str(video.id), "cached": True}
+    try:
+        await db.commit()
+        await db.refresh(video)
+        return {"video_id": str(video.id), "cached": True}
+    except IntegrityError:
+        await db.rollback()
+        res_race = await db.execute(select(Video).where(Video.youtube_id == youtube_id))
+        race_existing = res_race.scalar_one_or_none()
+        if race_existing:
+            return {"video_id": str(race_existing.id), "cached": False, "message": "Already cached"}
+        raise

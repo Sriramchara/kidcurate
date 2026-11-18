@@ -237,7 +237,8 @@ async def delete_manage_child(
     current_user: User = Depends(get_current_user)
 ):
     """Used by Parent Zone to delete a child profile. Strictly scoped to parent."""
-    from app.models import Playlist, PlaylistItem
+    from app.models import Playlist, PlaylistItem, WatchProgress, CurationLog
+    from sqlalchemy import delete
     result = await db.execute(
         select(Child).where(Child.id == child_id, Child.parent_id == current_user.id)
     )
@@ -245,12 +246,13 @@ async def delete_manage_child(
     if not child:
         raise HTTPException(status_code=404, detail="Child profile not found or access denied")
 
+    # Cascade delete child references to prevent ForeignKeyViolation crashes
+    await db.execute(delete(CurationLog).where(CurationLog.child_id == child_id))
+    await db.execute(delete(WatchProgress).where(WatchProgress.child_id == child_id))
     result_pl = await db.execute(select(Playlist).where(Playlist.child_id == child_id))
     playlists = result_pl.scalars().all()
     for pl in playlists:
-        await db.refresh(pl, ["items"])
-        for item in pl.items:
-            await db.delete(item)
+        await db.execute(delete(PlaylistItem).where(PlaylistItem.playlist_id == pl.id))
         await db.delete(pl)
 
     await db.delete(child)
@@ -329,12 +331,24 @@ async def delete_child(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.models import Playlist, PlaylistItem, WatchProgress, CurationLog
+    from sqlalchemy import delete
     result = await db.execute(
         select(Child).where(Child.id == child_id, Child.parent_id == current_user.id)
     )
     child = result.scalar_one_or_none()
     if not child:
         raise HTTPException(status_code=404, detail="Child not found")
+
+    # Cascade delete child references to prevent ForeignKeyViolation crashes
+    await db.execute(delete(CurationLog).where(CurationLog.child_id == child_id))
+    await db.execute(delete(WatchProgress).where(WatchProgress.child_id == child_id))
+    result_pl = await db.execute(select(Playlist).where(Playlist.child_id == child_id))
+    playlists = result_pl.scalars().all()
+    for pl in playlists:
+        await db.execute(delete(PlaylistItem).where(PlaylistItem.playlist_id == pl.id))
+        await db.delete(pl)
+
     await db.delete(child)
     await db.commit()
 

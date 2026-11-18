@@ -529,6 +529,59 @@ async def test_curation_history_endpoint():
         assert first_entry["child_name"] == "Audit Kid"
 
 
+@pytest.mark.asyncio
+async def test_child_deletion_cascades_foreign_keys():
+    """Verify deleting a child cascades and removes curation logs and playlists without ForeignKeyViolation."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        p1 = await ac.post("/api/auth/register", json={
+            "email": "cascade_parent@example.com",
+            "password": "password123456",
+            "name": "Cascade Parent"
+        })
+        headers = {"Authorization": f"Bearer {p1.json()['access_token']}"}
+
+        # Create child
+        c_resp = await ac.post("/api/children/manage", headers=headers, json={
+            "name": "Cascade Child",
+            "age": 5,
+            "avatar": "heart",
+            "pin": "1111"
+        })
+        assert c_resp.status_code == 200
+        child_id = c_resp.json()["id"]
+
+        # Add video to create PlaylistItem & CurationLog
+        with patch("app.routes.playlists.verify_youtube_embeddable", new=AsyncMock(return_value=(True, "OK"))):
+            add_resp = await ac.post(f"/api/playlists/child/{child_id}/add-video", headers=headers, json={
+                "youtube_id": "test_cascade_vid",
+                "title": "Cascade Song",
+                "channel_name": "Test Tube",
+                "thumbnail_url": "https://img.youtube.com/vi/test_cascade_vid/hqdefault.jpg",
+                "duration_seconds": 120
+            })
+            assert add_resp.status_code == 200
+
+        # Delete child profile via /manage/{child_id}
+        del_resp = await ac.delete(f"/api/children/manage/{child_id}", headers=headers)
+        assert del_resp.status_code == 200
+        assert del_resp.json()["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_search_query_length_boundary():
+    """Verify search queries over 120 characters are rejected with 422 validation error."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        # 121 characters should fail
+        long_query = "a" * 121
+        resp_too_long = await ac.get(f"/api/videos/search?q={long_query}")
+        assert resp_too_long.status_code == 422
+
+        # 120 characters should be accepted
+        valid_query = "a" * 120
+        resp_valid = await ac.get(f"/api/videos/search?q={valid_query}")
+        assert resp_valid.status_code == 200
+
+
 
 
 

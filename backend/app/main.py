@@ -30,9 +30,7 @@ app = FastAPI(
 )
 
 # CORS — allow Next.js portal, configured domains, and mobile clients
-origin_regex = None
-if settings.DEBUG:
-    origin_regex = r"https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?"
+origin_regex = r"^(https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?|https://([a-zA-Z0-9-]+\.)*(vercel\.app|onrender\.com))$"
 
 app.add_middleware(
     CORSMiddleware,

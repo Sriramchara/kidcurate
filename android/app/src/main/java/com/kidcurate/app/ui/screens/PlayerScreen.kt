@@ -99,8 +99,12 @@ fun PlayerScreen(
     var isChildLockActive by remember { mutableStateOf(false) }
     var showParentPasswordDialog by remember { mutableStateOf(false) }
     var isExitingPlayer by remember { mutableStateOf(false) }
+    var curfewBypassed by remember { mutableStateOf(false) }
+    var dailyLimitBypassed by remember { mutableStateOf(false) }
+    var activeLimitType by remember { mutableStateOf<String?>(null) } // "curfew" or "limit"
+    var pendingUnlockAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
-    var lastRecordedSecond by remember { mutableIntStateOf(0) }
+    var lastRecordedSecond by remember(currentIndex) { mutableIntStateOf(0) }
     var showEndCelebration by remember { mutableStateOf(false) }
     var celebrationCountdown by remember { mutableIntStateOf(4) }
 
@@ -241,6 +245,11 @@ fun PlayerScreen(
                             if (secInt > 0 && secInt % 30 == 0) {
                                 onProgressUpdate(currentVideo, secInt)
                             }
+                            if (!curfewBypassed && parentPrefs.isCurfewActive()) {
+                                activeLimitType = "curfew"
+                            } else if (!dailyLimitBypassed && parentPrefs.isDailyLimitReached()) {
+                                activeLimitType = "limit"
+                            }
                         },
                         onSkipNext = if (currentIndex + 1 < videos.size && (isCurrentVideoCompleted || currentVideoHasError)) { { currentIndex++ } } else null,
                         onFinishPlaylist = if (currentIndex + 1 >= videos.size) { { onBack() } } else null,
@@ -293,10 +302,15 @@ fun PlayerScreen(
                                 ) { Icon(Icons.Filled.SkipPrevious, contentDescription = "Prev", modifier = Modifier.size(16.dp)) }
                             }
                             if (currentIndex + 1 < videos.size) {
+                                val canProceed = isCurrentVideoCompleted || currentVideoHasError
                                 Button(
-                                    onClick = { currentIndex++ },
+                                    onClick = { if (canProceed) currentIndex++ },
+                                    enabled = canProceed,
                                     modifier = Modifier.height(34.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = BrandPrimary,
+                                        disabledContainerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                    ),
                                     shape = RoundedCornerShape(10.dp),
                                     contentPadding = PaddingValues(horizontal = 10.dp),
                                 ) {
@@ -326,7 +340,11 @@ fun PlayerScreen(
                         videos.forEachIndexed { idx, v ->
                             val isCurrent = idx == currentIndex
                             Surface(
-                                onClick = { currentIndex = idx },
+                                onClick = {
+                                    if (idx <= currentIndex || isCurrentVideoCompleted || currentVideoHasError) {
+                                        currentIndex = idx
+                                    }
+                                },
                                 shape = RoundedCornerShape(10.dp),
                                 color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surface,
                                 border = androidx.compose.foundation.BorderStroke(if (isCurrent) 2.dp else 1.dp, if (isCurrent) BrandPrimary else MaterialTheme.colorScheme.outline),
@@ -393,6 +411,11 @@ fun PlayerScreen(
                             }
                             if (secInt > 0 && secInt % 30 == 0) {
                                 onProgressUpdate(currentVideo, secInt)
+                            }
+                            if (!curfewBypassed && parentPrefs.isCurfewActive()) {
+                                activeLimitType = "curfew"
+                            } else if (!dailyLimitBypassed && parentPrefs.isDailyLimitReached()) {
+                                activeLimitType = "limit"
                             }
                         },
                         onSkipNext = if (currentIndex + 1 < videos.size && (isCurrentVideoCompleted || currentVideoHasError)) { { currentIndex++ } } else null,
@@ -796,13 +819,15 @@ fun PlayerScreen(
 
     if (showParentPasswordDialog) {
         ParentPasswordDialog(
-            title = if (isExitingPlayer) "Exit Video Player" else "Unlock Controls",
-            subtitle = "Enter 4-digit Parent PIN to ${if (isExitingPlayer) "exit player" else "unlock screen controls"}",
+            title = if (pendingUnlockAction != null) "Parent Unlock" else if (isExitingPlayer) "Exit Video Player" else "Unlock Controls",
+            subtitle = "Enter 4-digit Parent PIN to ${if (pendingUnlockAction != null) "continue watching" else if (isExitingPlayer) "exit player" else "unlock screen controls"}",
             allowGoogleSignIn = false,
             onSuccess = {
                 showParentPasswordDialog = false
                 isChildLockActive = false
                 try { activity?.stopLockTask() } catch (_: Exception) {}
+                pendingUnlockAction?.invoke()
+                pendingUnlockAction = null
                 if (isExitingPlayer) {
                     isExitingPlayer = false
                     onBack()
@@ -811,7 +836,67 @@ fun PlayerScreen(
             onDismiss = {
                 showParentPasswordDialog = false
                 isExitingPlayer = false
+                pendingUnlockAction = null
             },
+        )
+    }
+
+    if (activeLimitType != null) {
+        val limitKind = activeLimitType
+        AlertDialog(
+            onDismissRequest = { /* Modal */ },
+            icon = {
+                Icon(
+                    imageVector = if (limitKind == "curfew") Icons.Filled.Bedtime else Icons.Filled.Timer,
+                    contentDescription = null,
+                    tint = if (limitKind == "curfew") Color(0xFF6C5CE7) else Color(0xFFFF9F43),
+                    modifier = Modifier.size(40.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = if (limitKind == "curfew") "Bedtime Mode 🌙" else "Daily Limit Reached ⏱️",
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Text(
+                    text = if (limitKind == "curfew")
+                        "It's curfew time! Time to rest your eyes and recharge for tomorrow."
+                    else
+                        "You've reached your daily screen time of ${parentPrefs.dailyScreenTimeMinutes} minutes for today. Great job learning!",
+                    textAlign = TextAlign.Center
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingUnlockAction = {
+                            if (limitKind == "curfew") {
+                                curfewBypassed = true
+                            } else {
+                                dailyLimitBypassed = true
+                            }
+                            activeLimitType = null
+                        }
+                        showParentPasswordDialog = true
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary)
+                ) {
+                    Text("Parent Unlock")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        activeLimitType = null
+                        onBack()
+                    }
+                ) {
+                    Text("Done for Today")
+                }
+            }
         )
     }
 
