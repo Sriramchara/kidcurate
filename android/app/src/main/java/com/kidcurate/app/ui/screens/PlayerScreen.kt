@@ -1225,6 +1225,8 @@ fun OptimizedVideoPlayer(
                             wv?.settings?.apply {
                                 domStorageEnabled = true
                                 mediaPlaybackRequiresUserGesture = false
+                                allowFileAccess = false
+                                allowContentAccess = false
                             }
                             try {
                                 val cm = android.webkit.CookieManager.getInstance()
@@ -1301,6 +1303,8 @@ fun OptimizedVideoPlayer(
                 wv?.settings?.apply {
                     domStorageEnabled = true
                     mediaPlaybackRequiresUserGesture = false
+                    allowFileAccess = false
+                    allowContentAccess = false
                 }
                 try {
                     val cm = android.webkit.CookieManager.getInstance()

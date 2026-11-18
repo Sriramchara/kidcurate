@@ -159,12 +159,12 @@ async def test_child_management_security_and_pin_hashing():
         assert verify_resp.status_code == 200
         assert verify_resp.json()["verified"] is True
 
-        # Wrong PIN returns 401
+        # Wrong PIN returns 400 Bad Request (to avoid triggering 401 parent token wipe)
         wrong_verify = await ac.post("/api/children/verify-pin", headers=headers1, json={
             "child_id": child_id,
             "pin": "9999"
         })
-        assert wrong_verify.status_code == 401
+        assert wrong_verify.status_code == 400
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as unauth_ac:
             unauth_profiles = await unauth_ac.get("/api/children/profiles")
@@ -580,6 +580,76 @@ async def test_search_query_length_boundary():
         valid_query = "a" * 120
         resp_valid = await ac.get(f"/api/videos/search?q={valid_query}")
         assert resp_valid.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_delete_watched_playlist_item_sets_progress_null():
+    """Verify removing a video from child playlist with existing watch progress nulls FK cleanly."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        p1 = await ac.post("/api/auth/register", json={
+            "email": "watch_fk_parent@example.com",
+            "password": "password123456",
+            "name": "FK Parent"
+        })
+        headers = {"Authorization": f"Bearer {p1.json()['access_token']}"}
+
+        c_resp = await ac.post("/api/children/manage", headers=headers, json={
+            "name": "FK Child",
+            "age": 6,
+            "avatar": "heart",
+            "pin": "2222"
+        })
+        child_id = c_resp.json()["id"]
+
+        with patch("app.routes.playlists.verify_youtube_embeddable", new=AsyncMock(return_value=(True, "OK"))):
+            add_resp = await ac.post(f"/api/playlists/child/{child_id}/add-video", headers=headers, json={
+                "youtube_id": "test_fk_vid",
+                "title": "FK Song",
+                "channel_name": "FK Tube",
+                "thumbnail_url": "https://img.youtube.com/vi/test_fk_vid/hqdefault.jpg",
+                "duration_seconds": 120
+            })
+            assert add_resp.status_code == 200
+
+        # Get item id from playlist
+        pl_resp = await ac.get(f"/api/playlists/child/{child_id}/today", headers=headers)
+        assert pl_resp.status_code == 200
+        items = pl_resp.json()["playlist"]["items"]
+        assert len(items) >= 1
+        item_id = items[0]["item_id"]
+
+        # Record progress referencing this playlist item
+        prog_resp = await ac.post("/api/progress/update", headers=headers, json={
+            "child_id": child_id,
+            "youtube_id": "test_fk_vid",
+            "playlist_item_id": item_id,
+            "watched_seconds": 60,
+            "completed": False
+        })
+        assert prog_resp.status_code == 200
+
+        # Remove video item from playlist — must succeed without foreign key constraint error
+        del_item_resp = await ac.delete(f"/api/playlists/child/{child_id}/items/{item_id}", headers=headers)
+        assert del_item_resp.status_code == 200
+        assert del_item_resp.json()["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_query_limit_bounds():
+    """Verify limit parameters > 100 on history endpoints are rejected with 422."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        p1 = await ac.post("/api/auth/register", json={
+            "email": "limit_bounds@example.com",
+            "password": "password123456",
+            "name": "Limit Parent"
+        })
+        headers = {"Authorization": f"Bearer {p1.json()['access_token']}"}
+
+        resp_curation = await ac.get("/api/playlists/curation-history?limit=101", headers=headers)
+        assert resp_curation.status_code == 422
+
+        resp_curation_ok = await ac.get("/api/playlists/curation-history?limit=100", headers=headers)
+        assert resp_curation_ok.status_code == 200
 
 
 

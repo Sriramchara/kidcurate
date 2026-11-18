@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models import User, Child
 from app.auth import get_current_user, get_optional_current_user, verify_password, hash_password
 import uuid
+import secrets
 
 router = APIRouter(prefix="/api/children", tags=["Children"])
 
@@ -78,7 +79,7 @@ async def create_child(
         name=data.name,
         age=data.age,
         avatar=normalize_avatar(data.avatar or "compass"),
-        pin=data.pin,
+        pin=hash_password(data.pin),
     )
     db.add(child)
     await db.commit()
@@ -160,7 +161,7 @@ async def create_manage_child(
         name=data.name.strip(),
         age=data.age,
         avatar=normalize_avatar(data.avatar or "compass"),
-        pin=data.pin,
+        pin=hash_password(data.pin),
     )
     db.add(child)
     await db.commit()
@@ -215,7 +216,7 @@ async def update_manage_child(
     if data.pin is not None and data.pin.strip() and data.pin != "••••":
         if len(data.pin) != 4 or not data.pin.isdigit():
             raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
-        child.pin = data.pin
+        child.pin = hash_password(data.pin)
 
     await db.commit()
     await db.refresh(child)
@@ -382,10 +383,12 @@ async def verify_child_pin(
 
     # Constant-time verification supporting both bcrypt hashes and legacy plaintext PINs
     is_valid = False
+    needs_upgrade = False
     if child.pin.startswith("$2b$") or child.pin.startswith("$2a$"):
         is_valid = verify_password(data.pin, child.pin)
     else:
-        is_valid = (child.pin == data.pin)
+        is_valid = secrets.compare_digest(child.pin, data.pin)
+        needs_upgrade = is_valid
 
     if not is_valid:
         entry = PIN_LOCKOUT_STORE.setdefault(cid, {"attempts": 0, "locked_until": now})
@@ -398,13 +401,18 @@ async def verify_child_pin(
             )
         remaining_attempts = 5 - entry["attempts"]
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Incorrect PIN. {remaining_attempts} attempt(s) remaining."
         )
 
     # Success: clear failed attempts
     if cid in PIN_LOCKOUT_STORE:
         del PIN_LOCKOUT_STORE[cid]
+
+    # Auto-upgrade legacy plaintext PIN to bcrypt
+    if needs_upgrade:
+        child.pin = hash_password(data.pin)
+        await db.commit()
 
     return {
         "verified": True,
@@ -456,7 +464,7 @@ async def reset_child_pin(
     if not child:
         raise HTTPException(status_code=404, detail="Child profile not found or does not belong to your account.")
 
-    child.pin = data.new_pin
+    child.pin = hash_password(data.new_pin)
     await db.commit()
     return {
         "status": "ok",

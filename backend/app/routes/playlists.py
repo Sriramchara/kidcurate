@@ -1,14 +1,14 @@
 import json
 import httpx
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from typing import Optional, List
 from app.database import get_db
-from app.models import User, Child, Playlist, PlaylistItem, Video, CurationLog
+from app.models import User, Child, Playlist, PlaylistItem, Video, CurationLog, WatchProgress
 from app.auth import get_current_user
 
 router = APIRouter(prefix="/api/playlists", tags=["Playlists"])
@@ -560,7 +560,7 @@ async def create_playlist(
 @router.get("/child/{child_id}/curation-history")
 async def get_curation_history(
     child_id: Optional[str] = None,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -679,6 +679,14 @@ async def delete_playlist(
     current_user: User = Depends(get_current_user),
 ):
     playlist = await get_playlist_or_404(playlist_id, current_user, db)
+    await db.refresh(playlist, ["items"])
+    item_ids = [i.id for i in playlist.items] if playlist.items else []
+    if item_ids:
+        await db.execute(
+            update(WatchProgress)
+            .where(WatchProgress.playlist_item_id.in_(item_ids))
+            .values(playlist_item_id=None)
+        )
     await db.delete(playlist)
     await db.commit()
 
@@ -742,6 +750,11 @@ async def remove_video_from_playlist(
     if not item:
         raise HTTPException(status_code=404, detail="Item not found in playlist")
 
+    await db.execute(
+        update(WatchProgress)
+        .where(WatchProgress.playlist_item_id == item.id)
+        .values(playlist_item_id=None)
+    )
     await db.delete(item)
     await db.commit()
     await db.refresh(playlist, ["items"])
@@ -927,6 +940,11 @@ async def remove_video_from_child_playlist(
             duration_seconds=item.video.duration_seconds,
         ))
 
+    await db.execute(
+        update(WatchProgress)
+        .where(WatchProgress.playlist_item_id == item.id)
+        .values(playlist_item_id=None)
+    )
     await db.delete(item)
     await db.commit()
 

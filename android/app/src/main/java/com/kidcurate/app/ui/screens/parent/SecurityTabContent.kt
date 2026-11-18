@@ -200,6 +200,208 @@ fun SecurityTab(
             }
         }
 
+        // Daily Screen Time & Bedtime Curfew Card
+        var screenTimeMinutes by remember { mutableIntStateOf(parentPrefs.dailyScreenTimeMinutes) }
+        var curfewEnabled by remember { mutableStateOf(parentPrefs.curfewEnabled) }
+        var curfewStartHour by remember { mutableIntStateOf(parentPrefs.curfewStartHour) }
+        var curfewEndHour by remember { mutableIntStateOf(parentPrefs.curfewEndHour) }
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = BackgroundCard,
+            border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
+            shadowElevation = 1.dp,
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(Icons.Rounded.Timer, contentDescription = null, tint = BrandPrimary)
+                    Text("Daily Screen Time & Bedtime Curfew", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    text = "Control how long your child can watch videos each day and set bedtime hours when video playback pauses.",
+                    fontSize = 13.sp,
+                    color = TextSecondary,
+                )
+
+                Spacer(Modifier.height(14.dp))
+
+                Text(
+                    text = "Daily Screen Time Limit",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                val screenTimeOptions = listOf(
+                    30 to "30 min",
+                    45 to "45 min",
+                    60 to "60 min",
+                    90 to "90 min",
+                    0 to "Unlimited",
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    screenTimeOptions.forEach { (mins, label) ->
+                        val isSelected = screenTimeMinutes == mins
+                        OutlinedButton(
+                            onClick = {
+                                screenTimeMinutes = mins
+                                parentPrefs.dailyScreenTimeMinutes = mins
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.5.dp,
+                                if (isSelected) MaterialTheme.colorScheme.primary else SurfaceCardBorder,
+                            ),
+                            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else TextSecondary,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(color = SurfaceCardBorder)
+                Spacer(Modifier.height(14.dp))
+
+                // Curfew Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Rounded.Bedtime, contentDescription = null, tint = Color(0xFF6C5CE7))
+                        Column {
+                            Text("Bedtime Curfew Mode", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = if (curfewEnabled) "Active (${if (curfewStartHour > 12) "${curfewStartHour - 12} PM" else "$curfewStartHour AM"} to ${if (curfewEndHour > 12) "${curfewEndHour - 12} PM" else "$curfewEndHour AM"})" else "Disabled",
+                                fontSize = 12.sp,
+                                color = if (curfewEnabled) Color(0xFF6C5CE7) else TextSecondary,
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = curfewEnabled,
+                        onCheckedChange = {
+                            curfewEnabled = it
+                            parentPrefs.curfewEnabled = it
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = BrandPrimary,
+                        ),
+                    )
+                }
+
+                if (curfewEnabled) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = "Curfew Start Time (Bedtime):",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TextSecondary,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        listOf(19 to "7 PM", 20 to "8 PM", 21 to "9 PM", 22 to "10 PM").forEach { (hr, label) ->
+                            val isSelected = curfewStartHour == hr
+                            OutlinedButton(
+                                onClick = {
+                                    curfewStartHour = hr
+                                    parentPrefs.curfewStartHour = hr
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (isSelected) Color(0xFF6C5CE7).copy(alpha = 0.15f) else Color.Transparent,
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.5.dp,
+                                    if (isSelected) Color(0xFF6C5CE7) else SurfaceCardBorder,
+                                ),
+                                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp),
+                            ) {
+                                Text(
+                                    text = label,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color(0xFF6C5CE7) else TextSecondary,
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "Curfew End Time (Wake Up):",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TextSecondary,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        listOf(6 to "6 AM", 7 to "7 AM", 8 to "8 AM", 9 to "9 AM").forEach { (hr, label) ->
+                            val isSelected = curfewEndHour == hr
+                            OutlinedButton(
+                                onClick = {
+                                    curfewEndHour = hr
+                                    parentPrefs.curfewEndHour = hr
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (isSelected) Color(0xFF6C5CE7).copy(alpha = 0.15f) else Color.Transparent,
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.5.dp,
+                                    if (isSelected) Color(0xFF6C5CE7) else SurfaceCardBorder,
+                                ),
+                                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp),
+                            ) {
+                                Text(
+                                    text = label,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color(0xFF6C5CE7) else TextSecondary,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Early Reader Subtitles & Phonics Card
         var earlyReaderEnabled by remember { mutableStateOf(parentPrefs.earlyReaderSubtitles) }
         var defaultSubtitlesEnabled by remember { mutableStateOf(parentPrefs.subtitlesEnabled) }

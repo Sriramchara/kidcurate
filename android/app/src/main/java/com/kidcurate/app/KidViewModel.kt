@@ -256,7 +256,13 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 false
             }
         } catch (e: retrofit2.HttpException) {
-            if (e.code() == 401) {
+            val detail = try {
+                val body = e.response()?.errorBody()?.string() ?: ""
+                org.json.JSONObject(body).optString("detail", "")
+            } catch (_: Exception) {
+                ""
+            }
+            if (e.code() == 401 && (detail.contains("credentials", ignoreCase = true) || detail.contains("token", ignoreCase = true) || detail.isBlank())) {
                 parentPrefs.clearParentSession()
                 ApiClient.authToken = ""
                 _state.value = KidAppState(
@@ -264,12 +270,6 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                     error = "Your parent session ended. Sign in with Google to continue.",
                 )
                 return false
-            }
-            val detail = try {
-                val body = e.response()?.errorBody()?.string() ?: ""
-                org.json.JSONObject(body).optString("detail", "")
-            } catch (_: Exception) {
-                ""
             }
             val msg = when {
                 e.code() == 429 -> if (detail.isNotBlank()) detail else "Too many failed attempts. Account locked temporarily."

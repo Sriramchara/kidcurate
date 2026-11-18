@@ -221,7 +221,9 @@ async def search_videos(
                             except Exception:
                                 return 300
 
-                        def extract_videos(obj):
+                        def extract_videos(obj, depth: int = 0):
+                            if depth > 25:
+                                return
                             if isinstance(obj, dict):
                                 if "videoRenderer" in obj:
                                     vr = obj["videoRenderer"]
@@ -255,12 +257,12 @@ async def search_videos(
                                             )
                                 if len(results) < target_limit:
                                     for v in obj.values():
-                                        extract_videos(v)
+                                        extract_videos(v, depth + 1)
                             elif isinstance(obj, list) and len(results) < target_limit:
                                 for item in obj:
-                                    extract_videos(item)
+                                    extract_videos(item, depth + 1)
 
-                        extract_videos(yt_data)
+                        extract_videos(yt_data, 0)
                         if results:
                             data_source = "youtube-live-scrape"
         except Exception as e:
