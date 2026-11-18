@@ -73,7 +73,7 @@ fun ChildSelectScreen(
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxSize(),
             ) {
             Spacer(modifier = Modifier.height(if (isLandscape) 4.dp else 12.dp))
 
@@ -122,17 +122,27 @@ fun ChildSelectScreen(
                     }
                 }
             } else if (profiles.isEmpty()) {
-                Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    shadowElevation = 4.dp,
-                    modifier = Modifier.padding(16.dp),
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(if (isLandscape) 12.dp else 28.dp),
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        shadowElevation = 4.dp,
+                        modifier = Modifier
+                            .widthIn(max = 520.dp)
+                            .padding(16.dp),
                     ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .verticalScroll(rememberScrollState())
+                                .padding(if (isLandscape) 12.dp else 28.dp),
+                        ) {
                         val isError = errorMessage != null
                         Icon(
                             if (isError) Icons.Rounded.CloudOff else Icons.Rounded.RocketLaunch,
@@ -207,6 +217,7 @@ fun ChildSelectScreen(
                             }
                         }
                     }
+                }
                 }
             } else if (profiles.size == 1) {
                 // Single child profile: perfectly centered on screen

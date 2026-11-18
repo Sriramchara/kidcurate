@@ -168,10 +168,16 @@ fun FilledPlaylistLightView(
     onStartPlaying: (Int) -> Unit,
     onBack: () -> Unit,
 ) {
-    LazyColumn(
+    Box(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 32.dp),
+        contentAlignment = Alignment.TopCenter,
     ) {
+        LazyColumn(
+            modifier = Modifier
+                .widthIn(max = 680.dp)
+                .fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 32.dp),
+        ) {
         // Top Header: Child avatar, name, Lock & Switch buttons
         item {
             Column(
@@ -350,6 +356,7 @@ fun FilledPlaylistLightView(
             )
         }
     }
+    } // end Box tablet constraint
 }
 
 @Composable
@@ -529,7 +536,9 @@ fun EmptyPlaylistLightView(
             color = MaterialTheme.colorScheme.surface,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
             shadowElevation = 4.dp,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .widthIn(max = 500.dp)
+                .fillMaxWidth(),
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,

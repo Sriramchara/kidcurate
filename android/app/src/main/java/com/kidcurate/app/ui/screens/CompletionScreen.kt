@@ -41,6 +41,8 @@ fun CompletionScreen(
 ) {
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
     LaunchedEffect(Unit) {
         SoundHaptics.playCelebration(view, haptic)
@@ -53,21 +55,23 @@ fun CompletionScreen(
             .fillMaxSize()
             .background(BackgroundLight)
             .statusBarsPadding()
-            .navigationBarsPadding(),
+            .navigationBarsPadding()
+            .displayCutoutPadding(),
         contentAlignment = Alignment.Center,
     ) {
         ConfettiCelebration(isActive = true)
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(if (isLandscape) 10.dp else 16.dp),
             modifier = Modifier
+                .widthIn(max = 480.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(28.dp),
+                .padding(if (isLandscape) 16.dp else 28.dp),
         ) {
             // Trophy
             Box(
                 modifier = Modifier
-                    .size(90.dp)
+                    .size(if (isLandscape) 60.dp else 90.dp)
                     .clip(CircleShape)
                     .background(BrandAccentContainer),
                 contentAlignment = Alignment.Center,
@@ -76,15 +80,15 @@ fun CompletionScreen(
                     Icons.Rounded.EmojiEvents,
                     contentDescription = "Trophy",
                     tint = BrandAccentDark,
-                    modifier = Modifier.size(54.dp),
+                    modifier = Modifier.size(if (isLandscape) 36.dp else 54.dp),
                 )
             }
 
-            ThematicAvatar(name = childName, avatar = childAvatar, size = 64.dp, iconSize = 32.dp)
+            ThematicAvatar(name = childName, avatar = childAvatar, size = if (isLandscape) 48.dp else 64.dp, iconSize = if (isLandscape) 24.dp else 32.dp)
 
             Text(
                 text = "All Done, $childName!",
-                fontSize = 26.sp,
+                fontSize = if (isLandscape) 20.sp else 26.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
                 textAlign = TextAlign.Center,
@@ -92,12 +96,12 @@ fun CompletionScreen(
 
             Text(
                 text = "You've finished all the videos in today's playlist.",
-                fontSize = 15.sp,
+                fontSize = if (isLandscape) 13.sp else 15.sp,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
             )
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(if (isLandscape) 2.dp else 8.dp))
 
             // Stats row
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -117,7 +121,7 @@ fun CompletionScreen(
                 )
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(if (isLandscape) 2.dp else 8.dp))
 
             Button(
                 onClick = {
@@ -125,15 +129,16 @@ fun CompletionScreen(
                     onGoHome()
                 },
                 modifier = Modifier
+                    .widthIn(max = 360.dp)
                     .fillMaxWidth()
-                    .height(54.dp),
+                    .height(50.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp),
             ) {
                 Text(
                     text = "Back to Home",
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                 )
