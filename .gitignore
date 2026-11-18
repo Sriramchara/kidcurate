@@ -48,6 +48,9 @@ yarn-error.log*
 .kotlin/
 build/
 android/build/
+release/
+*.aab
+*.apk
 android/app/build/
 android/local.properties
 android/keystore.properties
