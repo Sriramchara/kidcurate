@@ -48,6 +48,13 @@ fun TodaysPlaylistScreen(
     val context = LocalContext.current
     val activity = context as? Activity
 
+    // Defensive cleanup of screen pinning if navigating away or unmounting
+    DisposableEffect(Unit) {
+        onDispose {
+            try { activity?.stopLockTask() } catch (_: Exception) {}
+        }
+    }
+
     // When child lock is active, hardware back button prompts for Parent Password
     BackHandler {
         if (isChildLockActive) {

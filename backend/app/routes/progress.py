@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from typing import Optional
 from app.database import get_db
@@ -171,6 +172,7 @@ async def get_watch_history(
     result = await db.execute(
         select(WatchProgress)
         .where(WatchProgress.child_id == child_id)
+        .options(selectinload(WatchProgress.video))
         .order_by(WatchProgress.watched_at.desc())
         .limit(limit)
     )
@@ -178,7 +180,6 @@ async def get_watch_history(
 
     history = []
     for rec in records:
-        await db.refresh(rec, ["video"])
         if rec.video:
             history.append({
                 "youtube_id": rec.video.youtube_id,

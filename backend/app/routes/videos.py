@@ -195,6 +195,7 @@ async def search_videos(
             yt_headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Accept-Language": "en-US,en;q=0.9",
+                "Cookie": "PREF=f2=8000000",  # Enforce YouTube Restricted Mode (Strict SafeSearch)
             }
             async with httpx.AsyncClient(timeout=8.0) as client:
                 yt_resp = await client.get(
@@ -277,6 +278,13 @@ async def search_videos(
                 ).limit(max_results)
             )
             for cv in cached_db.scalars().all():
+                tags = []
+                if cv.subject_tags:
+                    try:
+                        parsed = json.loads(cv.subject_tags)
+                        tags = parsed if isinstance(parsed, list) else [str(parsed)]
+                    except Exception:
+                        tags = [t.strip() for t in cv.subject_tags.split(",") if t.strip()]
                 results.append(
                     VideoSearchResult(
                         youtube_id=cv.youtube_id,
@@ -286,7 +294,7 @@ async def search_videos(
                         duration_seconds=cv.duration_seconds or 300,
                         description=cv.description,
                         is_safe=cv.is_safe,
-                        subject_tags=json.loads(cv.subject_tags or "[]"),
+                        subject_tags=tags,
                         is_licensed=True,
                         is_embeddable=True,
                     )

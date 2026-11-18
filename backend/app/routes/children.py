@@ -6,7 +6,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta, timezone
 from app.database import get_db
 from app.models import User, Child
-from app.auth import get_current_user, verify_password, hash_password
+from app.auth import get_current_user, get_optional_current_user, verify_password, hash_password
 import uuid
 
 router = APIRouter(prefix="/api/children", tags=["Children"])
@@ -132,7 +132,7 @@ async def list_manage_children(
             name=c.name,
             age=c.age,
             avatar=normalize_avatar(c.avatar),
-            pin=None,
+            pin=(c.pin if (c.pin and not c.pin.startswith("$2")) else None),
             has_pin=bool(c.pin),
             parent_id=str(c.parent_id) if c.parent_id else None
         )
@@ -402,31 +402,47 @@ async def verify_child_pin(
 
 class ChildPINReset(BaseModel):
     child_id: str
-    parent_email: EmailStr
-    parent_password: str
     new_pin: str
+    parent_email: Optional[EmailStr] = None
+    parent_password: Optional[str] = None
 
 
 @router.post("/reset-pin")
-async def reset_child_pin(data: ChildPINReset, db: AsyncSession = Depends(get_db)):
-    """Allows parents to securely reset a child's PIN by verifying parent credentials and enforcing ownership."""
-    result_u = await db.execute(select(User).where(User.email == data.parent_email.lower().strip()))
-    parent = result_u.scalar_one_or_none()
-    if not parent or not verify_password(data.parent_password, parent.password_hash):
-        raise HTTPException(status_code=401, detail="Incorrect parent password.")
-
+async def reset_child_pin(
+    data: ChildPINReset,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+):
+    """Allows parents to securely reset a child's PIN by verifying parent credentials and enforcing ownership.
+    Supports either an active parent session (e.g. Google Sign-In) or parent email/password.
+    """
     if len(data.new_pin) != 4 or not data.new_pin.isdigit():
         raise HTTPException(status_code=400, detail="New PIN must be exactly 4 digits.")
 
-    # Strictly enforce child.parent_id == parent.id to prevent cross-account PIN tampering
+    parent_id = None
+    if current_user:
+        parent_id = current_user.id
+    elif data.parent_email and data.parent_password:
+        result_u = await db.execute(select(User).where(User.email == data.parent_email.lower().strip()))
+        parent = result_u.scalar_one_or_none()
+        if not parent or not verify_password(data.parent_password, parent.password_hash):
+            raise HTTPException(status_code=401, detail="Incorrect parent password.")
+        parent_id = parent.id
+    else:
+        raise HTTPException(
+            status_code=401,
+            detail="Parent authentication or parent password is required to reset child PIN.",
+        )
+
+    # Strictly enforce child.parent_id == parent_id to prevent cross-account PIN tampering
     result_c = await db.execute(
-        select(Child).where(Child.id == data.child_id, Child.parent_id == parent.id)
+        select(Child).where(Child.id == data.child_id, Child.parent_id == parent_id)
     )
     child = result_c.scalar_one_or_none()
     if not child:
         raise HTTPException(status_code=404, detail="Child profile not found or does not belong to your account.")
 
-    child.pin = hash_password(data.new_pin)
+    child.pin = data.new_pin
     await db.commit()
     return {
         "status": "ok",

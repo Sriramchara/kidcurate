@@ -180,10 +180,11 @@ fun PlayerScreen(
         }
     }
 
-    // Reset orientation to user preference and release wake lock when leaving the screen
+    // Reset orientation to user preference, release lock task, and release wake lock when leaving the screen
     DisposableEffect(Unit) {
         activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose {
+            try { activity?.stopLockTask() } catch (_: Exception) {}
             activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
             activity?.window?.let {
@@ -917,6 +918,7 @@ fun OptimizedVideoPlayer(
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val parentPrefs = remember { ParentPreferences.get(context) }
+    var playerViewRef by remember { mutableStateOf<YouTubePlayerView?>(null) }
     var youTubePlayerRef by remember { mutableStateOf<YouTubePlayer?>(null) }
     var webViewRef by remember { mutableStateOf<android.webkit.WebView?>(null) }
     var currentSecond by remember { mutableFloatStateOf(0f) }
@@ -1087,6 +1089,21 @@ fun OptimizedVideoPlayer(
         applySubtitles(subtitlesEnabled)
     }
 
+    // Release YouTube player and unbind lifecycle observer when composable leaves composition
+    DisposableEffect(lifecycleOwner) {
+        onDispose {
+            playerViewRef?.let { pv ->
+                try {
+                    lifecycleOwner.lifecycle.removeObserver(pv)
+                    pv.release()
+                } catch (_: Exception) {}
+            }
+            playerViewRef = null
+            youTubePlayerRef = null
+            webViewRef = null
+        }
+    }
+
     LaunchedEffect(video.youtubeId) {
         playbackError = null
         currentSecond = 0f
@@ -1125,7 +1142,9 @@ fun OptimizedVideoPlayer(
                                 mediaPlaybackRequiresUserGesture = false
                             }
                             try {
-                                android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true)
+                                val cm = android.webkit.CookieManager.getInstance()
+                                cm.setAcceptCookie(true)
+                                cm.setAcceptThirdPartyCookies(wv, false)
                             } catch (_: Exception) {}
                             webViewRef = wv
                             applySubtitles(subtitlesEnabled)
@@ -1175,6 +1194,8 @@ fun OptimizedVideoPlayer(
                     }, options)
                 }
 
+                playerViewRef = playerView
+
                 // Transparent View on top to intercept ALL touches and block WebView clicks
                 val touchInterceptor = android.view.View(ctx).apply {
                     layoutParams = FrameLayout.LayoutParams(
@@ -1197,10 +1218,24 @@ fun OptimizedVideoPlayer(
                     mediaPlaybackRequiresUserGesture = false
                 }
                 try {
-                    android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true)
+                    val cm = android.webkit.CookieManager.getInstance()
+                    cm.setAcceptCookie(true)
+                    cm.setAcceptThirdPartyCookies(wv, false)
                 } catch (_: Exception) {}
                 webViewRef = wv
                 container
+            },
+            onRelease = { container ->
+                playerViewRef?.let { pv ->
+                    try {
+                        lifecycleOwner.lifecycle.removeObserver(pv)
+                        pv.release()
+                    } catch (_: Exception) {}
+                }
+                playerViewRef = null
+                youTubePlayerRef = null
+                webViewRef = null
+                container.removeAllViews()
             },
             update = { _ -> },
             modifier = Modifier.fillMaxSize(),

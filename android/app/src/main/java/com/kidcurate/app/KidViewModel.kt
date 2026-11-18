@@ -91,11 +91,14 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
             // 2. Fetch live profiles: connect to production cloud server or saved server URL
             var fetchedProfiles: List<ChildProfileItem>? = null
             val primaryUrl = parentPrefs.serverUrl.ifBlank { com.kidcurate.app.BuildConfig.API_BASE_URL }
-            val candidateUrls = listOf(
-                primaryUrl,
-                com.kidcurate.app.BuildConfig.API_BASE_URL,
-                "http://localhost:8000/"
-            ).filter { it.isNotBlank() }
+            val candidateUrls = buildList {
+                add(primaryUrl)
+                add(com.kidcurate.app.BuildConfig.API_BASE_URL)
+                if (com.kidcurate.app.BuildConfig.DEBUG) {
+                    add("http://localhost:8000/")
+                    add("http://10.0.2.2:8000/")
+                }
+            }.filter { it.isNotBlank() }
              .map { if (it.endsWith("/")) it else "$it/" }
              .distinct()
 

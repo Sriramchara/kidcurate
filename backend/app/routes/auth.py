@@ -16,10 +16,44 @@ from app.auth import (
     create_access_token,
     create_refresh_token,
     get_current_user,
+    get_optional_current_user,
 )
 from app.services.email import send_password_reset_email
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
+
+AUTH_LOCKOUT_STORE: dict[str, dict] = {}
+
+
+def check_auth_rate_limit(key: str, max_attempts: int = 5, lock_minutes: int = 5):
+    now = datetime.now(timezone.utc)
+    entry = AUTH_LOCKOUT_STORE.get(key)
+    if entry:
+        if now < entry["locked_until"]:
+            remaining = int((entry["locked_until"] - now).total_seconds())
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Too many failed attempts. Temporarily locked for {remaining} seconds.",
+            )
+        elif now >= entry["locked_until"]:
+            AUTH_LOCKOUT_STORE.pop(key, None)
+
+
+def record_auth_failure(key: str, max_attempts: int = 5, lock_minutes: int = 5) -> int:
+    now = datetime.now(timezone.utc)
+    entry = AUTH_LOCKOUT_STORE.setdefault(key, {"attempts": 0, "locked_until": now})
+    entry["attempts"] += 1
+    if entry["attempts"] >= max_attempts:
+        entry["locked_until"] = now + timedelta(minutes=lock_minutes)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many failed attempts. Temporarily locked for {lock_minutes} minutes.",
+        )
+    return max_attempts - entry["attempts"]
+
+
+def clear_auth_failures(key: str):
+    AUTH_LOCKOUT_STORE.pop(key, None)
 
 
 class RegisterRequest(BaseModel):
@@ -143,14 +177,19 @@ async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).where(User.email == form_data.username))
+    clean_email = form_data.username.lower().strip()
+    check_auth_rate_limit(clean_email, max_attempts=5, lock_minutes=5)
+
+    result = await db.execute(select(User).where(User.email == clean_email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(form_data.password, user.password_hash):
+        remaining = record_auth_failure(clean_email, max_attempts=5, lock_minutes=5)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail=f"Incorrect email or password. {remaining} attempt(s) remaining.",
         )
 
+    clear_auth_failures(clean_email)
     access_token = create_access_token({"sub": str(user.id)})
     refresh_token = create_refresh_token({"sub": str(user.id)})
     set_auth_cookies(response, access_token, refresh_token)
@@ -543,14 +582,33 @@ async def get_db_summary(
 
 
 @router.post("/verify-parent-password")
-async def verify_parent_password(data: VerifyParentPasswordRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == data.email.lower().strip()))
+async def verify_parent_password(
+    data: VerifyParentPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+):
+    clean_email = data.email.lower().strip()
+
+    # If the user is already authenticated via Bearer token (e.g. Google Sign-In) and matches email
+    if current_user and current_user.email.lower().strip() == clean_email:
+        return {
+            "verified": True,
+            "message": "Parent account verified via active session.",
+            "user_id": str(current_user.id),
+            "name": current_user.name,
+        }
+
+    check_auth_rate_limit(f"pw_{clean_email}", max_attempts=5, lock_minutes=5)
+    result = await db.execute(select(User).where(User.email == clean_email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(data.password, user.password_hash):
+        remaining = record_auth_failure(f"pw_{clean_email}", max_attempts=5, lock_minutes=5)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect parent account password.",
+            detail=f"Incorrect parent account password. {remaining} attempt(s) remaining.",
         )
+
+    clear_auth_failures(f"pw_{clean_email}")
     return {
         "verified": True,
         "message": "Parent account verified.",

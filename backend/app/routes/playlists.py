@@ -4,6 +4,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from typing import Optional, List
 from app.database import get_db
@@ -296,11 +297,62 @@ async def get_playlist_or_404(
         select(Playlist)
         .join(Child)
         .where(Playlist.id == playlist_id, Child.parent_id == current_user.id)
+        .options(selectinload(Playlist.items).selectinload(PlaylistItem.video))
     )
     playlist = result.scalar_one_or_none()
     if not playlist:
         raise HTTPException(status_code=404, detail="Playlist not found")
     return playlist
+
+
+async def get_active_child_playlist(child_id: str, db: AsyncSession) -> Optional[Playlist]:
+    """Retrieves the active playlist for a child with eager-loaded items and videos.
+    Prioritizes today's scheduled playlist, falls back to unscheduled active playlist,
+    and uses .first() to prevent MultipleResultsFound exceptions.
+    """
+    today = date.today()
+    # 1. Today's scheduled active playlist
+    stmt_today = (
+        select(Playlist)
+        .where(
+            Playlist.child_id == child_id,
+            Playlist.scheduled_date == today,
+            Playlist.is_active == True,
+        )
+        .options(selectinload(Playlist.items).selectinload(PlaylistItem.video))
+        .order_by(Playlist.created_at.desc())
+    )
+    result = await db.execute(stmt_today)
+    playlist = result.scalars().first()
+    if playlist:
+        return playlist
+
+    # 2. Fallback: Unscheduled active playlist
+    stmt_unscheduled = (
+        select(Playlist)
+        .where(
+            Playlist.child_id == child_id,
+            Playlist.scheduled_date == None,
+            Playlist.is_active == True,
+            Playlist.is_template == False,
+        )
+        .options(selectinload(Playlist.items).selectinload(PlaylistItem.video))
+        .order_by(Playlist.created_at.desc())
+    )
+    result = await db.execute(stmt_unscheduled)
+    playlist = result.scalars().first()
+    if playlist:
+        return playlist
+
+    # 3. Fallback: Any active playlist for this child
+    stmt_any = (
+        select(Playlist)
+        .where(Playlist.child_id == child_id, Playlist.is_active == True)
+        .options(selectinload(Playlist.items).selectinload(PlaylistItem.video))
+        .order_by(Playlist.created_at.desc())
+    )
+    result = await db.execute(stmt_any)
+    return result.scalars().first()
 
 
 def playlist_to_response(playlist: Playlist) -> PlaylistResponse:
@@ -387,17 +439,17 @@ async def apply_activity_pack(
 
     # Get max existing position index
     items_result = await db.execute(
-        select(PlaylistItem).where(PlaylistItem.playlist_id == playlist.id).order_by(PlaylistItem.position.desc())
+        select(PlaylistItem)
+        .where(PlaylistItem.playlist_id == playlist.id)
+        .options(selectinload(PlaylistItem.video))
+        .order_by(PlaylistItem.position.desc())
     )
     existing_items = items_result.scalars().all()
     next_order = (existing_items[0].position + 1) if existing_items else 1
-    existing_yt_ids = set()
-    for it in existing_items:
-        await db.refresh(it, ["video"])
-        if it.video:
-            existing_yt_ids.add(it.video.youtube_id)
+    existing_yt_ids = {it.video.youtube_id for it in existing_items if it.video}
 
     added_count = 0
+    added_duration = 0
     for v in target_pack.videos:
         if v.youtube_id in existing_yt_ids:
             continue
@@ -414,8 +466,7 @@ async def apply_activity_pack(
                 is_safe=True,
             )
             db.add(vid)
-            await db.commit()
-            await db.refresh(vid)
+            await db.flush()
 
         # Add item with position index
         item = PlaylistItem(
@@ -437,7 +488,9 @@ async def apply_activity_pack(
         ))
         next_order += 1
         added_count += 1
+        added_duration += (v.duration_seconds or 0)
 
+    playlist.total_duration_seconds = (playlist.total_duration_seconds or 0) + added_duration
     await db.commit()
     return {
         "status": "ok",
@@ -738,34 +791,9 @@ async def get_todays_playlist(
     if not child:
         raise HTTPException(status_code=404, detail="Child profile not found or access denied")
 
-    today = date.today()
-    result = await db.execute(
-        select(Playlist).where(
-            Playlist.child_id == child_id,
-            Playlist.scheduled_date == today,
-            Playlist.is_active == True,
-        )
-    )
-    playlist = result.scalar_one_or_none()
-
-    if not playlist:
-        # Try to find any active playlist (unscheduled)
-        result = await db.execute(
-            select(Playlist).where(
-                Playlist.child_id == child_id,
-                Playlist.scheduled_date == None,
-                Playlist.is_active == True,
-                Playlist.is_template == False,
-            )
-        )
-        playlist = result.scalar_one_or_none()
-
+    playlist = await get_active_child_playlist(child_id, db)
     if not playlist:
         return {"playlist": None, "message": "No playlist for today"}
-
-    await db.refresh(playlist, ["items"])
-    for item in playlist.items:
-        await db.refresh(item, ["video"])
 
     return {"playlist": playlist_to_response(playlist)}
 
@@ -794,10 +822,7 @@ async def add_video_to_child_playlist(
     if not is_ok:
         raise HTTPException(status_code=400, detail=reason)
 
-    result = await db.execute(
-        select(Playlist).where(Playlist.child_id == child_id, Playlist.is_active == True)
-    )
-    playlist = result.scalar_one_or_none()
+    playlist = await get_active_child_playlist(child_id, db)
     if not playlist:
         import uuid
         playlist = Playlist(
@@ -808,8 +833,7 @@ async def add_video_to_child_playlist(
             total_duration_seconds=0,
         )
         db.add(playlist)
-        await db.commit()
-        await db.refresh(playlist)
+        await db.flush()
 
     result = await db.execute(select(Video).where(Video.youtube_id == data.youtube_id))
     video = result.scalar_one_or_none()
@@ -825,15 +849,11 @@ async def add_video_to_child_playlist(
             is_safe=True,
         )
         db.add(video)
-        await db.commit()
-        await db.refresh(video)
+        await db.flush()
 
-    await db.refresh(playlist, ["items"])
     # Prevent duplicate video additions in the child's playlist
     for existing_item in playlist.items:
         if existing_item.video_id == video.id:
-            for item in playlist.items:
-                await db.refresh(item, ["video"])
             return {
                 "status": "already_added",
                 "message": "Video is already in this playlist.",
@@ -862,11 +882,9 @@ async def add_video_to_child_playlist(
     ))
     playlist.total_duration_seconds = (playlist.total_duration_seconds or 0) + (data.duration_seconds or 0)
     await db.commit()
-    await db.refresh(playlist, ["items"])
-    for item in playlist.items:
-        await db.refresh(item, ["video"])
 
-    return {"status": "ok", "playlist": playlist_to_response(playlist)}
+    refreshed_playlist = await get_active_child_playlist(child_id, db)
+    return {"status": "ok", "playlist": playlist_to_response(refreshed_playlist or playlist)}
 
 
 @router.delete("/child/{child_id}/items/{item_id}")
@@ -885,19 +903,14 @@ async def remove_video_from_child_playlist(
     if not child:
         raise HTTPException(status_code=404, detail="Child profile not found or access denied")
 
-    result = await db.execute(
-        select(Playlist).where(Playlist.child_id == child_id, Playlist.is_active == True)
-    )
-    playlist = result.scalar_one_or_none()
+    playlist = await get_active_child_playlist(child_id, db)
     if not playlist:
         raise HTTPException(status_code=404, detail="Playlist not found")
 
-    await db.refresh(playlist, ["items"])
     item = next((i for i in playlist.items if str(i.id) == item_id), None)
     if not item:
         raise HTTPException(status_code=404, detail="Video item not found in playlist")
 
-    await db.refresh(item, ["video"])
     if item.video and item.video.duration_seconds:
         playlist.total_duration_seconds = max(0, (playlist.total_duration_seconds or 0) - item.video.duration_seconds)
 
@@ -916,10 +929,9 @@ async def remove_video_from_child_playlist(
 
     await db.delete(item)
     await db.commit()
-    await db.refresh(playlist, ["items"])
-    for i in playlist.items:
-        await db.refresh(i, ["video"])
-    return {"status": "ok", "playlist": playlist_to_response(playlist)}
+
+    refreshed_playlist = await get_active_child_playlist(child_id, db)
+    return {"status": "ok", "playlist": playlist_to_response(refreshed_playlist or playlist)}
 
 
 class ReorderRequest(BaseModel):
@@ -942,24 +954,18 @@ async def reorder_child_playlist(
     if not child:
         raise HTTPException(status_code=404, detail="Child profile not found or access denied")
 
-    result = await db.execute(
-        select(Playlist).where(Playlist.child_id == child_id, Playlist.is_active == True)
-    )
-    playlist = result.scalar_one_or_none()
+    playlist = await get_active_child_playlist(child_id, db)
     if not playlist:
         raise HTTPException(status_code=404, detail="Playlist not found")
 
-    await db.refresh(playlist, ["items"])
     item_map = {str(item.id): item for item in playlist.items}
     for pos, item_id in enumerate(data.ordered_item_ids, start=1):
         if item_id in item_map:
             item_map[item_id].position = pos
 
     await db.commit()
-    await db.refresh(playlist, ["items"])
-    for i in playlist.items:
-        await db.refresh(i, ["video"])
-    return {"status": "ok", "playlist": playlist_to_response(playlist)}
+    refreshed_playlist = await get_active_child_playlist(child_id, db)
+    return {"status": "ok", "playlist": playlist_to_response(refreshed_playlist or playlist)}
 
 
 
