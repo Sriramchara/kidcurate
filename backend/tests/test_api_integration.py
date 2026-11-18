@@ -11,7 +11,7 @@ BASE_URL = "https://kidcurate-api.onrender.com"
 
 @pytest.mark.asyncio
 async def test_health_endpoint():
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=45.0) as client:
         resp = await client.get(f"{BASE_URL}/")
         assert resp.status_code == 200
         data = resp.json()
@@ -21,8 +21,32 @@ async def test_health_endpoint():
 
 @pytest.mark.asyncio
 async def test_public_profiles_endpoint():
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(f"{BASE_URL}/api/children/profiles")
+    async with httpx.AsyncClient(timeout=45.0) as client:
+        # Unauthenticated request must be rejected with 401
+        unauth_resp = await client.get(f"{BASE_URL}/api/children/profiles")
+        assert unauth_resp.status_code == 401
+
+        # Authenticate or register integration test parent
+        login_resp = await client.post(
+            f"{BASE_URL}/api/auth/login",
+            data={"username": "integration_test@example.com", "password": "TestPassword1234!"}
+        )
+        if login_resp.status_code == 200:
+            token = login_resp.json().get("access_token")
+        else:
+            reg_resp = await client.post(
+                f"{BASE_URL}/api/auth/register",
+                json={
+                    "name": "Integration Test Parent",
+                    "email": "integration_test@example.com",
+                    "password": "TestPassword1234!"
+                }
+            )
+            token = reg_resp.json().get("access_token")
+
+        assert token is not None
+        headers = {"Authorization": f"Bearer {token}"}
+        resp = await client.get(f"{BASE_URL}/api/children/profiles", headers=headers)
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 

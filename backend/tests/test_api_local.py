@@ -652,6 +652,145 @@ async def test_query_limit_bounds():
         assert resp_curation_ok.status_code == 200
 
 
+@pytest.mark.asyncio
+async def test_update_child_hashes_pin_regression_kc001():
+    """KC-001 Regression: Verify PUT /api/children/{id} securely hashes new PIN with bcrypt."""
+    from sqlalchemy import select
+    from app.routes.children import verify_password
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        p1 = await ac.post("/api/auth/register", json={
+            "email": "pin_hash_parent@example.com",
+            "password": "password123456",
+            "name": "Pin Hash Parent"
+        })
+        headers = {"Authorization": f"Bearer {p1.json()['access_token']}"}
+
+        # Create child
+        c_resp = await ac.post("/api/children/manage", headers=headers, json={
+            "name": "Aria",
+            "age": 6,
+            "avatar": "star",
+            "pin": "1234"
+        })
+        child_id = c_resp.json()["id"]
+
+        # Update PIN via PUT /api/children/{child_id}
+        update_resp = await ac.put(f"/api/children/{child_id}", headers=headers, json={
+            "pin": "9876"
+        })
+        assert update_resp.status_code == 200
+
+        # Verify database record directly
+        async with AsyncSessionLocal() as session:
+            res = await session.execute(select(Child).where(Child.id == child_id))
+            child = res.scalar_one()
+            # Stored PIN must start with bcrypt prefix ($2b$) and never be plaintext '9876'
+            assert child.pin.startswith("$2b$") or child.pin.startswith("$2a$")
+            assert child.pin != "9876"
+            assert verify_password("9876", child.pin) is True
+
+        # Verify verify_pin endpoint succeeds with new PIN and fails with old PIN
+        verify_ok = await ac.post("/api/children/verify-pin", headers=headers, json={
+            "child_id": child_id,
+            "pin": "9876"
+        })
+        assert verify_ok.status_code == 200
+        assert verify_ok.json()["verified"] is True
+
+        verify_bad = await ac.post("/api/children/verify-pin", headers=headers, json={
+            "child_id": child_id,
+            "pin": "1234"
+        })
+        assert verify_bad.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_legacy_plaintext_pin_auto_upgrade():
+    """Verify legacy plaintext child PINs auto-upgrade to bcrypt upon successful login."""
+    from sqlalchemy import select
+    from app.routes.children import verify_password
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        p1 = await ac.post("/api/auth/register", json={
+            "email": "legacy_parent@example.com",
+            "password": "password123456",
+            "name": "Legacy Parent"
+        })
+        headers = {"Authorization": f"Bearer {p1.json()['access_token']}"}
+        user_id = p1.json()["user_id"]
+
+        # Insert legacy child with raw plaintext PIN directly into DB
+        legacy_child_id = str(uuid.uuid4())
+        async with AsyncSessionLocal() as session:
+            legacy_child = Child(
+                id=legacy_child_id,
+                parent_id=user_id,
+                name="Legacy Kid",
+                age=8,
+                avatar="bear",
+                pin="5555"  # Unhashed legacy plaintext
+            )
+            session.add(legacy_child)
+            await session.commit()
+
+        # Login with plaintext PIN
+        verify_resp = await ac.post("/api/children/verify-pin", headers=headers, json={
+            "child_id": legacy_child_id,
+            "pin": "5555"
+        })
+        assert verify_resp.status_code == 200
+        assert verify_resp.json()["verified"] is True
+
+        # Inspect database record — must have been automatically upgraded to bcrypt!
+        async with AsyncSessionLocal() as session:
+            res = await session.execute(select(Child).where(Child.id == legacy_child_id))
+            child = res.scalar_one()
+            assert child.pin.startswith("$2b$") or child.pin.startswith("$2a$")
+            assert verify_password("5555", child.pin) is True
+
+
+@pytest.mark.asyncio
+async def test_remediate_plaintext_pins_batch():
+    """Verify remediate_plaintext_pins safely converts all unhashed records to bcrypt."""
+    from sqlalchemy import select
+    from app.routes.children import remediate_plaintext_pins, verify_password
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        p1 = await ac.post("/api/auth/register", json={
+            "email": "remediate_parent@example.com",
+            "password": "password123456",
+            "name": "Remediate Parent"
+        })
+        user_id = p1.json()["user_id"]
+
+        # Insert 2 legacy plaintext records
+        c1_id = str(uuid.uuid4())
+        c2_id = str(uuid.uuid4())
+        async with AsyncSessionLocal() as session:
+            session.add(Child(id=c1_id, parent_id=user_id, name="Kid 1", age=5, avatar="rocket", pin="1111"))
+            await session.commit()
+        async with AsyncSessionLocal() as session:
+            session.add(Child(id=c2_id, parent_id=user_id, name="Kid 2", age=7, avatar="compass", pin="2222"))
+            await session.commit()
+
+        # Run batch remediation
+        async with AsyncSessionLocal() as session:
+            upgraded_count = await remediate_plaintext_pins(session)
+            assert upgraded_count == 2
+
+        # Verify both records are now bcrypt hashes
+        async with AsyncSessionLocal() as session:
+            for cid, expected_pin in [(c1_id, "1111"), (c2_id, "2222")]:
+                res = await session.execute(select(Child).where(Child.id == cid))
+                c = res.scalar_one()
+                assert c.pin.startswith("$2b$") or c.pin.startswith("$2a$")
+                assert verify_password(expected_pin, c.pin) is True
+
+        # Second run should be idempotent (0 upgraded)
+        async with AsyncSessionLocal() as session:
+            second_pass = await remediate_plaintext_pins(session)
+            assert second_pass == 0
+
+
+
 
 
 

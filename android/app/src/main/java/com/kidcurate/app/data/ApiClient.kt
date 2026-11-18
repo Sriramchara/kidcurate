@@ -147,9 +147,9 @@ object ApiClient {
     }
 
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
-        .writeTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .addInterceptor { chain ->
             val orig = chain.request()
             val token = authToken
@@ -225,9 +225,14 @@ object ApiClient {
         .addInterceptor(logging)
         .build()
 
-    private val fastProbeClient = httpClient.newBuilder()
-        .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+    private val cloudProbeClient = httpClient.newBuilder()
+        .connectTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+
+    private val localProbeClient = httpClient.newBuilder()
+        .connectTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
     @Volatile
@@ -237,7 +242,7 @@ object ApiClient {
     private var currentApi: KidCurateApi = buildApi(currentBaseUrl)
 
     fun buildApi(baseUrl: String): KidCurateApi {
-        val sanitized = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        val sanitized = CloudConnectionPolicy.sanitizeBaseUrl(baseUrl).ifBlank { currentBaseUrl }
         return Retrofit.Builder()
             .baseUrl(sanitized)
             .client(httpClient)
@@ -247,10 +252,12 @@ object ApiClient {
     }
 
     fun buildProbeApi(baseUrl: String): KidCurateApi {
-        val sanitized = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        val sanitized = CloudConnectionPolicy.sanitizeBaseUrl(baseUrl).ifBlank { currentBaseUrl }
+        val isLocal = CloudConnectionPolicy.isLocalHost(sanitized)
+        val client = if (isLocal) localProbeClient else cloudProbeClient
         return Retrofit.Builder()
             .baseUrl(sanitized)
-            .client(fastProbeClient)
+            .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(KidCurateApi::class.java)

@@ -102,18 +102,30 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
              .map { if (it.endsWith("/")) it else "$it/" }
              .distinct()
 
+            var lastNetworkError: Exception? = null
             for (url in candidateUrls) {
-                try {
-                    val candidateApi = ApiClient.buildProbeApi(url)
-                    val result = candidateApi.getPublicProfiles()
-                    // If getPublicProfiles succeeds without network exception, connection is confirmed!
-                    fetchedProfiles = result
-                    ApiClient.updateBaseUrl(url)
-                    parentPrefs.serverUrl = url
-                    break
-                } catch (_: Exception) {
-                    continue
+                val isCloud = !url.contains("localhost") && !url.contains("10.0.2.2") && !url.contains("127.0.0.1")
+                val maxAttempts = if (isCloud) 2 else 1
+                var attempt = 0
+                while (attempt < maxAttempts) {
+                    attempt++
+                    try {
+                        val candidateApi = ApiClient.buildProbeApi(url)
+                        val result = candidateApi.getPublicProfiles()
+                        // If getPublicProfiles succeeds without network exception, connection is confirmed!
+                        fetchedProfiles = result
+                        ApiClient.updateBaseUrl(url)
+                        parentPrefs.serverUrl = url
+                        lastNetworkError = null
+                        break
+                    } catch (e: Exception) {
+                        lastNetworkError = e
+                        if (attempt < maxAttempts) {
+                            kotlinx.coroutines.delay(2000)
+                        }
+                    }
                 }
+                if (fetchedProfiles != null) break
             }
 
             if (!parentPrefs.isParentLoggedIn) {
@@ -153,10 +165,11 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } else {
                 // If network failed but we have cached profiles, do NOT show blocking error screen!
-                // On first launch with 0 profiles, still show the onboarding welcome card rather than blocking the parent
+                // On launch with 0 profiles, show actionable error if connection failed
+                val hasCached = _state.value.availableProfiles.isNotEmpty()
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = null,
+                    error = if (!hasCached && lastNetworkError != null) "Could not connect to server. Check your connection or tap to retry." else null,
                     screen = AppScreen.ChildSelect,
                 )
             }

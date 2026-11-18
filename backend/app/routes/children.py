@@ -19,6 +19,21 @@ def normalize_avatar(avatar_val: Optional[str]) -> str:
     return str(avatar_val).strip() if avatar_val else "compass"
 
 
+async def remediate_plaintext_pins(db: AsyncSession) -> int:
+    """Safely upgrades any legacy plaintext child PINs to bcrypt hashes without logging or exposing values."""
+    result = await db.execute(select(Child))
+    children = result.scalars().all()
+    upgraded = 0
+    for child in children:
+        if child.pin and not (child.pin.startswith("$2b$") or child.pin.startswith("$2a$")):
+            if len(child.pin) == 4 and child.pin.isdigit():
+                child.pin = hash_password(child.pin)
+                upgraded += 1
+    if upgraded > 0:
+        await db.commit()
+    return upgraded
+
+
 class ChildCreate(BaseModel):
     name: str
     age: int
@@ -316,7 +331,7 @@ async def update_child(
     if data.pin is not None:
         if len(data.pin) != 4 or not data.pin.isdigit():
             raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
-        child.pin = data.pin
+        child.pin = hash_password(data.pin)
 
     await db.commit()
     await db.refresh(child)
