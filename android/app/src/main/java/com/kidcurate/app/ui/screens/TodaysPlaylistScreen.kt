@@ -67,7 +67,8 @@ fun TodaysPlaylistScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .navigationBarsPadding(),
+            .navigationBarsPadding()
+            .displayCutoutPadding(),
     ) {
         GlassBackgroundAura()
         if (isLoading) {
@@ -367,8 +368,55 @@ fun YouTubeVideoCard(
         shadowElevation = 2.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = if (isLandscape) 48.dp else 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
     ) {
+        if (isLandscape) {
+            // Landscape: horizontal compact card
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(140.dp)
+                        .height(80.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Black.copy(alpha = 0.08f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AsyncImage(
+                        model = coil.request.ImageRequest.Builder(LocalContext.current)
+                            .data(video.thumbnailUrl).crossfade(true).build(),
+                        contentDescription = video.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Box(modifier = Modifier.size(32.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+                        Icon(imageVector = Icons.Rounded.PlayArrow, contentDescription = "Play", tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
+                    if (video.durationSeconds != null && video.durationSeconds > 0) {
+                        val min = video.durationSeconds / 60; val sec = video.durationSeconds % 60
+                        Surface(shape = RoundedCornerShape(5.dp), color = Color.Black.copy(alpha = 0.8f), modifier = Modifier.align(Alignment.BottomEnd).padding(5.dp)) {
+                            Text(text = String.format(java.util.Locale.US, "%d:%02d", min, sec), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
+                        }
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "#$index  ${video.title}",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 18.sp,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(text = video.channelName, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        } else {
         Column(modifier = Modifier.fillMaxWidth()) {
             // 16:9 Thumbnail with duration overlay
             Box(
@@ -459,6 +507,7 @@ fun YouTubeVideoCard(
                 }
             }
         }
+        } // end portrait else
     }
 }
 

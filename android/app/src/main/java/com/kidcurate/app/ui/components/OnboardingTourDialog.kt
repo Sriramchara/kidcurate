@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.kidcurate.app.data.ResponsiveLayoutPolicy
 import com.kidcurate.app.ui.theme.*
 
 data class ButtonGuideItem(
@@ -161,6 +162,11 @@ fun OnboardingTourDialog(
 ) {
     var currentStepIndex by remember { mutableIntStateOf(0) }
     val step = TOUR_STEPS[currentStepIndex]
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val compactLandscape = ResponsiveLayoutPolicy.isCompactLandscape(
+        configuration.screenWidthDp,
+        configuration.screenHeightDp,
+    )
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -169,14 +175,14 @@ fun OnboardingTourDialog(
         GlassCard(
             shape = RoundedCornerShape(28.dp),
             modifier = Modifier
-                .fillMaxWidth(0.94f)
-                .fillMaxHeight(0.88f)
-                .padding(vertical = 16.dp),
+                .fillMaxWidth(if (compactLandscape) 0.96f else 0.94f)
+                .fillMaxHeight(if (compactLandscape) 0.98f else 0.88f)
+                .padding(vertical = if (compactLandscape) 4.dp else 16.dp),
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(20.dp),
+                    .padding(if (compactLandscape) 12.dp else 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // Top Header: Step Indicator & Skip Button
@@ -208,7 +214,7 @@ fun OnboardingTourDialog(
                     }
                 }
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(if (compactLandscape) 4.dp else 10.dp))
 
                 // Scrollable Body
                 Column(
@@ -229,6 +235,114 @@ fun OnboardingTourDialog(
                         },
                         label = "TourSlideAnimation",
                     ) { targetStep ->
+                        if (compactLandscape) {
+                            // Two-column landscape layout: Left = step info, Right = control buttons guide
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(0.42f),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primaryContainer)
+                                            .border(1.5.dp, BrandPrimary.copy(alpha = 0.35f), CircleShape),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            imageVector = targetStep.icon,
+                                            contentDescription = null,
+                                            tint = BrandPrimary,
+                                            modifier = Modifier.size(22.dp),
+                                        )
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = targetStep.badge,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = BrandPrimary,
+                                        letterSpacing = 0.6.sp,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = targetStep.title,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onBackground,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = targetStep.description,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center,
+                                        lineHeight = 15.sp,
+                                    )
+                                }
+                                Column(
+                                    modifier = Modifier.weight(0.58f),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Text(
+                                        text = "CONTROLS GUIDE",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    targetStep.buttonGuides.forEach { guide ->
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(8.dp),
+                                                verticalAlignment = Alignment.Top,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = BrandPrimary,
+                                                    modifier = Modifier.size(24.dp),
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Icon(
+                                                            imageVector = guide.icon,
+                                                            contentDescription = null,
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(14.dp),
+                                                        )
+                                                    }
+                                                }
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = guide.buttonName,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                    )
+                                                    Text(
+                                                        text = guide.actionDescription,
+                                                        fontSize = 10.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        lineHeight = 13.sp,
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.fillMaxWidth(),
@@ -345,10 +459,11 @@ fun OnboardingTourDialog(
                                 }
                             }
                         }
+                        } // end non-compactLandscape else
                     }
                 }
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(if (compactLandscape) 6.dp else 14.dp))
 
                 // Step Indicator Dots
                 Row(
@@ -367,7 +482,7 @@ fun OnboardingTourDialog(
                     }
                 }
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(if (compactLandscape) 6.dp else 14.dp))
 
                 // Bottom Action Buttons
                 Row(

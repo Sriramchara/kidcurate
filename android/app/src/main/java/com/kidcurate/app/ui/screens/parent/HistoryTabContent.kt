@@ -101,8 +101,12 @@ fun HistoryTabContent(
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .widthIn(max = 640.dp)
+            .align(Alignment.TopCenter)
+            .fillMaxHeight(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -595,4 +599,5 @@ fun HistoryTabContent(
             }
         }
     }
+    } // end Box tablet wrapper
 }

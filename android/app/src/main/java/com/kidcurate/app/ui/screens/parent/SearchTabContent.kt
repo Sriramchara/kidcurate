@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -44,6 +45,8 @@ fun SearchAndAddTab(
     val context = LocalContext.current
     val parentPrefs = remember { ParentPreferences.get(context) }
     var recentSearches by remember { mutableStateOf(parentPrefs.getRecentSearches()) }
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
     val handleSearch: (String) -> Unit = { queryToSearch ->
         val trimmed = queryToSearch.trim()
@@ -54,7 +57,7 @@ fun SearchAndAddTab(
         onPerformSearch()
     }
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().imePadding(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -335,6 +338,42 @@ fun SearchAndAddTab(
                     border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
                     shadowElevation = 1.dp,
                 ) {
+                    if (isLandscape) {
+                        // Landscape: compact horizontal card
+                        val isAlreadyAdded = existingVideoIds.contains(video.youtubeId)
+                        Row(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.width(130.dp).height(76.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.08f))) {
+                                AsyncImage(
+                                    model = coil.request.ImageRequest.Builder(LocalContext.current).data(video.thumbnailUrl).crossfade(true).build(),
+                                    contentDescription = video.title,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop,
+                                )
+                                if (video.durationSeconds != null && video.durationSeconds > 0) {
+                                    val mins = video.durationSeconds / 60; val secs = video.durationSeconds % 60
+                                    Surface(shape = RoundedCornerShape(5.dp), color = Color.Black.copy(alpha = 0.82f), modifier = Modifier.align(Alignment.BottomEnd).padding(5.dp)) {
+                                        Text(text = String.format(java.util.Locale.US, "%d:%02d", mins, secs), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(text = video.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Spacer(Modifier.height(3.dp))
+                                Text(text = video.channelName, fontSize = 11.sp, color = TextSecondary)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            if (isAlreadyAdded) {
+                                Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = BrandSuccess, modifier = Modifier.size(28.dp))
+                            } else {
+                                Button(onClick = { onAddVideo(video) }, colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary), shape = RoundedCornerShape(10.dp), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)) {
+                                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Add", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    } else {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Box(
                             modifier = Modifier
@@ -451,6 +490,7 @@ fun SearchAndAddTab(
                             }
                         }
                     }
+                    } // end portrait else
                 }
             }
         }

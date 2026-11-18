@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,6 +42,8 @@ fun ManagePlaylistTab(
     }
 
     val items = playlist?.items ?: emptyList()
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -137,6 +140,47 @@ fun ManagePlaylistTab(
                         .fillMaxWidth()
                         .padding(vertical = 4.dp),
                 ) {
+                    if (isLandscape) {
+                        // Landscape: compact horizontal card
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier.width(130.dp).height(76.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.Black.copy(alpha = 0.08f)),
+                            ) {
+                                AsyncImage(
+                                    model = coil.request.ImageRequest.Builder(LocalContext.current).data(video.thumbnailUrl).crossfade(true).build(),
+                                    contentDescription = video.title,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop,
+                                )
+                                Surface(shape = RoundedCornerShape(6.dp), color = BrandPrimary, modifier = Modifier.align(Alignment.TopStart).padding(5.dp)) {
+                                    Text(text = "#${index + 1}", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                }
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(text = video.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Spacer(Modifier.height(3.dp))
+                                Text(text = video.channelName, fontSize = 11.sp, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                IconButton(onClick = { onMoveUp(index) }, enabled = index > 0, modifier = Modifier.size(32.dp)) {
+                                    Icon(Icons.Rounded.ArrowUpward, contentDescription = "Move Up", tint = if (index > 0) TextPrimary else TextSecondary.copy(alpha = 0.3f), modifier = Modifier.size(18.dp))
+                                }
+                                IconButton(onClick = { onMoveDown(index) }, enabled = index < items.size - 1, modifier = Modifier.size(32.dp)) {
+                                    Icon(Icons.Rounded.ArrowDownward, contentDescription = "Move Down", tint = if (index < items.size - 1) TextPrimary else TextSecondary.copy(alpha = 0.3f), modifier = Modifier.size(18.dp))
+                                }
+                                IconButton(onClick = { onDeleteVideo(video.itemId) }, modifier = Modifier.size(32.dp)) {
+                                    Icon(Icons.Rounded.DeleteOutline, contentDescription = "Delete", tint = BrandCoral, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    } else {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Box(
                             modifier = Modifier
@@ -261,6 +305,7 @@ fun ManagePlaylistTab(
                             }
                         }
                     }
+                    } // end portrait else
                 }
             }
         }

@@ -131,6 +131,7 @@ fun ChildProfilesTab(
                             shape = RoundedCornerShape(10.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, BrandPrimary),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.heightIn(min = 36.dp),
                         ) {
                             Icon(
                                 Icons.Rounded.Edit,
@@ -144,7 +145,7 @@ fun ChildProfilesTab(
 
                         IconButton(
                             onClick = { onDeleteChild(child) },
-                            modifier = Modifier.size(36.dp),
+                            modifier = Modifier.heightIn(min = 36.dp),
                         ) {
                             Icon(
                                 Icons.Rounded.DeleteOutline,

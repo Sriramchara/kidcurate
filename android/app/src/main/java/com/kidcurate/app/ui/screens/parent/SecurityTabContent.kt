@@ -44,9 +44,12 @@ fun SecurityTab(
     var selectedTheme by remember { mutableStateOf(parentPrefs.appTheme) }
     var showOnboardingTour by remember { mutableStateOf(false) }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
+            .widthIn(max = 640.dp)
+            .align(Alignment.TopCenter)
+            .fillMaxHeight()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -991,4 +994,5 @@ fun SecurityTab(
             OnboardingTourDialog(onDismiss = { showOnboardingTour = false })
         }
     }
+    } // end Box tablet wrapper
 }

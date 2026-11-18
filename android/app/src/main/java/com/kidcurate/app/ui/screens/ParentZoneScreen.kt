@@ -64,6 +64,9 @@ fun ParentZoneScreen(
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
     val parentPrefs = remember { ParentPreferences.get(appContext) }
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val isTablet = ResponsiveLayoutPolicy.isTablet(configuration.screenWidthDp)
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val tabTitles = listOf("Videos", "Search", "History", "Profiles", "Settings")
@@ -223,13 +226,14 @@ fun ParentZoneScreen(
                 shadowElevation = 2.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .statusBarsPadding(),
+                    .statusBarsPadding()
+                    .displayCutoutPadding(),
             ) {
                 Column {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                            .padding(horizontal = 14.dp, vertical = if (isLandscape) 4.dp else 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -323,20 +327,22 @@ fun ParentZoneScreen(
                             Tab(
                                 selected = selectedTabIndex == index,
                                 onClick = { selectedTabIndex = index },
-                                icon = {
-                                    val icon = when (index) {
-                                        0 -> Icons.Rounded.PlayCircle
-                                        1 -> Icons.Rounded.Search
-                                        2 -> Icons.Rounded.History
-                                        3 -> Icons.Rounded.Face
-                                        else -> Icons.Rounded.Settings
+                                icon = if (isLandscape) null else {
+                                    {
+                                        val icon = when (index) {
+                                            0 -> Icons.Rounded.PlayCircle
+                                            1 -> Icons.Rounded.Search
+                                            2 -> Icons.Rounded.History
+                                            3 -> Icons.Rounded.Face
+                                            else -> Icons.Rounded.Settings
+                                        }
+                                        Icon(icon, contentDescription = title, modifier = Modifier.size(18.dp))
                                     }
-                                    Icon(icon, contentDescription = title, modifier = Modifier.size(18.dp))
                                 },
                                 text = {
                                     Text(
                                         text = title,
-                                        fontSize = 10.sp,
+                                        fontSize = if (isLandscape) 11.sp else 10.sp,
                                         fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Medium,
                                         maxLines = 1,
                                     )
@@ -644,7 +650,13 @@ fun ParentZoneScreen(
             onDismissRequest = { showEditChildDialog = null },
             title = { Text("Edit Child Profile", fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = (configuration.screenHeightDp * 0.70f).dp)
+                        .verticalScroll(rememberScrollState())
+                        .imePadding(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     OutlinedTextField(
                         value = nameInput,
                         onValueChange = { nameInput = it },
@@ -795,7 +807,13 @@ fun ParentZoneScreen(
             onDismissRequest = { showAddChildDialog = false },
             title = { Text("Add New Child Profile", fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = (configuration.screenHeightDp * 0.70f).dp)
+                        .verticalScroll(rememberScrollState())
+                        .imePadding(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     OutlinedTextField(
                         value = nameInput,
                         onValueChange = { nameInput = it },

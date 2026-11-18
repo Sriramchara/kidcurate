@@ -56,13 +56,17 @@ fun PinEntryScreen(
         configuration.screenWidthDp,
         configuration.screenHeightDp,
     )
+    val isTablet = ResponsiveLayoutPolicy.isTablet(configuration.screenWidthDp, configuration.screenHeightDp)
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val useTwoPaneLayout = compactLandscape || (isLandscape && isTablet)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundLight)
             .statusBarsPadding()
-            .navigationBarsPadding(),
+            .navigationBarsPadding()
+            .displayCutoutPadding(),
     ) {
         // Top Back Button
         IconButton(
@@ -79,6 +83,98 @@ fun PinEntryScreen(
                 tint = TextPrimary,
             )
         }
+
+        if (useTwoPaneLayout) {
+            // Two-pane landscape: left = avatar+text+pin boxes, right = number pad
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // LEFT PANE
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .weight(0.45f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(end = 12.dp),
+                ) {
+                    if (isTablet) {
+                        ThematicAvatar(name = childName, avatar = childAvatar, size = 72.dp, iconSize = 36.dp)
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+                    Text(
+                        text = if (childName.isNotEmpty()) "Welcome back, $childName!" else "Welcome!",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        text = "Enter your secret PIN to unlock today's session",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                    )
+                    // PIN Boxes
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        repeat(4) { index ->
+                            val isFilled = index < pin.length
+                            val digitChar = if (isFilled) pin[index].toString() else ""
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isFilled) BrandPrimary.copy(alpha = 0.12f) else BackgroundCard)
+                                    .border(2.dp, if (hasFailedAttempt) BrandCoral else if (isFilled) BrandPrimary else SurfaceCardBorder, RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (isFilled) {
+                                    if (showPin) {
+                                        Text(text = digitChar, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = if (hasFailedAttempt) BrandCoral else BrandPrimary)
+                                    } else {
+                                        Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(if (hasFailedAttempt) BrandCoral else BrandPrimary))
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        IconButton(
+                            onClick = { showPin = !showPin },
+                            modifier = Modifier.size(40.dp).clip(CircleShape)
+                                .background(if (showPin) BrandPrimary.copy(alpha = 0.15f) else BackgroundCard)
+                                .border(1.dp, SurfaceCardBorder, CircleShape),
+                        ) {
+                            Icon(imageVector = if (showPin) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, contentDescription = null, tint = if (showPin) BrandPrimary else TextSecondary, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    AnimatedVisibility(visible = errorMessage != null, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.height(28.dp)) {
+                        Text(text = errorMessage ?: "", color = BrandCoral, fontSize = 13.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                    }
+                    TextButton(onClick = { showParentGate = true }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                        Text("Forgot PIN? (Parent Unlock)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = BrandPrimary)
+                    }
+                    if (isLoading) { CircularProgressIndicator(color = BrandPrimary, modifier = Modifier.size(26.dp)) }
+                }
+                // RIGHT PANE — number pad
+                Box(
+                    modifier = Modifier.weight(0.55f).fillMaxHeight(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    NumberPadLight(
+                        buttonSize = if (isTablet) 60.dp else 46.dp,
+                        rowSpacing = if (isTablet) 8.dp else 5.dp,
+                        columnSpacing = if (isTablet) 14.dp else 10.dp,
+                        onDigitPress = { digit -> if (!isLoading) { hasFailedAttempt = false; if (pin.length < 4) pin += digit } },
+                        onDelete = { if (pin.isNotEmpty() && !isLoading) { hasFailedAttempt = false; pin = pin.dropLast(1) } },
+                    )
+                }
+            }
+        } else {
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -238,6 +334,7 @@ fun PinEntryScreen(
                 )
             }
         }
+        } // end else (single-pane portrait)
 
         if (showParentGate) {
             ParentPasswordDialog(

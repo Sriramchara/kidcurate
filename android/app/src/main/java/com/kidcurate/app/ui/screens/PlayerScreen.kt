@@ -38,6 +38,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import coil.compose.AsyncImage
 import com.kidcurate.app.data.ParentPreferences
+import com.kidcurate.app.data.ResponsiveLayoutPolicy
 import com.kidcurate.app.data.VideoItem
 import com.kidcurate.app.ui.components.ConfettiCelebration
 import com.kidcurate.app.ui.components.GlassCard
@@ -130,7 +131,9 @@ fun PlayerScreen(
 
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val isDeviceLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    val effectiveFullscreen = isFullscreen || isDeviceLandscape
+    val isTablet = ResponsiveLayoutPolicy.isTablet(configuration.screenWidthDp, configuration.screenHeightDp)
+    // Tablets in landscape get two-pane layout, NOT forced fullscreen
+    val effectiveFullscreen = isFullscreen || (isDeviceLandscape && !isTablet)
 
     fun attemptBack() {
         if (effectiveFullscreen) {
@@ -194,6 +197,159 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(Color.Black),
     ) {
+        // Tablet landscape: two-pane Row (video left 65% | queue right 35%)
+        if (isTablet && isDeviceLandscape && !isFullscreen && currentVideo != null) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                // Left pane: video player
+                Box(
+                    modifier = Modifier
+                        .weight(0.65f)
+                        .fillMaxHeight()
+                ) {
+                    OptimizedVideoPlayer(
+                        video = currentVideo,
+                        isFullscreen = false,
+                        subtitlesEnabled = subtitlesEnabled,
+                        onToggleSubtitles = {
+                            val newState = !subtitlesEnabled
+                            subtitlesEnabled = newState
+                            parentPrefs.subtitlesEnabled = newState
+                        },
+                        onToggleFullscreen = { isFullscreen = true },
+                        onVideoEnded = { _ ->
+                            isCurrentVideoCompleted = true
+                            if (currentIndex + 1 < videos.size) {
+                                showEndCelebration = true
+                            } else {
+                                onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
+                                onAllCompleted()
+                            }
+                        },
+                        onProgressUpdate = { sec, dur ->
+                            val secInt = sec.toInt()
+                            val delta = secInt - lastRecordedSecond
+                            if (delta in 1..5) {
+                                parentPrefs.addWatchedSeconds(delta)
+                            }
+                            lastRecordedSecond = secInt
+                            currentVideoSeconds = sec
+                            currentVideoTotalDuration = dur
+                            if (dur > 5f && sec >= (dur - 4f).coerceAtMost(dur * 0.85f)) {
+                                isCurrentVideoCompleted = true
+                            }
+                            if (secInt > 0 && secInt % 30 == 0) {
+                                onProgressUpdate(currentVideo, secInt)
+                            }
+                        },
+                        onSkipNext = if (currentIndex + 1 < videos.size && (isCurrentVideoCompleted || currentVideoHasError)) { { currentIndex++ } } else null,
+                        onFinishPlaylist = if (currentIndex + 1 >= videos.size) { { onBack() } } else null,
+                        onPlaybackError = { hasErr -> currentVideoHasError = hasErr },
+                    )
+                }
+                // Right pane: title, controls, queue
+                Column(
+                    modifier = Modifier
+                        .weight(0.35f)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.background)
+                        .verticalScroll(rememberScrollState())
+                        .navigationBarsPadding()
+                        .padding(12.dp),
+                ) {
+                    Text(
+                        text = currentVideo.title,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 2,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = currentVideo.channelName,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Video ${currentIndex + 1} of ${videos.size}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = BrandPrimary,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (currentIndex > 0) {
+                                OutlinedButton(
+                                    onClick = { currentIndex-- },
+                                    modifier = Modifier.height(34.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp),
+                                ) { Icon(Icons.Filled.SkipPrevious, contentDescription = "Prev", modifier = Modifier.size(16.dp)) }
+                            }
+                            if (currentIndex + 1 < videos.size) {
+                                Button(
+                                    onClick = { currentIndex++ },
+                                    modifier = Modifier.height(34.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp),
+                                ) {
+                                    Text("Next", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Icon(Icons.Filled.SkipNext, contentDescription = null, modifier = Modifier.size(14.dp))
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        videos.forEachIndexed { idx, _ ->
+                            Box(
+                                modifier = Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp))
+                                    .background(when {
+                                        idx < currentIndex -> BrandSuccess
+                                        idx == currentIndex -> BrandPrimary
+                                        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                                    })
+                            )
+                        }
+                    }
+                    if (videos.size > 1) {
+                        Spacer(Modifier.height(12.dp))
+                        Text("Up Next", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                        Spacer(Modifier.height(6.dp))
+                        videos.forEachIndexed { idx, v ->
+                            val isCurrent = idx == currentIndex
+                            Surface(
+                                onClick = { currentIndex = idx },
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surface,
+                                border = androidx.compose.foundation.BorderStroke(if (isCurrent) 2.dp else 1.dp, if (isCurrent) BrandPrimary else MaterialTheme.colorScheme.outline),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                            ) {
+                                Row(modifier = Modifier.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(modifier = Modifier.width(72.dp).height(44.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                                        AsyncImage(
+                                            model = coil.request.ImageRequest.Builder(LocalContext.current).data(v.thumbnailUrl).crossfade(true).build(),
+                                            contentDescription = v.title,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(v.title, fontSize = 11.sp, fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+
         Column(modifier = Modifier.fillMaxSize()) {
 
             // YouTube Player Component
@@ -609,6 +765,7 @@ fun PlayerScreen(
                 }
             }
         }
+        } // end else (non-tablet-landscape)
 
         // Floating Back button over the player (hidden in fullscreen)
         if (!effectiveFullscreen) {
@@ -616,6 +773,7 @@ fun PlayerScreen(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
+                    .displayCutoutPadding()
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 IconButton(

@@ -14,6 +14,18 @@ object ParentSessionPolicy {
 }
 
 object ResponsiveLayoutPolicy {
+    fun isLandscape(widthDp: Int, heightDp: Int): Boolean = widthDp > heightDp
+
+    fun isTablet(widthDp: Int): Boolean = widthDp >= 600
+
+    fun isTablet(widthDp: Int, heightDp: Int): Boolean =
+        kotlin.math.min(widthDp, heightDp) >= 600
+
+    fun isExpanded(widthDp: Int): Boolean = widthDp >= 840
+
     fun isCompactLandscape(widthDp: Int, heightDp: Int): Boolean =
         widthDp > heightDp && heightDp < 500
+
+    fun isTabletLandscape(widthDp: Int, heightDp: Int): Boolean =
+        widthDp > heightDp && kotlin.math.min(widthDp, heightDp) >= 600
 }
