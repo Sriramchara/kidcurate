@@ -14,7 +14,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import com.kidcurate.app.data.ChildManageItem
+import com.kidcurate.app.data.ParentPreferences
 import com.kidcurate.app.ui.components.ThematicAvatar
 import com.kidcurate.app.ui.theme.*
 
@@ -100,15 +102,27 @@ fun ChildProfilesTab(
                                     color = TextSecondary,
                                 )
                                 Text("•", fontSize = 12.sp, color = TextSecondary)
+                                val context = LocalContext.current
+                                val parentPrefs = remember { ParentPreferences.get(context) }
                                 var showPin by remember { mutableStateOf(false) }
                                 val rawPin = child.pin.orEmpty()
-                                val displayPin = if (rawPin.isNotBlank() && rawPin != "null" && rawPin != "••••" && !rawPin.startsWith("$2") && rawPin.all { it.isDigit() }) rawPin else "Set"
+                                val localPin = parentPrefs.getChildLocalPin(child.id)
+                                val knownPin = when {
+                                    localPin.isNotBlank() && localPin.all { it.isDigit() } -> localPin
+                                    rawPin.isNotBlank() && !rawPin.startsWith("$2") && rawPin.all { it.isDigit() } -> rawPin
+                                    else -> ""
+                                }
+                                val displayPin = when {
+                                    knownPin.isNotBlank() -> if (showPin) knownPin else "••••"
+                                    rawPin.startsWith("$2") || rawPin.isNotBlank() -> if (showPin) "••••" else "••••"
+                                    else -> "Not set"
+                                }
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.clickable { showPin = !showPin }
                                 ) {
                                     Text(
-                                        text = if (showPin) "PIN: $displayPin" else "PIN: ••••",
+                                        text = "PIN: $displayPin",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = BrandPrimary,

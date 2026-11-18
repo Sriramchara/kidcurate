@@ -168,16 +168,162 @@ fun FilledPlaylistLightView(
     onStartPlaying: (Int) -> Unit,
     onBack: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.TopCenter,
-    ) {
-        LazyColumn(
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    if (isLandscape) {
+        // YouTube-style Split Console in Landscape
+        Row(
             modifier = Modifier
-                .widthIn(max = 680.dp)
-                .fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 32.dp),
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            // LEFT COLUMN (38%): Child header, stats & primary action controls
+            Column(
+                modifier = Modifier
+                    .weight(0.38f)
+                    .fillMaxHeight()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                // Child avatar & name card
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        ThematicAvatar(
+                            name = childName,
+                            avatar = childAvatar,
+                            size = 46.dp,
+                            iconSize = 24.dp
+                        )
+                        Column {
+                            Text(
+                                text = "Hi $childName!",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                maxLines = 1,
+                            )
+                            val count = playlist.items.size
+                            val mins = playlist.totalDurationSeconds / 60
+                            Text(
+                                text = if (mins > 0) "$count videos • $mins mins" else "$count videos",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    // Switch Profile
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Logout,
+                            contentDescription = "Switch Profile",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+
+                // Primary Play All Card
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = playlist.title.ifBlank { "Today's Playlist" },
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            maxLines = 2,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Button(
+                            onClick = { onStartPlaying(0) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp),
+                        ) {
+                            Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Play All", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        // Child lock toggle
+                        OutlinedButton(
+                            onClick = onToggleLock,
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, if (isChildLockActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(40.dp),
+                        ) {
+                            Icon(
+                                if (isChildLockActive) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
+                                contentDescription = null,
+                                tint = if (isChildLockActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (isChildLockActive) "Child Lock Active" else "Enable Child Lock",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isChildLockActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // RIGHT COLUMN (62%): Scrollable Video Cards Queue
+            LazyColumn(
+                modifier = Modifier
+                    .weight(0.62f)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 16.dp),
+            ) {
+                itemsIndexed(playlist.items, key = { _, video -> video.itemId }) { index, video ->
+                    YouTubeVideoCard(
+                        video = video,
+                        index = index + 1,
+                        onClick = { onStartPlaying(index) },
+                    )
+                }
+            }
+        }
+    } else {
+        // Portrait Layout (Single Column)
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .widthIn(max = 680.dp)
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 32.dp),
+            ) {
         // Top Header: Child avatar, name, Lock & Switch buttons
         item {
             Column(
@@ -357,6 +503,7 @@ fun FilledPlaylistLightView(
         }
     }
     } // end Box tablet constraint
+    } // end portrait else
 }
 
 @Composable
@@ -375,7 +522,7 @@ fun YouTubeVideoCard(
         shadowElevation = 2.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = if (isLandscape) 4.dp else 16.dp, vertical = if (isLandscape) 4.dp else 6.dp),
     ) {
         if (isLandscape) {
             // Landscape: horizontal compact card

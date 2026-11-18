@@ -640,9 +640,15 @@ fun ParentZoneScreen(
         var nameInput by remember { mutableStateOf(child.name) }
         var ageInput by remember { mutableStateOf(child.age.toString()) }
         val rawPin = child.pin.orEmpty()
-        val initialPin = if (rawPin.isNotBlank() && rawPin != "••••" && !rawPin.startsWith("$2") && rawPin.all { it.isDigit() }) rawPin else ""
-        var pinInput by remember { mutableStateOf(initialPin) }
-        var isPinVisible by remember { mutableStateOf(false) }
+        val localPin = parentPrefs.getChildLocalPin(child.id)
+        val knownPin = when {
+            localPin.isNotBlank() && localPin.all { it.isDigit() } -> localPin
+            rawPin.isNotBlank() && !rawPin.startsWith("$2") && rawPin.all { it.isDigit() } -> rawPin
+            else -> ""
+        }
+        var pinInput by remember { mutableStateOf("") }
+        var isCurrentPinVisible by remember { mutableStateOf(false) }
+        var isNewPinVisible by remember { mutableStateOf(false) }
         var avatarInput by remember { mutableStateOf(child.avatar) }
         val avatarChoices = listOf("compass", "sparkles", "rocket", "heart", "waves", "flame", "shield", "palette", "star")
 
@@ -672,17 +678,57 @@ fun ParentZoneScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
+
+                    if (knownPin.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, BrandPrimary.copy(alpha = 0.3f)),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column {
+                                    Text("Current PIN", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        text = if (isCurrentPinVisible) knownPin else "••••",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrandPrimary,
+                                        letterSpacing = 2.sp,
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { isCurrentPinVisible = !isCurrentPinVisible },
+                                    modifier = Modifier.size(32.dp),
+                                ) {
+                                    Icon(
+                                        if (isCurrentPinVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                        contentDescription = "Toggle PIN",
+                                        tint = BrandPrimary,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     OutlinedTextField(
                         value = pinInput,
                         onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) pinInput = it },
-                        label = { Text("Child 4-digit PIN (Leave blank to keep current)") },
-                        placeholder = { Text("••••") },
-                        visualTransformation = if (isPinVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        label = { Text(if (knownPin.isNotBlank()) "Set New PIN (Optional)" else "Child 4-digit PIN") },
+                        placeholder = { Text(if (knownPin.isNotBlank()) "Leave blank to keep current PIN" else "Enter 4-digit PIN") },
+                        visualTransformation = if (isNewPinVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
-                            IconButton(onClick = { isPinVisible = !isPinVisible }) {
+                            IconButton(onClick = { isNewPinVisible = !isNewPinVisible }) {
                                 Icon(
-                                    if (isPinVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                                    contentDescription = if (isPinVisible) "Hide PIN" else "Show PIN",
+                                    if (isNewPinVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                    contentDescription = if (isNewPinVisible) "Hide PIN" else "Show PIN",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }

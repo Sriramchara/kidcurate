@@ -120,14 +120,17 @@ fun PinEntryScreen(
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
                     )
-                    // PIN Boxes
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // PIN Boxes (Symmetrically Centered)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         repeat(4) { index ->
                             val isFilled = index < pin.length
                             val digitChar = if (isFilled) pin[index].toString() else ""
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
+                                    .size(44.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(if (isFilled) BrandPrimary.copy(alpha = 0.12f) else BackgroundCard)
                                     .border(2.dp, if (hasFailedAttempt) BrandCoral else if (isFilled) BrandPrimary else SurfaceCardBorder, RoundedCornerShape(12.dp)),
@@ -142,23 +145,51 @@ fun PinEntryScreen(
                                 }
                             }
                         }
-                        Spacer(Modifier.width(4.dp))
-                        IconButton(
-                            onClick = { showPin = !showPin },
-                            modifier = Modifier.size(40.dp).clip(CircleShape)
-                                .background(if (showPin) BrandPrimary.copy(alpha = 0.15f) else BackgroundCard)
-                                .border(1.dp, SurfaceCardBorder, CircleShape),
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // Centered Show/Hide PIN Toggle Pill
+                    Surface(
+                        onClick = { showPin = !showPin },
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (showPin) BrandPrimary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (showPin) BrandPrimary else Color.Transparent),
+                        modifier = Modifier.height(28.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Icon(imageVector = if (showPin) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, contentDescription = null, tint = if (showPin) BrandPrimary else TextSecondary, modifier = Modifier.size(18.dp))
+                            Icon(
+                                imageVector = if (showPin) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                contentDescription = if (showPin) "Hide PIN" else "Show PIN",
+                                tint = if (showPin) BrandPrimary else TextSecondary,
+                                modifier = Modifier.size(13.dp),
+                            )
+                            Text(
+                                text = if (showPin) "Hide PIN" else "Show PIN",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (showPin) BrandPrimary else TextSecondary,
+                            )
                         }
                     }
-                    AnimatedVisibility(visible = errorMessage != null, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.height(28.dp)) {
-                        Text(text = errorMessage ?: "", color = BrandCoral, fontSize = 13.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+
+                    Box(
+                        modifier = Modifier.height(26.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (errorMessage != null) {
+                            Text(text = errorMessage, color = BrandCoral, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                        }
                     }
+
                     TextButton(onClick = { showParentGate = true }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
                         Text("Forgot PIN? (Parent Unlock)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = BrandPrimary)
                     }
-                    if (isLoading) { CircularProgressIndicator(color = BrandPrimary, modifier = Modifier.size(26.dp)) }
+                    if (isLoading) { CircularProgressIndicator(color = BrandPrimary, modifier = Modifier.size(24.dp)) }
                 }
                 // RIGHT PANE — number pad
                 Box(
@@ -216,9 +247,9 @@ fun PinEntryScreen(
                 ),
             )
 
-            // PIN Boxes with Eye Visibility Toggle
+            // 4 PIN Boxes (Symmetrically Centered over the Number Pad)
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 repeat(4) { index ->
@@ -226,13 +257,13 @@ fun PinEntryScreen(
                     val digitChar = if (isFilled) pin[index].toString() else ""
                     Box(
                         modifier = Modifier
-                            .size(if (compactLandscape) 34.dp else 42.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .size(if (compactLandscape) 36.dp else 48.dp)
+                            .clip(RoundedCornerShape(14.dp))
                             .background(if (isFilled) BrandPrimary.copy(alpha = 0.12f) else BackgroundCard)
                             .border(
                                 2.dp,
                                 if (hasFailedAttempt) BrandCoral else if (isFilled) BrandPrimary else SurfaceCardBorder,
-                                RoundedCornerShape(12.dp)
+                                RoundedCornerShape(14.dp)
                             ),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -240,14 +271,14 @@ fun PinEntryScreen(
                             if (showPin) {
                                 Text(
                                     text = digitChar,
-                                    fontSize = if (compactLandscape) 16.sp else 20.sp,
+                                    fontSize = if (compactLandscape) 18.sp else 22.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (hasFailedAttempt) BrandCoral else BrandPrimary,
                                 )
                             } else {
                                 Box(
                                     modifier = Modifier
-                                        .size(if (compactLandscape) 9.dp else 12.dp)
+                                        .size(if (compactLandscape) 10.dp else 13.dp)
                                         .clip(CircleShape)
                                         .background(if (hasFailedAttempt) BrandCoral else BrandPrimary)
                                 )
@@ -255,41 +286,57 @@ fun PinEntryScreen(
                         }
                     }
                 }
+            }
 
-                Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.height(10.dp))
 
-                IconButton(
-                    onClick = { showPin = !showPin },
-                    modifier = Modifier
-                        .size(if (compactLandscape) 34.dp else 42.dp)
-                        .clip(CircleShape)
-                        .background(if (showPin) BrandPrimary.copy(alpha = 0.15f) else BackgroundCard)
-                        .border(1.dp, SurfaceCardBorder, CircleShape),
+            // Centered Eye Visibility Toggle Pill
+            Surface(
+                onClick = { showPin = !showPin },
+                shape = RoundedCornerShape(16.dp),
+                color = if (showPin) BrandPrimary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (showPin) BrandPrimary else Color.Transparent),
+                modifier = Modifier.height(28.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     Icon(
                         imageVector = if (showPin) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
                         contentDescription = if (showPin) "Hide PIN" else "Show PIN",
                         tint = if (showPin) BrandPrimary else TextSecondary,
-                        modifier = Modifier.size(if (compactLandscape) 17.dp else 20.dp),
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Text(
+                        text = if (showPin) "Hide PIN" else "Show PIN",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (showPin) BrandPrimary else TextSecondary,
                     )
                 }
             }
 
-            // Error message
-            AnimatedVisibility(
-                visible = errorMessage != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.height(if (compactLandscape) 24.dp else 36.dp),
+            // Fixed height error container and clear separation before Number Pad
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (compactLandscape) 22.dp else 28.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = errorMessage ?: "",
-                    color = BrandCoral,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                )
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage,
+                        color = BrandCoral,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
+
+            Spacer(Modifier.height(if (compactLandscape) 4.dp else 16.dp))
 
             // Number pad
             NumberPadLight(
