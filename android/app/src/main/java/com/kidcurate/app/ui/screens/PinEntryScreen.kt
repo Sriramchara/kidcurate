@@ -52,13 +52,12 @@ fun PinEntryScreen(
     var showParentGate by remember { mutableStateOf(false) }
     var hasFailedAttempt by remember { mutableStateOf(false) }
     val configuration = LocalConfiguration.current
-    val compactLandscape = ResponsiveLayoutPolicy.isCompactLandscape(
-        configuration.screenWidthDp,
-        configuration.screenHeightDp,
-    )
-    val isTablet = ResponsiveLayoutPolicy.isTablet(configuration.screenWidthDp, configuration.screenHeightDp)
-    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    val useTwoPaneLayout = compactLandscape || (isLandscape && isTablet)
+    val widthDp = configuration.screenWidthDp
+    val heightDp = configuration.screenHeightDp
+    val compactLandscape = ResponsiveLayoutPolicy.isCompactLandscape(widthDp, heightDp)
+    val isTablet = ResponsiveLayoutPolicy.isTablet(widthDp, heightDp)
+    val useTwoPaneLayout = ResponsiveLayoutPolicy.shouldUseTwoPanePin(widthDp, heightDp)
+    val padButtonSize = ResponsiveLayoutPolicy.pinButtonSizeDp(widthDp, heightDp).dp
 
     Box(
         modifier = Modifier
@@ -197,7 +196,7 @@ fun PinEntryScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     NumberPadLight(
-                        buttonSize = if (isTablet) 60.dp else 46.dp,
+                        buttonSize = padButtonSize,
                         rowSpacing = if (isTablet) 8.dp else 5.dp,
                         columnSpacing = if (isTablet) 14.dp else 10.dp,
                         onDigitPress = { digit -> if (!isLoading) { hasFailedAttempt = false; if (pin.length < 4) pin += digit } },
@@ -340,9 +339,9 @@ fun PinEntryScreen(
 
             // Number pad
             NumberPadLight(
-                buttonSize = if (compactLandscape) 42.dp else 76.dp,
-                rowSpacing = if (compactLandscape) 4.dp else 10.dp,
-                columnSpacing = if (compactLandscape) 10.dp else 16.dp,
+                buttonSize = padButtonSize,
+                rowSpacing = if (heightDp < 680) 6.dp else 10.dp,
+                columnSpacing = if (widthDp < 380) 12.dp else 16.dp,
                 onDigitPress = { digit ->
                     if (!isLoading) {
                         hasFailedAttempt = false

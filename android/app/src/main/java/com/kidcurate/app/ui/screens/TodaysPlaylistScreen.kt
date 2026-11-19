@@ -6,6 +6,10 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.kidcurate.app.data.ParentPreferences
 import com.kidcurate.app.data.PlaylistData
+import com.kidcurate.app.data.ResponsiveLayoutPolicy
 import com.kidcurate.app.data.VideoItem
 import com.kidcurate.app.ui.components.GlassBackgroundAura
 import com.kidcurate.app.ui.components.ParentPasswordDialog
@@ -204,7 +209,11 @@ fun FilledPlaylistLightView(
     onBack: () -> Unit,
 ) {
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val widthDp = configuration.screenWidthDp
+    val heightDp = configuration.screenHeightDp
+    val isLandscape = ResponsiveLayoutPolicy.isLandscape(widthDp, heightDp)
+    val isTablet = ResponsiveLayoutPolicy.isTablet(widthDp, heightDp)
+    val gridColumns = ResponsiveLayoutPolicy.playlistGridColumns(widthDp, heightDp)
 
     if (isLandscape) {
         // YouTube-style Split Console in Landscape
@@ -214,10 +223,10 @@ fun FilledPlaylistLightView(
                 .padding(horizontal = 20.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // LEFT COLUMN (38%): Child header, stats & primary action controls
+            // LEFT COLUMN: Child header, stats & primary action controls
             Column(
                 modifier = Modifier
-                    .weight(0.38f)
+                    .weight(if (isTablet) 0.32f else 0.38f)
                     .fillMaxHeight()
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -330,15 +339,229 @@ fun FilledPlaylistLightView(
                 }
             }
 
-            // RIGHT COLUMN (62%): Scrollable Video Cards Queue
-            LazyColumn(
+            // RIGHT COLUMN: Scrollable Video Cards Queue (Adaptive 2-column grid on tablets)
+            if (gridColumns > 1) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier
+                        .weight(if (isTablet) 0.68f else 0.62f)
+                        .fillMaxHeight(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp),
+                ) {
+                    gridItemsIndexed(playlist.items, key = { _, video -> video.itemId }) { index, video ->
+                        YouTubeVideoCard(
+                            video = video,
+                            index = index + 1,
+                            onClick = { onStartPlaying(index) },
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(0.62f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp),
+                ) {
+                    itemsIndexed(playlist.items, key = { _, video -> video.itemId }) { index, video ->
+                        YouTubeVideoCard(
+                            video = video,
+                            index = index + 1,
+                            onClick = { onStartPlaying(index) },
+                        )
+                    }
+                }
+            }
+        }
+    } else {
+        // Portrait Layout (Single Column on Phone, 2-Column Responsive Grid on Tablet)
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(if (isTablet) 2 else 1),
                 modifier = Modifier
-                    .weight(0.62f)
-                    .fillMaxHeight(),
+                    .widthIn(max = if (isTablet) 860.dp else 680.dp)
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 32.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 16.dp),
             ) {
-                itemsIndexed(playlist.items, key = { _, video -> video.itemId }) { index, video ->
+                // Top Header: Child avatar, name, Lock & Switch buttons
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                ThematicAvatar(
+                                    name = childName,
+                                    avatar = childAvatar,
+                                    size = 44.dp,
+                                    iconSize = 22.dp
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Hi $childName!",
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onBackground,
+                                        maxLines = 1,
+                                    )
+                                    Text(
+                                        text = "Choose a video to watch",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.width(6.dp))
+
+                            // Action buttons: Child Lock + Switch Profile (Adaptive compact layout)
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                // Lock toggle indicator
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isChildLockActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                    border = BorderStroke(1.dp, if (isChildLockActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
+                                    onClick = onToggleLock,
+                                    modifier = Modifier.height(38.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        Icon(
+                                            if (isChildLockActive) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
+                                            contentDescription = "Child Lock",
+                                            tint = if (isChildLockActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                        Text(
+                                            text = if (isChildLockActive) "Locked" else "Lock",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isChildLockActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+
+                                // Switch Profile Button
+                                FilledTonalButton(
+                                    onClick = onBack,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                        contentColor = MaterialTheme.colorScheme.onBackground,
+                                    ),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                    modifier = Modifier.height(38.dp),
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Logout,
+                                        contentDescription = "Switch Profile",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Switch", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(14.dp))
+
+                        // Playlist Banner Card with "Play All" button
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                            shadowElevation = 2.dp,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = playlist.title.ifBlank { "Today's Videos" },
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onBackground,
+                                        maxLines = 2,
+                                    )
+                                    val count = playlist.items.size
+                                    val mins = playlist.totalDurationSeconds / 60
+                                    Text(
+                                        text = if (mins > 0) "$count videos • $mins mins" else "$count videos",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+
+                                Button(
+                                    onClick = { onStartPlaying(0) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.PlayArrow,
+                                        contentDescription = "Play All",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        "Play All",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Section Title
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text(
+                        text = "Videos",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                    )
+                }
+
+                // YouTube-style Video Cards Feed with stable item keys
+                gridItemsIndexed(playlist.items, key = { _, video -> video.itemId }) { index, video ->
                     YouTubeVideoCard(
                         video = video,
                         index = index + 1,
@@ -346,198 +569,7 @@ fun FilledPlaylistLightView(
                     )
                 }
             }
-        }
-    } else {
-        // Portrait Layout (Single Column)
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.TopCenter,
-        ) {
-            LazyColumn(
-                modifier = Modifier
-                    .widthIn(max = 680.dp)
-                    .fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 32.dp),
-            ) {
-        // Top Header: Child avatar, name, Lock & Switch buttons
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        ThematicAvatar(
-                            name = childName,
-                            avatar = childAvatar,
-                            size = 44.dp,
-                            iconSize = 22.dp
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Hi $childName!",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onBackground,
-                                maxLines = 1,
-                            )
-                            Text(
-                                text = "Choose a video to watch",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.width(6.dp))
-
-                    // Action buttons: Child Lock + Switch Profile (Adaptive compact layout)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        // Lock toggle indicator
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isChildLockActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                            border = BorderStroke(1.dp, if (isChildLockActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
-                            onClick = onToggleLock,
-                            modifier = Modifier.height(38.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                Icon(
-                                    if (isChildLockActive) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
-                                    contentDescription = "Child Lock",
-                                    tint = if (isChildLockActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                                Text(
-                                    text = if (isChildLockActive) "Locked" else "Lock",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isChildLockActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-
-                        // Switch Profile Button
-                        FilledTonalButton(
-                            onClick = onBack,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = MaterialTheme.colorScheme.onBackground,
-                            ),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                            modifier = Modifier.height(38.dp),
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Logout,
-                                contentDescription = "Switch Profile",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text("Switch", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(14.dp))
-
-                // Playlist Banner Card with "Play All" button
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    shadowElevation = 2.dp,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = playlist.title.ifBlank { "Today's Videos" },
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onBackground,
-                                maxLines = 2,
-                            )
-                            val count = playlist.items.size
-                            val mins = playlist.totalDurationSeconds / 60
-                            Text(
-                                text = if (mins > 0) "$count videos • $mins mins" else "$count videos",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-
-                        Button(
-                            onClick = { onStartPlaying(0) },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        ) {
-                            Icon(
-                                Icons.Rounded.PlayArrow,
-                                contentDescription = "Play All",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                "Play All",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Section Title
-        item {
-            Text(
-                text = "Videos",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
-            )
-        }
-
-        // YouTube-style Video Cards Feed with stable item keys
-        itemsIndexed(playlist.items, key = { _, video -> video.itemId }) { index, video ->
-            YouTubeVideoCard(
-                video = video,
-                index = index + 1,
-                onClick = { onStartPlaying(index) },
-            )
-        }
-    }
-    } // end Box tablet constraint
+        } // end Box tablet constraint
     } // end portrait else
 }
 
@@ -548,7 +580,12 @@ fun YouTubeVideoCard(
     onClick: () -> Unit,
 ) {
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val widthDp = configuration.screenWidthDp
+    val heightDp = configuration.screenHeightDp
+    val isLandscape = ResponsiveLayoutPolicy.isLandscape(widthDp, heightDp)
+    val isTablet = ResponsiveLayoutPolicy.isTablet(widthDp, heightDp)
+    val useCompactCard = isLandscape || isTablet
+
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(16.dp),
@@ -557,18 +594,18 @@ fun YouTubeVideoCard(
         shadowElevation = 2.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = if (isLandscape) 4.dp else 16.dp, vertical = if (isLandscape) 4.dp else 6.dp),
+            .padding(horizontal = if (useCompactCard) 4.dp else 16.dp, vertical = if (useCompactCard) 4.dp else 6.dp),
     ) {
-        if (isLandscape) {
-            // Landscape: horizontal compact card
+        if (useCompactCard) {
+            // Horizontal compact card for landscape and tablet grids
             Row(
                 modifier = Modifier.fillMaxWidth().padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier = Modifier
-                        .width(140.dp)
-                        .height(80.dp)
+                        .width(if (isTablet) 150.dp else 130.dp)
+                        .height(if (isTablet) 86.dp else 74.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.Black.copy(alpha = 0.08f)),
                     contentAlignment = Alignment.Center,

@@ -134,24 +134,17 @@ fun PlayerScreen(
     }
 
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-    val isDeviceLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    val isTablet = ResponsiveLayoutPolicy.isTablet(configuration.screenWidthDp, configuration.screenHeightDp)
+    val widthDp = configuration.screenWidthDp
+    val heightDp = configuration.screenHeightDp
+    val isWindowLandscape = ResponsiveLayoutPolicy.isLandscape(widthDp, heightDp)
+    val isTablet = ResponsiveLayoutPolicy.isTablet(widthDp, heightDp)
     // Tablets in landscape get two-pane layout, NOT forced fullscreen
-    val effectiveFullscreen = isFullscreen || (isDeviceLandscape && !isTablet)
+    val effectiveFullscreen = isFullscreen || (isWindowLandscape && !isTablet)
 
     fun attemptBack() {
-        if (effectiveFullscreen) {
-            if (isFullscreen) {
-                isFullscreen = false
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
-            } else {
-                if (isChildLockActive) {
-                    isExitingPlayer = true
-                    showParentPasswordDialog = true
-                } else {
-                    onBack()
-                }
-            }
+        if (isFullscreen) {
+            isFullscreen = false
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
         } else if (isChildLockActive) {
             isExitingPlayer = true
             showParentPasswordDialog = true
@@ -197,64 +190,74 @@ fun PlayerScreen(
         }
     }
 
+    // Retain video player instance across orientation & layout transitions with zero teardown
+    val playerComposable = remember(currentVideo?.youtubeId) {
+        movableContentOf { isFs: Boolean ->
+            if (currentVideo != null) {
+                OptimizedVideoPlayer(
+                    video = currentVideo,
+                    isFullscreen = isFs,
+                    subtitlesEnabled = subtitlesEnabled,
+                    onToggleSubtitles = {
+                        val newState = !subtitlesEnabled
+                        subtitlesEnabled = newState
+                        parentPrefs.subtitlesEnabled = newState
+                    },
+                    onToggleFullscreen = { isFullscreen = !isFs },
+                    onVideoEnded = { _ ->
+                        isCurrentVideoCompleted = true
+                        if (currentIndex + 1 < videos.size) {
+                            showEndCelebration = true
+                        } else {
+                            onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
+                            onAllCompleted()
+                        }
+                    },
+                    onProgressUpdate = { sec, dur ->
+                        val secInt = sec.toInt()
+                        val delta = secInt - lastRecordedSecond
+                        if (delta in 1..5) {
+                            parentPrefs.addWatchedSeconds(delta)
+                        }
+                        lastRecordedSecond = secInt
+                        currentVideoSeconds = sec
+                        currentVideoTotalDuration = dur
+                        if (dur > 5f && sec >= (dur - 4f).coerceAtMost(dur * 0.85f)) {
+                            isCurrentVideoCompleted = true
+                        }
+                        if (secInt > 0 && secInt % 30 == 0) {
+                            onProgressUpdate(currentVideo, secInt)
+                        }
+                        if (!curfewBypassed && parentPrefs.isCurfewActive()) {
+                            activeLimitType = "curfew"
+                        } else if (!dailyLimitBypassed && parentPrefs.isDailyLimitReached()) {
+                            activeLimitType = "limit"
+                        }
+                    },
+                    onSkipNext = if (currentIndex + 1 < videos.size && (isCurrentVideoCompleted || currentVideoHasError)) { { currentIndex++ } } else null,
+                    onFinishPlaylist = if (currentIndex + 1 >= videos.size) { { onBack() } } else null,
+                    onPlaybackError = { hasErr -> currentVideoHasError = hasErr },
+                    onAttemptBack = { attemptBack() },
+                )
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black),
     ) {
         // Tablet landscape: two-pane Row (video left 65% | queue right 35%)
-        if (isTablet && isDeviceLandscape && !isFullscreen && currentVideo != null) {
+        if (isTablet && isWindowLandscape && !isFullscreen && currentVideo != null) {
             Row(modifier = Modifier.fillMaxSize()) {
-                // Left pane: video player
+                // Left pane: video player (retained via movableContentOf)
                 Box(
                     modifier = Modifier
                         .weight(0.65f)
                         .fillMaxHeight()
                 ) {
-                    OptimizedVideoPlayer(
-                        video = currentVideo,
-                        isFullscreen = false,
-                        subtitlesEnabled = subtitlesEnabled,
-                        onToggleSubtitles = {
-                            val newState = !subtitlesEnabled
-                            subtitlesEnabled = newState
-                            parentPrefs.subtitlesEnabled = newState
-                        },
-                        onToggleFullscreen = { isFullscreen = true },
-                        onVideoEnded = { _ ->
-                            isCurrentVideoCompleted = true
-                            if (currentIndex + 1 < videos.size) {
-                                showEndCelebration = true
-                            } else {
-                                onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
-                                onAllCompleted()
-                            }
-                        },
-                        onProgressUpdate = { sec, dur ->
-                            val secInt = sec.toInt()
-                            val delta = secInt - lastRecordedSecond
-                            if (delta in 1..5) {
-                                parentPrefs.addWatchedSeconds(delta)
-                            }
-                            lastRecordedSecond = secInt
-                            currentVideoSeconds = sec
-                            currentVideoTotalDuration = dur
-                            if (dur > 5f && sec >= (dur - 4f).coerceAtMost(dur * 0.85f)) {
-                                isCurrentVideoCompleted = true
-                            }
-                            if (secInt > 0 && secInt % 30 == 0) {
-                                onProgressUpdate(currentVideo, secInt)
-                            }
-                            if (!curfewBypassed && parentPrefs.isCurfewActive()) {
-                                activeLimitType = "curfew"
-                            } else if (!dailyLimitBypassed && parentPrefs.isDailyLimitReached()) {
-                                activeLimitType = "limit"
-                            }
-                        },
-                        onSkipNext = if (currentIndex + 1 < videos.size && (isCurrentVideoCompleted || currentVideoHasError)) { { currentIndex++ } } else null,
-                        onFinishPlaylist = if (currentIndex + 1 >= videos.size) { { onBack() } } else null,
-                        onPlaybackError = { hasErr -> currentVideoHasError = hasErr },
-                    )
+                    playerComposable(false)
                 }
                 // Right pane: title, controls, queue
                 Column(
@@ -371,59 +374,14 @@ fun PlayerScreen(
 
         Column(modifier = Modifier.fillMaxSize()) {
 
-            // YouTube Player Component
+            // YouTube Player Component (retained via movableContentOf across layouts)
             if (currentVideo != null) {
                 Box(
                     modifier = if (effectiveFullscreen) Modifier.fillMaxSize() else Modifier
                         .fillMaxWidth()
                         .aspectRatio(16f / 9f)
                 ) {
-                    OptimizedVideoPlayer(
-                        video = currentVideo,
-                        isFullscreen = effectiveFullscreen,
-                        subtitlesEnabled = subtitlesEnabled,
-                        onToggleSubtitles = {
-                            val newState = !subtitlesEnabled
-                            subtitlesEnabled = newState
-                            parentPrefs.subtitlesEnabled = newState
-                        },
-                        onToggleFullscreen = { isFullscreen = !effectiveFullscreen },
-                        onVideoEnded = { _ ->
-                            isCurrentVideoCompleted = true
-                            if (currentIndex + 1 < videos.size) {
-                                showEndCelebration = true
-                            } else {
-                                onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
-                                onAllCompleted()
-                            }
-                        },
-                        onProgressUpdate = { sec, dur ->
-                            val secInt = sec.toInt()
-                            val delta = secInt - lastRecordedSecond
-                            if (delta in 1..5) {
-                                parentPrefs.addWatchedSeconds(delta)
-                            }
-                            lastRecordedSecond = secInt
-                            currentVideoSeconds = sec
-                            currentVideoTotalDuration = dur
-                            if (dur > 5f && sec >= (dur - 4f).coerceAtMost(dur * 0.85f)) {
-                                isCurrentVideoCompleted = true
-                            }
-                            if (secInt > 0 && secInt % 30 == 0) {
-                                onProgressUpdate(currentVideo, secInt)
-                            }
-                            if (!curfewBypassed && parentPrefs.isCurfewActive()) {
-                                activeLimitType = "curfew"
-                            } else if (!dailyLimitBypassed && parentPrefs.isDailyLimitReached()) {
-                                activeLimitType = "limit"
-                            }
-                        },
-                        onSkipNext = if (currentIndex + 1 < videos.size && (isCurrentVideoCompleted || currentVideoHasError)) { { currentIndex++ } } else null,
-                        onFinishPlaylist = if (currentIndex + 1 >= videos.size) { { onBack() } } else null,
-                        onPlaybackError = { hasErr ->
-                            currentVideoHasError = hasErr
-                        },
-                    )
+                    playerComposable(effectiveFullscreen)
                 }
             }
 
@@ -999,6 +957,7 @@ fun OptimizedVideoPlayer(
     onSkipNext: (() -> Unit)? = null,
     onFinishPlaylist: (() -> Unit)? = null,
     onPlaybackError: ((Boolean) -> Unit)? = null,
+    onAttemptBack: (() -> Unit)? = null,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
@@ -1450,7 +1409,7 @@ fun OptimizedVideoPlayer(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         IconButton(
-                            onClick = onToggleFullscreen,
+                            onClick = { onAttemptBack?.invoke() ?: onToggleFullscreen() },
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(CircleShape)
@@ -1458,7 +1417,7 @@ fun OptimizedVideoPlayer(
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Exit Fullscreen",
+                                contentDescription = if (isFullscreen) "Exit Fullscreen" else "Back",
                                 tint = Color.White,
                                 modifier = Modifier.size(20.dp),
                             )

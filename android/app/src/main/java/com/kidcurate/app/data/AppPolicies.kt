@@ -28,6 +28,33 @@ object ResponsiveLayoutPolicy {
 
     fun isTabletLandscape(widthDp: Int, heightDp: Int): Boolean =
         widthDp > heightDp && kotlin.math.min(widthDp, heightDp) >= 600
+
+    fun shouldUseTwoPanePin(widthDp: Int, heightDp: Int): Boolean =
+        widthDp > heightDp
+
+    fun shouldShowTwoPanePlaylist(widthDp: Int, heightDp: Int): Boolean =
+        widthDp > heightDp
+
+    fun playlistGridColumns(widthDp: Int, heightDp: Int): Int {
+        val isLandscape = widthDp > heightDp
+        val minDim = kotlin.math.min(widthDp, heightDp)
+        return when {
+            minDim >= 600 -> 2
+            widthDp >= 720 && !isLandscape -> 2
+            else -> 1
+        }
+    }
+
+    fun pinButtonSizeDp(widthDp: Int, heightDp: Int): Int {
+        val isLandscape = widthDp > heightDp
+        val isTab = kotlin.math.min(widthDp, heightDp) >= 600
+        return when {
+            isLandscape && isTab -> 60
+            isLandscape -> 46
+            heightDp < 680 -> 64
+            else -> 74
+        }
+    }
 }
 
 object CloudConnectionPolicy {

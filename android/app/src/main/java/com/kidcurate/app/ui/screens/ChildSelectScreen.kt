@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import com.kidcurate.app.data.ChildProfileItem
 import com.kidcurate.app.data.ParentPreferences
+import com.kidcurate.app.data.ResponsiveLayoutPolicy
 import com.kidcurate.app.ui.components.GlassBackgroundAura
 import com.kidcurate.app.ui.components.GlassCard
 import com.kidcurate.app.ui.components.OnboardingTourDialog
@@ -55,7 +56,10 @@ fun ChildSelectScreen(
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val widthDp = configuration.screenWidthDp
+    val heightDp = configuration.screenHeightDp
+    val isLandscape = ResponsiveLayoutPolicy.isLandscape(widthDp, heightDp)
+    val isTablet = ResponsiveLayoutPolicy.isTablet(widthDp, heightDp)
 
     Box(
         modifier = Modifier
@@ -230,7 +234,7 @@ fun ChildSelectScreen(
                     val profile = profiles.first()
                     GlassCard(
                         modifier = Modifier
-                            .widthIn(min = 180.dp, max = 220.dp)
+                            .widthIn(min = if (isTablet) 240.dp else 180.dp, max = if (isTablet) 300.dp else 220.dp)
                             .clip(RoundedCornerShape(24.dp))
                             .clickable {
                                 SoundHaptics.playPop(view, haptic)
@@ -241,13 +245,13 @@ fun ChildSelectScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = if (isLandscape) 12.dp else 28.dp, horizontal = 20.dp),
+                                .padding(vertical = if (isLandscape) 14.dp else (if (isTablet) 36.dp else 28.dp), horizontal = 20.dp),
                         ) {
                             ThematicAvatar(
                                 name = profile.name,
                                 avatar = profile.avatar,
-                                size = if (isLandscape) 64.dp else 88.dp,
-                                iconSize = if (isLandscape) 32.dp else 44.dp,
+                                size = if (isTablet) (if (isLandscape) 88.dp else 112.dp) else (if (isLandscape) 64.dp else 88.dp),
+                                iconSize = if (isTablet) (if (isLandscape) 44.dp else 56.dp) else (if (isLandscape) 32.dp else 44.dp),
                             )
 
                             Spacer(modifier = Modifier.height(14.dp))
@@ -256,7 +260,7 @@ fun ChildSelectScreen(
                                 text = profile.name,
                                 color = MaterialTheme.colorScheme.onBackground,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
+                                fontSize = if (isTablet) 22.sp else 18.sp,
                                 textAlign = TextAlign.Center,
                                 maxLines = 1,
                             )
@@ -290,71 +294,78 @@ fun ChildSelectScreen(
                     }
                 }
             } else {
-                // Multiple profiles grid
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 140.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                // Multiple profiles grid: responsive width capping for wide tablets
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    itemsIndexed(profiles, key = { _, profile -> profile.id }) { index, profile ->
-                        GlassCard(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(24.dp))
-                                .clickable {
-                                    SoundHaptics.playPop(view, haptic)
-                                    onSelectProfile(profile)
-                                },
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = if (isTablet) 180.dp else 140.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .widthIn(max = 860.dp)
+                            .fillMaxSize(),
+                    ) {
+                        itemsIndexed(profiles, key = { _, profile -> profile.id }) { index, profile ->
+                            GlassCard(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 24.dp, horizontal = 16.dp),
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .clickable {
+                                        SoundHaptics.playPop(view, haptic)
+                                        onSelectProfile(profile)
+                                    },
                             ) {
-                                ThematicAvatar(
-                                    name = profile.name,
-                                    avatar = profile.avatar,
-                                    size = 80.dp,
-                                    iconSize = 40.dp,
-                                )
-
-                                Spacer(modifier = Modifier.height(14.dp))
-
-                                Text(
-                                    text = profile.name,
-                                    color = MaterialTheme.colorScheme.onBackground,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 18.sp,
-                                    textAlign = TextAlign.Center,
-                                    maxLines = 1,
-                                )
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = if (isTablet) 28.dp else 24.dp, horizontal = 16.dp),
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    ThematicAvatar(
+                                        name = profile.name,
+                                        avatar = profile.avatar,
+                                        size = if (isTablet) 96.dp else 80.dp,
+                                        iconSize = if (isTablet) 48.dp else 40.dp,
+                                    )
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    Text(
+                                        text = profile.name,
+                                        color = MaterialTheme.colorScheme.onBackground,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = if (isTablet) 20.sp else 18.sp,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1,
+                                    )
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer,
                                     ) {
-                                        Text(
-                                            text = "Play",
-                                            color = BrandPrimary,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                        )
-                                        Icon(
-                                            Icons.Rounded.PlayArrow,
-                                            contentDescription = null,
-                                            tint = BrandPrimary,
-                                            modifier = Modifier.size(14.dp),
-                                        )
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        ) {
+                                            Text(
+                                                text = "Play",
+                                                color = BrandPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                            Icon(
+                                                Icons.Rounded.PlayArrow,
+                                                contentDescription = null,
+                                                tint = BrandPrimary,
+                                                modifier = Modifier.size(14.dp),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -365,33 +376,39 @@ fun ChildSelectScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Parent Zone Button
-            OutlinedButton(
-                onClick = {
-                    SoundHaptics.playTactileClick(view, haptic)
-                    showParentGate = true
-                },
-                shape = RoundedCornerShape(16.dp),
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, BrandPrimary.copy(alpha = 0.5f)),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = BrandPrimary,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(if (isLandscape) 42.dp else 52.dp),
+            // Parent Zone Button (Centered with maximum width constraint for tablet ergonomics)
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    Icons.Rounded.Lock,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "Parent Zone (Add Videos & Settings)",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                )
+                OutlinedButton(
+                    onClick = {
+                        SoundHaptics.playTactileClick(view, haptic)
+                        showParentGate = true
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, BrandPrimary.copy(alpha = 0.5f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = BrandPrimary,
+                    ),
+                    modifier = Modifier
+                        .widthIn(max = 480.dp)
+                        .fillMaxWidth()
+                        .height(if (isLandscape) 44.dp else 52.dp),
+                ) {
+                    Icon(
+                        Icons.Rounded.Lock,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Parent Zone (Add Videos & Settings)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                    )
+                }
             }
         }
     }

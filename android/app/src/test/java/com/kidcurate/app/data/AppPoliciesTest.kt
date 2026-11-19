@@ -68,6 +68,32 @@ class AppPoliciesTest {
     }
 
     @Test
+    fun responsiveLayoutPolicySelectsAdaptiveTwoPaneAndGridConfigurations() {
+        // PIN two-pane layout: any landscape orientation
+        assertTrue(ResponsiveLayoutPolicy.shouldUseTwoPanePin(widthDp = 915, heightDp = 412))
+        assertTrue(ResponsiveLayoutPolicy.shouldUseTwoPanePin(widthDp = 1280, heightDp = 800))
+        assertFalse(ResponsiveLayoutPolicy.shouldUseTwoPanePin(widthDp = 412, heightDp = 915))
+        assertFalse(ResponsiveLayoutPolicy.shouldUseTwoPanePin(widthDp = 800, heightDp = 1280))
+
+        // Playlist two-pane console
+        assertTrue(ResponsiveLayoutPolicy.shouldShowTwoPanePlaylist(widthDp = 915, heightDp = 412))
+        assertTrue(ResponsiveLayoutPolicy.shouldShowTwoPanePlaylist(widthDp = 1280, heightDp = 800))
+        assertFalse(ResponsiveLayoutPolicy.shouldShowTwoPanePlaylist(widthDp = 412, heightDp = 915))
+
+        // Playlist grid columns: tablet landscape = 2, tablet portrait = 2, phone = 1
+        assertEquals(2, ResponsiveLayoutPolicy.playlistGridColumns(widthDp = 1280, heightDp = 800))
+        assertEquals(2, ResponsiveLayoutPolicy.playlistGridColumns(widthDp = 800, heightDp = 1280))
+        assertEquals(1, ResponsiveLayoutPolicy.playlistGridColumns(widthDp = 915, heightDp = 412))
+        assertEquals(1, ResponsiveLayoutPolicy.playlistGridColumns(widthDp = 412, heightDp = 915))
+
+        // PIN button sizing: adaptive across tablet vs compact landscape vs portrait
+        assertEquals(60, ResponsiveLayoutPolicy.pinButtonSizeDp(widthDp = 1280, heightDp = 800))
+        assertEquals(46, ResponsiveLayoutPolicy.pinButtonSizeDp(widthDp = 915, heightDp = 412))
+        assertEquals(64, ResponsiveLayoutPolicy.pinButtonSizeDp(widthDp = 360, heightDp = 640))
+        assertEquals(74, ResponsiveLayoutPolicy.pinButtonSizeDp(widthDp = 412, heightDp = 915))
+    }
+
+    @Test
     fun cloudConnectionPolicyAllocatesAppropriateProbeTimeouts() {
         assertEquals(4, CloudConnectionPolicy.getRecommendedProbeTimeoutSeconds("http://localhost:8000/"))
         assertEquals(4, CloudConnectionPolicy.getRecommendedProbeTimeoutSeconds("http://10.0.2.2:8000/"))
