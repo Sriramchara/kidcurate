@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -965,8 +966,8 @@ fun OptimizedVideoPlayer(
     var playerViewRef by remember { mutableStateOf<YouTubePlayerView?>(null) }
     var youTubePlayerRef by remember { mutableStateOf<YouTubePlayer?>(null) }
     var webViewRef by remember { mutableStateOf<android.webkit.WebView?>(null) }
-    var currentSecond by remember { mutableFloatStateOf(0f) }
-    var videoDuration by remember { mutableFloatStateOf(0f) }
+    var currentSecond by rememberSaveable(video.youtubeId) { mutableFloatStateOf(0f) }
+    var videoDuration by rememberSaveable(video.youtubeId) { mutableFloatStateOf(0f) }
     var playerState by remember { mutableStateOf(PlayerConstants.PlayerState.UNKNOWN) }
     var showControls by remember { mutableStateOf(true) }
     var playbackError by remember { mutableStateOf<String?>(null) }
@@ -1179,7 +1180,8 @@ fun OptimizedVideoPlayer(
                         override fun onReady(youTubePlayer: YouTubePlayer) {
                             youTubePlayerRef = youTubePlayer
                             playbackError = null
-                            youTubePlayer.loadVideo(video.youtubeId, 0f)
+                            val resumeSeconds = if (currentSecond > 1f) currentSecond else 0f
+                            youTubePlayer.loadVideo(video.youtubeId, resumeSeconds)
                             val wv = findWebView(this@apply)
                             wv?.settings?.apply {
                                 domStorageEnabled = true
