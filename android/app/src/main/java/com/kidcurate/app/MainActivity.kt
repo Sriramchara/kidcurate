@@ -27,7 +27,30 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER
         enableEdgeToEdge()
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
         val prefs = ParentPreferences.get(this)
+        if (com.kidcurate.app.BuildConfig.DEBUG) {
+            if (intent.hasExtra("test_token")) {
+                prefs.parentAuthToken = intent.getStringExtra("test_token") ?: ""
+                prefs.parentEmail = intent.getStringExtra("test_email") ?: ""
+                prefs.hasSeenOnboardingTour = true
+                val testServer = intent.getStringExtra("test_server") ?: "http://127.0.0.1:8000/"
+                prefs.serverUrl = testServer
+                if (intent.hasExtra("test_profiles_json")) {
+                    prefs.cachedProfilesJson = intent.getStringExtra("test_profiles_json") ?: ""
+                }
+            }
+            if (intent.hasExtra("test_parent_pin")) {
+                prefs.parentPin = intent.getStringExtra("test_parent_pin") ?: "1234"
+                prefs.parentPinOwnerEmail = prefs.parentEmail
+            }
+        }
         if (prefs.serverUrl.isNotBlank()) {
             com.kidcurate.app.data.ApiClient.updateBaseUrl(prefs.serverUrl)
         }
@@ -78,6 +101,46 @@ fun KidApp(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val context = LocalContext.current
+    val activity = context as? ComponentActivity
+    val autoWalkthrough = activity?.intent?.getStringExtra("test_auto_walkthrough")
+
+    if (com.kidcurate.app.BuildConfig.DEBUG && autoWalkthrough != null) {
+        LaunchedEffect(autoWalkthrough) {
+            when (autoWalkthrough) {
+                "poco_rotation_splitscreen" -> {
+                    kotlinx.coroutines.delay(1200)
+                    val maya = state.availableProfiles.find { it.name.contains("Maya", ignoreCase = true) }
+                        ?: state.availableProfiles.firstOrNull()
+                    if (maya != null) {
+                        viewModel.selectProfile(maya)
+                        kotlinx.coroutines.delay(1200)
+                        viewModel.verifyPin(maya.id, "4321")
+                        kotlinx.coroutines.delay(1500)
+                        viewModel.startPlaying(0)
+                        kotlinx.coroutines.delay(4000)
+                        activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                        kotlinx.coroutines.delay(5000)
+                        activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        kotlinx.coroutines.delay(4000)
+                    }
+                }
+                "child_lock_check" -> {
+                    kotlinx.coroutines.delay(1200)
+                    val maya = state.availableProfiles.find { it.name.contains("Maya", ignoreCase = true) }
+                        ?: state.availableProfiles.firstOrNull()
+                    if (maya != null) {
+                        viewModel.selectProfile(maya)
+                        kotlinx.coroutines.delay(1200)
+                        viewModel.verifyPin(maya.id, "4321")
+                        kotlinx.coroutines.delay(1500)
+                        viewModel.startPlaying(0)
+                    }
+                }
+            }
+        }
     }
 
     AnimatedContent(

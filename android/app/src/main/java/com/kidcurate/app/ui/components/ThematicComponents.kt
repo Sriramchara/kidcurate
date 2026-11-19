@@ -337,6 +337,25 @@ fun ParentPasswordDialog(
     var isResettingPin by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
+    val hostActivity = appContext as? android.app.Activity
+    if (com.kidcurate.app.BuildConfig.DEBUG) {
+        val autoWalkthrough = hostActivity?.intent?.getStringExtra("test_auto_walkthrough")
+        if (autoWalkthrough == "child_lock_check" && currentMode == ParentGateMode.PIN_UNLOCK) {
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(1200)
+                // First simulate entering wrong PIN
+                pinInput = "9999"
+                errorMessage = "Incorrect 4-digit PIN."
+                kotlinx.coroutines.delay(2200)
+                // Then simulate entering correct parent PIN
+                pinInput = parentPrefs.parentPin.ifBlank { "1234" }
+                errorMessage = null
+                kotlinx.coroutines.delay(800)
+                onSuccess()
+            }
+        }
+    }
+
     fun triggerGoogleSignIn() {
         coroutineScope.launch {
             isVerifying = true

@@ -158,6 +158,27 @@ fun PlayerScreen(
         attemptBack()
     }
 
+    if (com.kidcurate.app.BuildConfig.DEBUG) {
+        val autoWalkthrough = activity?.intent?.getStringExtra("test_auto_walkthrough")
+        if (autoWalkthrough == "child_lock_check") {
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(2000)
+                // 1. Turn Child Lock ON
+                isChildLockActive = true
+                kotlinx.coroutines.delay(2500)
+                // 2. System Back pressed -> intercepted by Parent PIN dialog
+                attemptBack()
+                kotlinx.coroutines.delay(2500)
+                // 3. User cancels / dismisses dialog -> Child Lock remains ACTIVE
+                showParentPasswordDialog = false
+                isExitingPlayer = false
+                kotlinx.coroutines.delay(2500)
+                // 4. On-screen Back button pressed -> intercepted by Parent PIN dialog
+                attemptBack()
+            }
+        }
+    }
+
     LaunchedEffect(effectiveFullscreen) {
         activity?.window?.let { window ->
             val insetsController = WindowCompat.getInsetsController(window, window.decorView)
