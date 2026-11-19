@@ -95,9 +95,7 @@ export default function DashboardPage() {
   }
 
   function logout() {
-    localStorage.removeItem('kc_token');
-    localStorage.removeItem('kc_user');
-    router.push('/');
+    api.logout();
   }
 
   if (loading) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -12,6 +12,7 @@ import ThemeToggle from '@/components/ThemeToggle';
 import api from '@/lib/api';
 import { playPop, playTactileClick, playCelebrationFanfare } from '@/lib/haptics';
 import ConfettiCanvas from '@/components/ConfettiCanvas';
+import { globalProgressTracker } from '@/lib/progressTracker';
 
 interface Child {
   id: string;
@@ -139,7 +140,95 @@ export default function ChildWatchPage() {
     }
   }
 
+  const currentWatchedSecondsRef = useRef<number>(0);
+  const activeVideoRef = useRef<VideoInPlaylist | null>(null);
+
+  const currentVideo = playlist?.items?.[currentIndex];
+  activeVideoRef.current = currentVideo || null;
+
+  const flushCurrentProgress = useCallback((isNaturalEnd: boolean = false) => {
+    const video = activeVideoRef.current;
+    if (!selectedChild || !video) return;
+
+    const watched = currentWatchedSecondsRef.current;
+    const duration = video.duration_seconds || 120;
+
+    const evalResult = globalProgressTracker.evaluateProgress(
+      selectedChild.id,
+      video.youtube_id,
+      watched,
+      duration,
+      isNaturalEnd
+    );
+
+    if (evalResult.shouldReport) {
+      api.reportWatchProgress({
+        child_id: selectedChild.id,
+        youtube_id: video.youtube_id,
+        playlist_item_id: video.item_id,
+        watched_seconds: evalResult.sanitizedSeconds,
+        completed: evalResult.completed,
+      }).catch((err) => {
+        console.warn('Watch progress report network error:', err);
+      });
+    }
+  }, [selectedChild]);
+
+  // Track playback time via heartbeat interval & YouTube API postMessage listener
+  useEffect(() => {
+    currentWatchedSecondsRef.current = 0;
+
+    // Heartbeat ticker: increments watched time while tab is visible
+    const ticker = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible' && !document.hidden) {
+        currentWatchedSecondsRef.current += 1;
+      }
+    }, 1000);
+
+    // YouTube HTML5 Player postMessage listener for high-precision time & end events
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (!data) return;
+
+        // infoDelivery event contains currentTime and duration
+        if (data.event === 'infoDelivery' && data.info && typeof data.info.currentTime === 'number') {
+          const ytTime = Math.floor(data.info.currentTime);
+          if (ytTime > currentWatchedSecondsRef.current) {
+            currentWatchedSecondsRef.current = ytTime;
+          }
+        }
+
+        // onStateChange event: info === 0 means video ended naturally
+        if (data.event === 'onStateChange' && data.info === 0) {
+          handleVideoEnded();
+        }
+      } catch {}
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    return () => {
+      clearInterval(ticker);
+      window.removeEventListener('message', handleMessage);
+      flushCurrentProgress(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, currentVideo?.youtube_id, flushCurrentProgress]);
+
+  // Flush progress before unload/page exit
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      flushCurrentProgress(false);
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [flushCurrentProgress]);
+
   function handleVideoEnded() {
+    flushCurrentProgress(true);
     if (!playlist) return;
     if (currentIndex + 1 < playlist.items.length) {
       setCurrentIndex(prev => prev + 1);
@@ -149,8 +238,30 @@ export default function ChildWatchPage() {
     }
   }
 
+  function handlePrevious() {
+    flushCurrentProgress(false);
+    setCurrentIndex(prev => Math.max(0, prev - 1));
+  }
+
+  function handleNext() {
+    flushCurrentProgress(false);
+    if (!playlist) return;
+    if (currentIndex + 1 < playlist.items.length) {
+      setCurrentIndex(prev => prev + 1);
+    } else {
+      handleVideoEnded();
+    }
+  }
+
+  function handleSelectQueueItem(idx: number) {
+    if (idx === currentIndex) return;
+    flushCurrentProgress(false);
+    setCurrentIndex(idx);
+  }
+
   async function handleExitSubmit(e?: React.FormEvent) {
     if (e) e.preventDefault();
+    flushCurrentProgress(false);
     setIsVerifyingExit(true);
     setExitPinError(false);
 
@@ -175,7 +286,6 @@ export default function ChildWatchPage() {
     setIsVerifyingExit(false);
   }
 
-  const currentVideo = playlist?.items?.[currentIndex];
 
   // 1. Loading State
   if (isLoading && !selectedChild) {
@@ -388,7 +498,7 @@ export default function ChildWatchPage() {
                 {currentVideo && (
                   <iframe
                     key={currentVideo.youtube_id}
-                    src={`https://www.youtube-nocookie.com/embed/${currentVideo.youtube_id}?autoplay=1&rel=0&modestbranding=1&controls=1&playsinline=1`}
+                    src={`https://www.youtube-nocookie.com/embed/${currentVideo.youtube_id}?autoplay=1&rel=0&modestbranding=1&controls=1&playsinline=1&enablejsapi=1`}
                     title={currentVideo.title}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
@@ -409,7 +519,7 @@ export default function ChildWatchPage() {
                 <div className="flex items-center gap-2 shrink-0">
                   {currentIndex > 0 && (
                     <button
-                      onClick={() => setCurrentIndex(prev => prev - 1)}
+                      onClick={handlePrevious}
                       className="p-2.5 rounded-xl btn-secondary transition-colors cursor-pointer"
                       title="Previous Story"
                     >
@@ -418,7 +528,7 @@ export default function ChildWatchPage() {
                   )}
                   {currentIndex + 1 < playlist.items.length ? (
                     <button
-                      onClick={() => setCurrentIndex(prev => prev + 1)}
+                      onClick={handleNext}
                       className="btn-primary !py-2 !px-4 text-xs !bg-amber-500 hover:!bg-amber-600 font-bold inline-flex items-center gap-1.5 shadow-md"
                     >
                       <span>Play Next Story</span>
@@ -456,7 +566,7 @@ export default function ChildWatchPage() {
                     return (
                       <button
                         key={item.item_id || item.youtube_id}
-                        onClick={() => setCurrentIndex(idx)}
+                        onClick={() => handleSelectQueueItem(idx)}
                         className={`w-full text-left p-2.5 rounded-xl border transition-all flex items-center gap-3 cursor-pointer group ${
                           isCurrent
                             ? 'bg-amber-500/15 border-amber-400 shadow-md'

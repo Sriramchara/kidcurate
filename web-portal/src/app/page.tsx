@@ -35,6 +35,9 @@ export default function HomePage() {
         ? await api.login(email, password)
         : await api.register(name, email, password);
       localStorage.setItem('kc_token', res.access_token);
+      if (res.refresh_token) {
+        localStorage.setItem('kc_refresh_token', res.refresh_token);
+      }
       localStorage.setItem('kc_user', JSON.stringify({ id: res.user_id, name: res.name, email: res.email }));
       router.push('/dashboard');
     } catch (err: any) {

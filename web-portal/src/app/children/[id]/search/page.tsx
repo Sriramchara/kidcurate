@@ -65,7 +65,12 @@ export default function VideoSearchPage() {
   ];
 
   useEffect(() => {
-    api.listPlaylists(childId).then(setPlaylists).catch(() => {});
+    api.listPlaylists(childId).then((data) => {
+      setPlaylists(data);
+      if (data && data.length > 0) {
+        setSelectedPlaylist(prev => prev || data[0].id);
+      }
+    }).catch(() => {});
   }, [childId]);
 
   async function handleSearch(e: React.FormEvent) {

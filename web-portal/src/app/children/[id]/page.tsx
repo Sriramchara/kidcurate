@@ -125,6 +125,20 @@ export default function ChildDetailPage() {
     }
   }
 
+  async function handleDeletePlaylist(playlistId: string, title: string) {
+    if (typeof window !== 'undefined' && !window.confirm(`Are you sure you want to delete the playlist "${title}"?`)) return;
+    try {
+      await api.deletePlaylist(playlistId);
+      setPlaylists(prev => {
+        const remaining = prev.filter(p => p.id !== playlistId);
+        setSelectedPlaylist(remaining[0] || null);
+        return remaining;
+      });
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete playlist');
+    }
+  }
+
   async function moveVideo(playlistId: string, items: VideoItem[], fromIdx: number, toIdx: number) {
     const reordered = [...items];
     const [moved] = reordered.splice(fromIdx, 1);
@@ -279,11 +293,22 @@ export default function ChildDetailPage() {
                       <p className="text-xs text-[var(--text-muted)] mt-1">Reusable Template Playlist</p>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-xl bg-[var(--surface-card)] border border-[var(--border-subtle)]">
-                    <Clock className="w-3.5 h-3.5 text-[var(--brand-primary)]" />
-                    <span className="text-[var(--text-primary)]">{selectedPlaylist.video_count} videos</span>
-                    <span className="text-[var(--text-muted)]">·</span>
-                    <span className="text-amber-500 font-mono">{formatDuration(selectedPlaylist.total_duration_seconds)}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-xl bg-[var(--surface-card)] border border-[var(--border-subtle)]">
+                      <Clock className="w-3.5 h-3.5 text-[var(--brand-primary)]" />
+                      <span className="text-[var(--text-primary)]">{selectedPlaylist.video_count} videos</span>
+                      <span className="text-[var(--text-muted)]">·</span>
+                      <span className="text-amber-500 font-mono">{formatDuration(selectedPlaylist.total_duration_seconds)}</span>
+                    </div>
+                    {playlists.length > 1 && (
+                      <button
+                        onClick={() => handleDeletePlaylist(selectedPlaylist.id, selectedPlaylist.title)}
+                        className="p-2 rounded-xl text-[var(--text-muted)] hover:text-rose-500 hover:bg-rose-500/10 border border-[var(--border-subtle)] transition-colors cursor-pointer"
+                        title="Delete this playlist"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
 

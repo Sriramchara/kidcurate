@@ -6,48 +6,174 @@ function getApiBase(): string {
   return 'http://localhost:8000';
 }
 
-const API_BASE = getApiBase();
+export const API_BASE = getApiBase();
 
+// Storage keys
+export const ACCESS_TOKEN_KEY = 'kc_token';
+export const REFRESH_TOKEN_KEY = 'kc_refresh_token';
+export const USER_KEY = 'kc_user';
 
-async function apiFetch(path: string, options: RequestInit = {}) {
-  const headers = new Headers(options.headers);
-  if (!headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
+export function getAccessToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+export function getRefreshToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
+export function setTokens(accessToken: string, refreshToken?: string | null): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  if (refreshToken) {
+    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
   }
-  const token = typeof window !== 'undefined' ? localStorage.getItem('kc_token') : null;
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
+}
+
+export function clearTokens(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+export function safeLogout(): void {
+  clearTokens();
+  if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.href = '/';
+  }
+}
+
+// In-flight refresh promise mutex for handling concurrent requests
+let refreshPromise: Promise<string> | null = null;
+
+export async function refreshAccessToken(): Promise<string> {
+  // If a refresh is already underway, await that exact promise
+  if (refreshPromise) {
+    return refreshPromise;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    credentials: 'include',
-    headers,
-  });
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) {
+    clearTokens();
+    throw new Error('No refresh token available');
+  }
+
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+
+      if (!res.ok) {
+        clearTokens();
+        throw new Error('Session expired. Please log in again.');
+      }
+
+      const data = await res.json();
+      if (!data.access_token) {
+        clearTokens();
+        throw new Error('Invalid token response from server');
+      }
+
+      setTokens(data.access_token, data.refresh_token || refreshToken);
+      return data.access_token as string;
+    } catch (err) {
+      clearTokens();
+      throw err;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
+export async function apiFetch(path: string, options: RequestInit = {}): Promise<any> {
+  const isAuthRoute =
+    path === '/api/auth/login' ||
+    path === '/api/auth/register' ||
+    path === '/api/auth/refresh';
+
+  const makeRequest = async (token: string | null) => {
+    const headers = new Headers(options.headers);
+    if (!headers.has('Content-Type') && !(options.body instanceof FormData) && !(options.body instanceof URLSearchParams)) {
+      headers.set('Content-Type', 'application/json');
+    }
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+
+    return fetch(`${API_BASE}${path}`, {
+      ...options,
+      credentials: 'include',
+      headers,
+    });
+  };
+
+  const initialToken = getAccessToken();
+  let res = await makeRequest(initialToken);
+
+  // If 401 Unauthorized and not an auth route, attempt token refresh once
+  if (res.status === 401 && !isAuthRoute) {
+    try {
+      const newToken = await refreshAccessToken();
+      res = await makeRequest(newToken);
+    } catch {
+      safeLogout();
+      throw new Error('Session expired. Please log in again.');
+    }
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Request failed' }));
     throw new Error(err.detail || 'Request failed');
   }
-  return res.json();
+
+  // Handle empty or 204 responses
+  if (res.status === 204) return null;
+  const contentType = res.headers.get('content-type');
+  if (contentType && contentType.includes('application/json')) {
+    return res.json();
+  }
+  return res.text();
 }
 
 // Auth
 export const api = {
-  register: (name: string, email: string, password: string) =>
-    apiFetch('/api/auth/register', {
+  register: async (name: string, email: string, password: string) => {
+    const res = await apiFetch('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify({ name, email, password }),
-    }),
+    });
+    if (res && res.access_token) {
+      setTokens(res.access_token, res.refresh_token);
+    }
+    return res;
+  },
 
-  login: (email: string, password: string) => {
+  login: async (email: string, password: string) => {
     const form = new URLSearchParams();
     form.append('username', email);
     form.append('password', password);
-    return apiFetch('/api/auth/login', {
+    const res = await apiFetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form,
     });
+    if (res && res.access_token) {
+      setTokens(res.access_token, res.refresh_token);
+    }
+    return res;
+  },
+
+  logout: () => {
+    safeLogout();
   },
 
   me: () => apiFetch('/api/auth/me'),
@@ -139,8 +265,6 @@ export const api = {
   // Progress
   getChildProgress: (childId: string) => apiFetch(`/api/progress/child/${childId}/summary`),
   getWatchHistory: (childId: string) => apiFetch(`/api/progress/child/${childId}/history`),
-
-
 };
 
 export default api;
