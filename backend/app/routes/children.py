@@ -19,19 +19,37 @@ def normalize_avatar(avatar_val: Optional[str]) -> str:
     return str(avatar_val).strip() if avatar_val else "compass"
 
 
-async def remediate_plaintext_pins(db: AsyncSession) -> int:
-    """Safely upgrades any legacy plaintext child PINs to bcrypt hashes without logging or exposing values."""
+async def remediate_plaintext_pins(db: AsyncSession, dry_run: bool = True) -> dict[str, int]:
+    """Safely upgrades any legacy plaintext child PINs to bcrypt hashes without logging or exposing values.
+    By default dry_run=True, reporting counts without modifying the database.
+    Pass dry_run=False to explicitly commit changes.
+    """
     result = await db.execute(select(Child))
     children = result.scalars().all()
-    upgraded = 0
+    eligible_count = 0
+    already_hashed_count = 0
+    invalid_count = 0
     for child in children:
-        if child.pin and not (child.pin.startswith("$2b$") or child.pin.startswith("$2a$")):
-            if len(child.pin) == 4 and child.pin.isdigit():
+        if child.pin and (child.pin.startswith("$2b$") or child.pin.startswith("$2a$")):
+            already_hashed_count += 1
+        elif child.pin and len(child.pin) == 4 and child.pin.isdigit():
+            eligible_count += 1
+            if not dry_run:
                 child.pin = hash_password(child.pin)
-                upgraded += 1
-    if upgraded > 0:
+        else:
+            invalid_count += 1
+
+    if not dry_run and eligible_count > 0:
         await db.commit()
-    return upgraded
+
+    return {
+        "total_scanned": len(children),
+        "already_hashed": already_hashed_count,
+        "eligible_for_upgrade": eligible_count,
+        "upgraded": 0 if dry_run else eligible_count,
+        "invalid_or_empty": invalid_count,
+        "dry_run": dry_run,
+    }
 
 
 class ChildCreate(BaseModel):

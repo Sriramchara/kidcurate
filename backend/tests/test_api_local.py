@@ -771,10 +771,22 @@ async def test_remediate_plaintext_pins_batch():
             session.add(Child(id=c2_id, parent_id=user_id, name="Kid 2", age=7, avatar="compass", pin="2222"))
             await session.commit()
 
-        # Run batch remediation
+        # Run dry run first: must identify eligible records WITHOUT mutating DB
         async with AsyncSessionLocal() as session:
-            upgraded_count = await remediate_plaintext_pins(session)
-            assert upgraded_count == 2
+            dry_stats = await remediate_plaintext_pins(session, dry_run=True)
+            assert dry_stats["eligible_for_upgrade"] == 2
+            assert dry_stats["upgraded"] == 0
+
+        # Verify records are still unchanged after dry run
+        async with AsyncSessionLocal() as session:
+            res1 = await session.execute(select(Child).where(Child.id == c1_id))
+            assert res1.scalar_one().pin == "1111"
+
+        # Run with dry_run=False: executes commit
+        async with AsyncSessionLocal() as session:
+            apply_stats = await remediate_plaintext_pins(session, dry_run=False)
+            assert apply_stats["eligible_for_upgrade"] == 2
+            assert apply_stats["upgraded"] == 2
 
         # Verify both records are now bcrypt hashes
         async with AsyncSessionLocal() as session:
@@ -784,10 +796,128 @@ async def test_remediate_plaintext_pins_batch():
                 assert c.pin.startswith("$2b$") or c.pin.startswith("$2a$")
                 assert verify_password(expected_pin, c.pin) is True
 
-        # Second run should be idempotent (0 upgraded)
+        # Second run should be idempotent (0 eligible, 0 upgraded)
         async with AsyncSessionLocal() as session:
-            second_pass = await remediate_plaintext_pins(session)
-            assert second_pass == 0
+            second_pass = await remediate_plaintext_pins(session, dry_run=False)
+            assert second_pass["eligible_for_upgrade"] == 0
+            assert second_pass["upgraded"] == 0
+
+
+@pytest.mark.asyncio
+async def test_security_google_auth_negative_scenarios():
+    """Negative security test: verify forged, empty, and untrusted Google tokens are rejected."""
+    import jwt
+    from datetime import datetime, timedelta, timezone
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        # Pre-register a real parent account
+        victim = await ac.post("/api/auth/register", json={
+            "email": "victim_parent@example.com",
+            "password": "legitpassword123",
+            "name": "Victim Parent"
+        })
+        assert victim.status_code == 201
+
+        # 1. Whitespace only id_token -> 400
+        r1 = await ac.post("/api/auth/google", json={
+            "id_token": "   ",
+            "email": "victim_parent@example.com"
+        })
+        assert r1.status_code == 400
+
+        # 2. Forged Google JWT signed with an attacker's key -> 401
+        attacker_key = "attacker-secret-key-that-is-not-google"
+        forged_payload = {
+            "iss": "https://accounts.google.com",
+            "email": "victim_parent@example.com",
+            "email_verified": True,
+            "aud": "179684236627-d7j0s15cvkj6li430jku6easqma5q81l.apps.googleusercontent.com",
+            "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+        }
+        forged_token = jwt.encode(forged_payload, attacker_key, algorithm="HS256")
+        r2 = await ac.post("/api/auth/google", json={
+            "id_token": forged_token,
+            "email": "victim_parent@example.com"
+        })
+        assert r2.status_code == 401
+
+        # 3. Completely bogus string -> 401
+        r3 = await ac.post("/api/auth/google", json={
+            "id_token": "definitely.not.a.google.token"
+        })
+        assert r3.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_security_jwt_token_type_confusion_negative():
+    """Negative security test: verify strict token type separation and expired/tampered rejection."""
+    import jwt
+    from datetime import datetime, timedelta, timezone
+    from app.config import settings
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        reg = await ac.post("/api/auth/register", json={
+            "email": "jwt_confusion@example.com",
+            "password": "validpassword123",
+            "name": "JWT User"
+        })
+        assert reg.status_code == 201
+        tokens = reg.json()
+        access_token = tokens["access_token"]
+        refresh_token = tokens["refresh_token"]
+
+        # 1. Access token sent to /api/auth/refresh -> MUST be rejected with 401
+        r_access_on_refresh = await ac.post("/api/auth/refresh", json={
+            "refresh_token": access_token
+        })
+        assert r_access_on_refresh.status_code == 401
+
+        # 2. Refresh token sent to protected route -> MUST be rejected with 401
+        r_refresh_on_api = await ac.get("/api/children/manage", headers={
+            "Authorization": f"Bearer {refresh_token}"
+        })
+        assert r_refresh_on_api.status_code == 401
+
+        # 3. Token with forged custom type ("admin", "superuser") -> 401
+        custom_type_token = jwt.encode({
+            "sub": tokens["user_id"],
+            "type": "superuser",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=15)
+        }, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+        r_custom_api = await ac.get("/api/children/manage", headers={
+            "Authorization": f"Bearer {custom_type_token}"
+        })
+        assert r_custom_api.status_code == 401
+
+        r_custom_ref = await ac.post("/api/auth/refresh", json={
+            "refresh_token": custom_type_token
+        })
+        assert r_custom_ref.status_code == 401
+
+        # 4. Expired access token -> 401
+        expired_token = jwt.encode({
+            "sub": tokens["user_id"],
+            "type": "access",
+            "exp": datetime.now(timezone.utc) - timedelta(minutes=10)
+        }, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+        r_expired = await ac.get("/api/children/manage", headers={
+            "Authorization": f"Bearer {expired_token}"
+        })
+        assert r_expired.status_code == 401
+
+        # 5. Token signed with wrong secret key -> 401
+        wrong_secret_token = jwt.encode({
+            "sub": tokens["user_id"],
+            "type": "access",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=15)
+        }, "wrong-unauthorized-secret-key-123456", algorithm=settings.ALGORITHM)
+
+        r_wrong_secret = await ac.get("/api/children/manage", headers={
+            "Authorization": f"Bearer {wrong_secret_token}"
+        })
+        assert r_wrong_secret.status_code == 401
 
 
 

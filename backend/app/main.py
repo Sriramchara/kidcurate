@@ -16,12 +16,6 @@ async def lifespan(app: FastAPI):
     try:
         await create_tables()
         logger.info("Database initialized successfully.")
-        from app.database import AsyncSessionLocal
-        from app.routes.children import remediate_plaintext_pins
-        async with AsyncSessionLocal() as session:
-            count = await remediate_plaintext_pins(session)
-            if count > 0:
-                logger.info(f"Remediated {count} legacy child PINs to secure bcrypt hashes.")
     except Exception as e:
         logger.error(f"Database initialization deferred: {e}")
     yield

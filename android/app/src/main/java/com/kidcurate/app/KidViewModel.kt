@@ -103,30 +103,37 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
              .distinct()
 
             var lastNetworkError: Exception? = null
-            for (url in candidateUrls) {
-                val isCloud = !url.contains("localhost") && !url.contains("10.0.2.2") && !url.contains("127.0.0.1")
-                val maxAttempts = if (isCloud) 2 else 1
-                var attempt = 0
-                while (attempt < maxAttempts) {
-                    attempt++
-                    try {
-                        val candidateApi = ApiClient.buildProbeApi(url)
-                        val result = candidateApi.getPublicProfiles()
-                        // If getPublicProfiles succeeds without network exception, connection is confirmed!
-                        fetchedProfiles = result
-                        ApiClient.updateBaseUrl(url)
-                        parentPrefs.serverUrl = url
-                        lastNetworkError = null
-                        break
-                    } catch (e: Exception) {
-                        lastNetworkError = e
-                        if (attempt < maxAttempts) {
-                            kotlinx.coroutines.delay(2000)
+            val (fetched, netErr) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                var found: List<ChildProfileItem>? = null
+                var err: Exception? = null
+                for (url in candidateUrls) {
+                    val isCloud = !url.contains("localhost") && !url.contains("10.0.2.2") && !url.contains("127.0.0.1")
+                    val maxAttempts = if (isCloud) 2 else 1
+                    var attempt = 0
+                    while (attempt < maxAttempts) {
+                        attempt++
+                        try {
+                            val candidateApi = ApiClient.buildProbeApi(url)
+                            val result = candidateApi.getPublicProfiles()
+                            // If getPublicProfiles succeeds without network exception, connection is confirmed!
+                            found = result
+                            ApiClient.updateBaseUrl(url)
+                            parentPrefs.serverUrl = url
+                            err = null
+                            break
+                        } catch (e: Exception) {
+                            err = e
+                            if (attempt < maxAttempts) {
+                                kotlinx.coroutines.delay(2000)
+                            }
                         }
                     }
+                    if (found != null) break
                 }
-                if (fetchedProfiles != null) break
+                Pair(found, err)
             }
+            fetchedProfiles = fetched
+            lastNetworkError = netErr
 
             if (!parentPrefs.isParentLoggedIn) {
                 ApiClient.authToken = ""

@@ -83,4 +83,13 @@ class AppPoliciesTest {
         assertEquals("https://kidcurate-api.onrender.com/", CloudConnectionPolicy.sanitizeBaseUrl("  https://kidcurate-api.onrender.com  "))
         assertEquals("", CloudConnectionPolicy.sanitizeBaseUrl("   "))
     }
+
+    @Test
+    fun cloudConnectionPolicyCalculatesMaxColdStartWindow() {
+        val attempts = 2
+        val probeTimeout = CloudConnectionPolicy.getRecommendedProbeTimeoutSeconds("https://kidcurate-api.onrender.com/")
+        val backoff = 2
+        val totalWindow = (attempts * probeTimeout) + ((attempts - 1) * backoff)
+        assertTrue(totalWindow >= 45)
+    }
 }
