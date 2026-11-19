@@ -19,46 +19,61 @@ describe('Web Video Playback Progress Reporting — WatchProgressTracker', () =>
     const res = tracker.evaluateProgress('child_1', 'yt_123', 60, 300, false);
     assert.equal(res.shouldReport, true);
     assert.equal(res.completed, false, '60s / 300s must NOT be marked completed');
+    assert.equal(res.completionType, 'incomplete');
     assert.equal(res.sanitizedSeconds, 60);
   });
 
-  test('marks completion when natural end event fires', () => {
-    // Video ended naturally at 295 seconds
-    const res = tracker.evaluateProgress('child_1', 'yt_123', 295, 300, true);
+  test('rejects scrub-to-end exploit: natural end with only 10s actual watch time is NOT completed', () => {
+    // Child scrubbed to 2 seconds before end of a 300s video and let it finish (10s actual watch time)
+    const res = tracker.evaluateProgress('child_1', 'yt_123', 10, 300, true);
     assert.equal(res.shouldReport, true);
-    assert.equal(res.completed, true);
-    assert.equal(res.sanitizedSeconds, 295);
+    assert.equal(res.completed, false, 'Scrubbed natural end with 10s/300s must NOT be marked completed');
+    assert.equal(res.completionType, 'incomplete');
+    assert.equal(res.sanitizedSeconds, 10);
   });
 
-  test('marks completion when user watched 85% or more of duration', () => {
+  test('marks completion when natural end event fires with legitimate watch time (>= 70%)', () => {
+    // Video ended naturally after watching 240 seconds of 300 seconds (80% >= 70%)
+    const res = tracker.evaluateProgress('child_1', 'yt_123', 240, 300, true);
+    assert.equal(res.shouldReport, true);
+    assert.equal(res.completed, true);
+    assert.equal(res.completionType, 'natural');
+    assert.equal(res.sanitizedSeconds, 240);
+  });
+
+  test('marks completion when user watched 85% or more of duration without natural end', () => {
     // 260s / 300s = 86.6% >= 85% threshold
     const res = tracker.evaluateProgress('child_1', 'yt_123', 260, 300, false);
     assert.equal(res.shouldReport, true);
     assert.equal(res.completed, true, '86% watched must be marked completed');
+    assert.equal(res.completionType, 'threshold');
+  });
+
+  test('seeking near the end does not inflate actual watched seconds', () => {
+    // User played for 15s, but scrubbed playhead to 295s: tracker receives actualWatchedSeconds = 15s
+    const res = tracker.evaluateProgress('child_1', 'yt_123', 15, 300, false);
+    assert.equal(res.shouldReport, true);
+    assert.equal(res.completed, false, '15s actual watch time cannot be completed');
+    assert.equal(res.sanitizedSeconds, 15);
   });
 
   test('deduplicates small progress updates (< 5 seconds delta)', () => {
-    // First update: 30 seconds
     const first = tracker.evaluateProgress('child_1', 'yt_123', 30, 300, false);
     assert.equal(first.shouldReport, true);
 
-    // Second update: 32 seconds (only 2s difference, same status)
     const second = tracker.evaluateProgress('child_1', 'yt_123', 32, 300, false);
     assert.equal(second.shouldReport, false, 'Redundant 2s heartbeat update must be suppressed');
 
-    // Third update: 40 seconds (10s difference)
     const third = tracker.evaluateProgress('child_1', 'yt_123', 40, 300, false);
     assert.equal(third.shouldReport, true, 'Significant progress advance must be reported');
   });
 
   test('prevents duplicate completion reporting once video is already marked completed', () => {
-    // Video marked completed
-    const completedRes = tracker.evaluateProgress('child_1', 'yt_123', 300, 300, true);
+    const completedRes = tracker.evaluateProgress('child_1', 'yt_123', 280, 300, true);
     assert.equal(completedRes.shouldReport, true);
     assert.equal(completedRes.completed, true);
 
-    // Subsequent call for the same video
-    const repeatRes = tracker.evaluateProgress('child_1', 'yt_123', 300, 300, true);
+    const repeatRes = tracker.evaluateProgress('child_1', 'yt_123', 280, 300, true);
     assert.equal(repeatRes.shouldReport, false, 'Repeated completion event must be deduplicated');
   });
 

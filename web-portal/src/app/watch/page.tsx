@@ -140,23 +140,24 @@ export default function ChildWatchPage() {
     }
   }
 
-  const currentWatchedSecondsRef = useRef<number>(0);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const actualWatchedSecondsRef = useRef<number>(0);
+  const playbackPositionRef = useRef<number>(0);
+  const isPlayingRef = useRef<boolean>(false);
+  const activeSessionKeyRef = useRef<string>('');
   const activeVideoRef = useRef<VideoInPlaylist | null>(null);
 
   const currentVideo = playlist?.items?.[currentIndex];
   activeVideoRef.current = currentVideo || null;
 
-  const flushCurrentProgress = useCallback((isNaturalEnd: boolean = false) => {
-    const video = activeVideoRef.current;
+  const flushProgressForVideo = useCallback((video: VideoInPlaylist | null, watchedSecs: number, isNaturalEnd: boolean) => {
     if (!selectedChild || !video) return;
 
-    const watched = currentWatchedSecondsRef.current;
     const duration = video.duration_seconds || 120;
-
     const evalResult = globalProgressTracker.evaluateProgress(
       selectedChild.id,
       video.youtube_id,
-      watched,
+      watchedSecs,
       duration,
       isNaturalEnd
     );
@@ -174,47 +175,98 @@ export default function ChildWatchPage() {
     }
   }, [selectedChild]);
 
-  // Track playback time via heartbeat interval & YouTube API postMessage listener
-  useEffect(() => {
-    currentWatchedSecondsRef.current = 0;
+  const flushCurrentProgress = useCallback((isNaturalEnd: boolean = false) => {
+    flushProgressForVideo(activeVideoRef.current, actualWatchedSecondsRef.current, isNaturalEnd);
+  }, [flushProgressForVideo]);
 
-    // Heartbeat ticker: increments watched time while tab is visible
+  // Trusted YouTube origin whitelist
+  const TRUSTED_YOUTUBE_ORIGINS = useRef(new Set([
+    'https://www.youtube.com',
+    'https://www.youtube-nocookie.com',
+  ]));
+
+  // Track playback time via heartbeat interval & validated YouTube API postMessage listener
+  useEffect(() => {
+    if (!currentVideo) return;
+
+    // Unique session instance key to prevent late events leaking across video transitions
+    const sessionKey = `${currentVideo.youtube_id}_${Date.now()}`;
+    activeSessionKeyRef.current = sessionKey;
+    actualWatchedSecondsRef.current = 0;
+    playbackPositionRef.current = 0;
+    isPlayingRef.current = false;
+
+    // Heartbeat ticker: increments actualWatchedSeconds ONLY when video is actively PLAYING and tab is visible
     const ticker = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible' && !document.hidden) {
-        currentWatchedSecondsRef.current += 1;
+      if (
+        isPlayingRef.current &&
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'visible' &&
+        !document.hidden
+      ) {
+        actualWatchedSecondsRef.current += 1;
       }
     }, 1000);
 
-    // YouTube HTML5 Player postMessage listener for high-precision time & end events
+    // Hardened YouTube HTML5 Player postMessage listener
     const handleMessage = (event: MessageEvent) => {
+      // 1. Strict Origin Validation
+      if (!TRUSTED_YOUTUBE_ORIGINS.current.has(event.origin)) {
+        return;
+      }
+
+      // 2. Strict Player Instance Matching (WindowProxy source must equal active iframe contentWindow)
+      if (!iframeRef.current || event.source !== iframeRef.current.contentWindow) {
+        return;
+      }
+
+      // 3. Discard late events belonging to a previous video instance
+      if (activeSessionKeyRef.current !== sessionKey) {
+        return;
+      }
+
       try {
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        if (!data) return;
+        if (!data || typeof data !== 'object') return;
 
-        // infoDelivery event contains currentTime and duration
+        // infoDelivery event: records playhead position for scrubbing info without inflating watched duration
         if (data.event === 'infoDelivery' && data.info && typeof data.info.currentTime === 'number') {
-          const ytTime = Math.floor(data.info.currentTime);
-          if (ytTime > currentWatchedSecondsRef.current) {
-            currentWatchedSecondsRef.current = ytTime;
-          }
+          playbackPositionRef.current = Math.floor(data.info.currentTime);
         }
 
-        // onStateChange event: info === 0 means video ended naturally
-        if (data.event === 'onStateChange' && data.info === 0) {
-          handleVideoEnded();
+        // onStateChange event:
+        // 1 = PLAYING, 2 = PAUSED, 3 = BUFFERING, 0 = ENDED
+        if (data.event === 'onStateChange') {
+          if (data.info === 1) {
+            isPlayingRef.current = true;
+          } else if (data.info === 2 || data.info === 3) {
+            isPlayingRef.current = false;
+          } else if (data.info === 0) {
+            isPlayingRef.current = false;
+            handleVideoEnded();
+          }
         }
       } catch {}
     };
 
     window.addEventListener('message', handleMessage);
 
+    const snapshotVideo = currentVideo;
     return () => {
+      // Invalidate instance token immediately so no in-flight messages can touch the next video
+      activeSessionKeyRef.current = '';
+      isPlayingRef.current = false;
       clearInterval(ticker);
       window.removeEventListener('message', handleMessage);
-      flushCurrentProgress(false);
+
+      // Flush progress for departing video snapshot
+      const snapshotWatched = actualWatchedSecondsRef.current;
+      if (snapshotVideo && snapshotWatched >= 3) {
+        flushProgressForVideo(snapshotVideo, snapshotWatched, false);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIndex, currentVideo?.youtube_id, flushCurrentProgress]);
+  }, [currentIndex, currentVideo?.youtube_id, flushProgressForVideo]);
 
   // Flush progress before unload/page exit
   useEffect(() => {
@@ -497,6 +549,7 @@ export default function ChildWatchPage() {
               <div className="relative aspect-video rounded-3xl overflow-hidden bg-black border-2 border-[var(--border-subtle)] shadow-2xl">
                 {currentVideo && (
                   <iframe
+                    ref={iframeRef}
                     key={currentVideo.youtube_id}
                     src={`https://www.youtube-nocookie.com/embed/${currentVideo.youtube_id}?autoplay=1&rel=0&modestbranding=1&controls=1&playsinline=1&enablejsapi=1`}
                     title={currentVideo.title}
