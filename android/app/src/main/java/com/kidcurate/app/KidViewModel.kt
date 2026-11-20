@@ -46,6 +46,7 @@ data class KidAppState(
     val childName: String = "",
     val childAvatar: String = "compass",
     val childId: String = "",
+    val isChildLockActive: Boolean = false,
 )
 
 class KidViewModel(application: Application) : AndroidViewModel(application) {
@@ -245,9 +246,18 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setChildLock(active: Boolean) {
+        _state.value = _state.value.copy(isChildLockActive = active)
+    }
+
+    fun toggleChildLock() {
+        _state.value = _state.value.copy(isChildLockActive = !_state.value.isChildLockActive)
+    }
+
     fun backToChildSelect() {
         _state.value = _state.value.copy(
             error = null,
+            isChildLockActive = false,
             screen = AppScreen.ChildSelect,
         )
     }
@@ -276,6 +286,7 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
             childName = "",
             childAvatar = "compass",
             childId = "",
+            isChildLockActive = false,
         )
     }
 

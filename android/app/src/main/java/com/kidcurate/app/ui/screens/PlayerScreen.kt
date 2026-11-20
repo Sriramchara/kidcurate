@@ -81,6 +81,8 @@ private fun formatTime(seconds: Float): String {
 fun PlayerScreen(
     videos: List<VideoItem>,
     startIndex: Int,
+    isChildLockActive: Boolean = false,
+    onToggleChildLock: (Boolean) -> Unit = {},
     onVideoCompleted: (VideoItem, Int) -> Unit,
     onProgressUpdate: (VideoItem, Int) -> Unit,
     onAllCompleted: () -> Unit,
@@ -97,7 +99,6 @@ fun PlayerScreen(
     val parentPrefs = remember { ParentPreferences.get(context) }
     var subtitlesEnabled by remember { mutableStateOf(parentPrefs.subtitlesEnabled) }
 
-    var isChildLockActive by remember { mutableStateOf(false) }
     var showParentPasswordDialog by remember { mutableStateOf(false) }
     var isExitingPlayer by remember { mutableStateOf(false) }
     var curfewBypassed by remember { mutableStateOf(false) }
@@ -172,7 +173,7 @@ fun PlayerScreen(
             LaunchedEffect(Unit) {
                 kotlinx.coroutines.delay(2000)
                 // 1. Turn Child Lock ON
-                isChildLockActive = true
+                onToggleChildLock(true)
                 kotlinx.coroutines.delay(2500)
                 // 2. System Back pressed -> intercepted by Parent PIN dialog
                 attemptBack()
@@ -249,7 +250,7 @@ fun PlayerScreen(
                             isExitingPlayer = false
                             showParentPasswordDialog = true
                         } else {
-                            isChildLockActive = true
+                            onToggleChildLock(true)
                         }
                     },
                     onVideoEnded = { _ ->
@@ -554,7 +555,7 @@ fun PlayerScreen(
                                         isExitingPlayer = false
                                         showParentPasswordDialog = true
                                     } else {
-                                        isChildLockActive = true
+                                        onToggleChildLock(true)
                                     }
                                 },
                                 modifier = Modifier.height(44.dp),
@@ -894,14 +895,14 @@ fun PlayerScreen(
             allowGoogleSignIn = false,
             onSuccess = {
                 showParentPasswordDialog = false
-                isChildLockActive = false
+                onToggleChildLock(false)
                 pendingUnlockAction?.invoke()
                 pendingUnlockAction = null
                 if (isExitingPlayer) {
                     isExitingPlayer = false
                     if (isFullscreen) {
                         isFullscreen = false
-                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
+                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                     }
                     onBack()
                 }

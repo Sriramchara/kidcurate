@@ -46,11 +46,12 @@ fun TodaysPlaylistScreen(
     childAvatar: String,
     playlist: PlaylistData?,
     isLoading: Boolean,
+    isChildLockActive: Boolean = false,
+    onToggleChildLock: (Boolean) -> Unit = {},
     onStartPlaying: (Int) -> Unit,
     onBack: () -> Unit,
     onOpenParentZone: () -> Unit = {},
 ) {
-    var isChildLockActive by remember { mutableStateOf(false) }
     var showParentPasswordDialog by remember { mutableStateOf(false) }
     var pendingUnlockAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     val context = LocalContext.current
@@ -76,18 +77,10 @@ fun TodaysPlaylistScreen(
         if (tick >= 0) parentPrefs.isDailyLimitReached() else false
     }
 
-    // Defensive cleanup of screen pinning if navigating away or unmounting
-    DisposableEffect(Unit) {
-        onDispose {
-            try { activity?.stopLockTask() } catch (_: Exception) {}
-        }
-    }
-
     val safeBack: () -> Unit = {
         if (isChildLockActive) {
             pendingUnlockAction = {
-                isChildLockActive = false
-                try { activity?.stopLockTask() } catch (_: Exception) {}
+                onToggleChildLock(false)
                 onBack()
             }
             showParentPasswordDialog = true
@@ -144,8 +137,7 @@ fun TodaysPlaylistScreen(
                 childAvatar = childAvatar,
                 onOpenParentZone = {
                     pendingUnlockAction = {
-                        isChildLockActive = false
-                        try { activity?.stopLockTask() } catch (_: Exception) {}
+                        onToggleChildLock(false)
                         onOpenParentZone()
                     }
                     showParentPasswordDialog = true
@@ -161,13 +153,11 @@ fun TodaysPlaylistScreen(
                 onToggleLock = {
                     if (isChildLockActive) {
                         pendingUnlockAction = {
-                            isChildLockActive = false
-                            try { activity?.stopLockTask() } catch (_: Exception) {}
+                            onToggleChildLock(false)
                         }
                         showParentPasswordDialog = true
                     } else {
-                        isChildLockActive = true
-                        try { activity?.startLockTask() } catch (_: Exception) {}
+                        onToggleChildLock(true)
                     }
                 },
                 onStartPlaying = onStartPlaying,

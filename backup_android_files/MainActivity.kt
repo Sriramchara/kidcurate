@@ -1,5 +1,8 @@
 package com.kidcurate.app
 
+import android.app.Activity
+import android.app.ActivityManager
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.fragment.app.FragmentActivity
@@ -110,18 +113,55 @@ fun KidApp(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    val context = LocalContext.current
+    val activity = context as? Activity
+    val activityManager = remember { context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.ensureParentSession()
+                if (state.isChildLockActive && activityManager?.lockTaskModeState == ActivityManager.LOCK_TASK_MODE_NONE) {
+                    try {
+                        activity?.startLockTask()
+                    } catch (_: Exception) {}
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val context = LocalContext.current
-    val activity = context as? ComponentActivity
+    LaunchedEffect(state.isChildLockActive) {
+        val act = activity ?: return@LaunchedEffect
+        if (state.isChildLockActive) {
+            try {
+                act.startLockTask()
+            } catch (e: Exception) {
+                android.util.Log.e("KidCurate", "startLockTask failed", e)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+                try {
+                    act.setShowWhenLocked(true)
+                    act.setTurnScreenOn(true)
+                } catch (_: Exception) {}
+            }
+        } else {
+            try {
+                if (activityManager?.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE) {
+                    act.stopLockTask()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("KidCurate", "stopLockTask failed", e)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+                try {
+                    act.setShowWhenLocked(false)
+                    act.setTurnScreenOn(false)
+                } catch (_: Exception) {}
+            }
+        }
+    }
     val autoWalkthrough = activity?.intent?.getStringExtra("test_auto_walkthrough")
 
     if (com.kidcurate.app.BuildConfig.DEBUG && autoWalkthrough != null) {
@@ -276,13 +316,17 @@ fun KidApp(
                     childAvatar = screen.childAvatar,
                     playlist = state.playlist,
                     isLoading = state.isLoading,
+                    isChildLockActive = state.isChildLockActive,
+                    onToggleChildLock = { active -> viewModel.setChildLock(active) },
                     onStartPlaying = { startIndex ->
                         viewModel.startPlaying(startIndex)
                     },
                     onBack = {
+                        viewModel.setChildLock(false)
                         viewModel.backToChildSelect()
                     },
                     onOpenParentZone = {
+                        viewModel.setChildLock(false)
                         viewModel.openParentZone()
                     },
                 )
@@ -295,6 +339,8 @@ fun KidApp(
                 PlayerScreen(
                     videos = videos,
                     startIndex = screen.startIndex,
+                    isChildLockActive = state.isChildLockActive,
+                    onToggleChildLock = { active -> viewModel.setChildLock(active) },
                     onVideoCompleted = { video, seconds ->
                         completedCount++
                         viewModel.reportCompleted(video, seconds)
@@ -303,6 +349,7 @@ fun KidApp(
                         viewModel.reportProgress(video, seconds)
                     },
                     onAllCompleted = {
+                        viewModel.setChildLock(false)
                         val totalMinutes = (state.playlist?.totalDurationSeconds ?: 0) / 60
                         val actualWatched = if (completedCount > 0) completedCount else (videos.size - screen.startIndex).coerceAtLeast(1)
                         viewModel.showCompletion(
@@ -310,7 +357,10 @@ fun KidApp(
                             totalMinutes = totalMinutes,
                         )
                     },
-                    onBack = { viewModel.goBackToPlaylist() },
+                    onBack = {
+                        viewModel.setChildLock(false)
+                        viewModel.goBackToPlaylist()
+                    },
                 )
             }
 

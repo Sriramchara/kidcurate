@@ -451,6 +451,9 @@ class KidCurateApplication : Application(), ImageLoaderFactory {
 ```kotlin
 package com.kidcurate.app
 
+import android.app.Activity
+import android.app.ActivityManager
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.fragment.app.FragmentActivity
@@ -561,18 +564,55 @@ fun KidApp(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    val context = LocalContext.current
+    val activity = context as? Activity
+    val activityManager = remember { context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.ensureParentSession()
+                if (state.isChildLockActive && activityManager?.lockTaskModeState == ActivityManager.LOCK_TASK_MODE_NONE) {
+                    try {
+                        activity?.startLockTask()
+                    } catch (_: Exception) {}
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val context = LocalContext.current
-    val activity = context as? ComponentActivity
+    LaunchedEffect(state.isChildLockActive) {
+        val act = activity ?: return@LaunchedEffect
+        if (state.isChildLockActive) {
+            try {
+                act.startLockTask()
+            } catch (e: Exception) {
+                android.util.Log.e("KidCurate", "startLockTask failed", e)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+                try {
+                    act.setShowWhenLocked(true)
+                    act.setTurnScreenOn(true)
+                } catch (_: Exception) {}
+            }
+        } else {
+            try {
+                if (activityManager?.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE) {
+                    act.stopLockTask()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("KidCurate", "stopLockTask failed", e)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+                try {
+                    act.setShowWhenLocked(false)
+                    act.setTurnScreenOn(false)
+                } catch (_: Exception) {}
+            }
+        }
+    }
     val autoWalkthrough = activity?.intent?.getStringExtra("test_auto_walkthrough")
 
     if (com.kidcurate.app.BuildConfig.DEBUG && autoWalkthrough != null) {
@@ -727,13 +767,17 @@ fun KidApp(
                     childAvatar = screen.childAvatar,
                     playlist = state.playlist,
                     isLoading = state.isLoading,
+                    isChildLockActive = state.isChildLockActive,
+                    onToggleChildLock = { active -> viewModel.setChildLock(active) },
                     onStartPlaying = { startIndex ->
                         viewModel.startPlaying(startIndex)
                     },
                     onBack = {
+                        viewModel.setChildLock(false)
                         viewModel.backToChildSelect()
                     },
                     onOpenParentZone = {
+                        viewModel.setChildLock(false)
                         viewModel.openParentZone()
                     },
                 )
@@ -746,6 +790,8 @@ fun KidApp(
                 PlayerScreen(
                     videos = videos,
                     startIndex = screen.startIndex,
+                    isChildLockActive = state.isChildLockActive,
+                    onToggleChildLock = { active -> viewModel.setChildLock(active) },
                     onVideoCompleted = { video, seconds ->
                         completedCount++
                         viewModel.reportCompleted(video, seconds)
@@ -754,6 +800,7 @@ fun KidApp(
                         viewModel.reportProgress(video, seconds)
                     },
                     onAllCompleted = {
+                        viewModel.setChildLock(false)
                         val totalMinutes = (state.playlist?.totalDurationSeconds ?: 0) / 60
                         val actualWatched = if (completedCount > 0) completedCount else (videos.size - screen.startIndex).coerceAtLeast(1)
                         viewModel.showCompletion(
@@ -761,7 +808,10 @@ fun KidApp(
                             totalMinutes = totalMinutes,
                         )
                     },
-                    onBack = { viewModel.goBackToPlaylist() },
+                    onBack = {
+                        viewModel.setChildLock(false)
+                        viewModel.goBackToPlaylist()
+                    },
                 )
             }
 
@@ -836,6 +886,7 @@ data class KidAppState(
     val childName: String = "",
     val childAvatar: String = "compass",
     val childId: String = "",
+    val isChildLockActive: Boolean = false,
 )
 
 class KidViewModel(application: Application) : AndroidViewModel(application) {
@@ -1035,9 +1086,18 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setChildLock(active: Boolean) {
+        _state.value = _state.value.copy(isChildLockActive = active)
+    }
+
+    fun toggleChildLock() {
+        _state.value = _state.value.copy(isChildLockActive = !_state.value.isChildLockActive)
+    }
+
     fun backToChildSelect() {
         _state.value = _state.value.copy(
             error = null,
+            isChildLockActive = false,
             screen = AppScreen.ChildSelect,
         )
     }
@@ -1066,6 +1126,7 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
             childName = "",
             childAvatar = "compass",
             childId = "",
+            isChildLockActive = false,
         )
     }
 
@@ -3156,11 +3217,12 @@ fun TodaysPlaylistScreen(
     childAvatar: String,
     playlist: PlaylistData?,
     isLoading: Boolean,
+    isChildLockActive: Boolean = false,
+    onToggleChildLock: (Boolean) -> Unit = {},
     onStartPlaying: (Int) -> Unit,
     onBack: () -> Unit,
     onOpenParentZone: () -> Unit = {},
 ) {
-    var isChildLockActive by remember { mutableStateOf(false) }
     var showParentPasswordDialog by remember { mutableStateOf(false) }
     var pendingUnlockAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     val context = LocalContext.current
@@ -3186,18 +3248,10 @@ fun TodaysPlaylistScreen(
         if (tick >= 0) parentPrefs.isDailyLimitReached() else false
     }
 
-    // Defensive cleanup of screen pinning if navigating away or unmounting
-    DisposableEffect(Unit) {
-        onDispose {
-            try { activity?.stopLockTask() } catch (_: Exception) {}
-        }
-    }
-
     val safeBack: () -> Unit = {
         if (isChildLockActive) {
             pendingUnlockAction = {
-                isChildLockActive = false
-                try { activity?.stopLockTask() } catch (_: Exception) {}
+                onToggleChildLock(false)
                 onBack()
             }
             showParentPasswordDialog = true
@@ -3254,8 +3308,7 @@ fun TodaysPlaylistScreen(
                 childAvatar = childAvatar,
                 onOpenParentZone = {
                     pendingUnlockAction = {
-                        isChildLockActive = false
-                        try { activity?.stopLockTask() } catch (_: Exception) {}
+                        onToggleChildLock(false)
                         onOpenParentZone()
                     }
                     showParentPasswordDialog = true
@@ -3271,13 +3324,11 @@ fun TodaysPlaylistScreen(
                 onToggleLock = {
                     if (isChildLockActive) {
                         pendingUnlockAction = {
-                            isChildLockActive = false
-                            try { activity?.stopLockTask() } catch (_: Exception) {}
+                            onToggleChildLock(false)
                         }
                         showParentPasswordDialog = true
                     } else {
-                        isChildLockActive = true
-                        try { activity?.startLockTask() } catch (_: Exception) {}
+                        onToggleChildLock(true)
                     }
                 },
                 onStartPlaying = onStartPlaying,
@@ -4153,6 +4204,8 @@ private fun formatTime(seconds: Float): String {
 fun PlayerScreen(
     videos: List<VideoItem>,
     startIndex: Int,
+    isChildLockActive: Boolean = false,
+    onToggleChildLock: (Boolean) -> Unit = {},
     onVideoCompleted: (VideoItem, Int) -> Unit,
     onProgressUpdate: (VideoItem, Int) -> Unit,
     onAllCompleted: () -> Unit,
@@ -4169,7 +4222,6 @@ fun PlayerScreen(
     val parentPrefs = remember { ParentPreferences.get(context) }
     var subtitlesEnabled by remember { mutableStateOf(parentPrefs.subtitlesEnabled) }
 
-    var isChildLockActive by remember { mutableStateOf(false) }
     var showParentPasswordDialog by remember { mutableStateOf(false) }
     var isExitingPlayer by remember { mutableStateOf(false) }
     var curfewBypassed by remember { mutableStateOf(false) }
@@ -4244,7 +4296,7 @@ fun PlayerScreen(
             LaunchedEffect(Unit) {
                 kotlinx.coroutines.delay(2000)
                 // 1. Turn Child Lock ON
-                isChildLockActive = true
+                onToggleChildLock(true)
                 kotlinx.coroutines.delay(2500)
                 // 2. System Back pressed -> intercepted by Parent PIN dialog
                 attemptBack()
@@ -4321,7 +4373,7 @@ fun PlayerScreen(
                             isExitingPlayer = false
                             showParentPasswordDialog = true
                         } else {
-                            isChildLockActive = true
+                            onToggleChildLock(true)
                         }
                     },
                     onVideoEnded = { _ ->
@@ -4626,7 +4678,7 @@ fun PlayerScreen(
                                         isExitingPlayer = false
                                         showParentPasswordDialog = true
                                     } else {
-                                        isChildLockActive = true
+                                        onToggleChildLock(true)
                                     }
                                 },
                                 modifier = Modifier.height(44.dp),
@@ -4966,14 +5018,14 @@ fun PlayerScreen(
             allowGoogleSignIn = false,
             onSuccess = {
                 showParentPasswordDialog = false
-                isChildLockActive = false
+                onToggleChildLock(false)
                 pendingUnlockAction?.invoke()
                 pendingUnlockAction = null
                 if (isExitingPlayer) {
                     isExitingPlayer = false
                     if (isFullscreen) {
                         isFullscreen = false
-                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
+                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                     }
                     onBack()
                 }
