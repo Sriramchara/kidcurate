@@ -43,6 +43,7 @@ fun PinEntryScreen(
     onParentUnlock: () -> Unit = {},
     isLoading: Boolean,
     errorMessage: String?,
+    onClearError: () -> Unit = {},
     onBack: () -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
@@ -51,6 +52,7 @@ fun PinEntryScreen(
     var showPin by remember { mutableStateOf(false) }
     var showParentGate by remember { mutableStateOf(false) }
     var hasFailedAttempt by remember { mutableStateOf(false) }
+    var retryTrigger by remember { mutableIntStateOf(0) }
     val configuration = LocalConfiguration.current
     val widthDp = configuration.screenWidthDp
     val heightDp = configuration.screenHeightDp
@@ -181,7 +183,21 @@ fun PinEntryScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         if (errorMessage != null) {
-                            Text(text = errorMessage, color = BrandCoral, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text(text = errorMessage, color = BrandCoral, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                                if (errorMessage.contains("connection", ignoreCase = true) || errorMessage.contains("internet", ignoreCase = true)) {
+                                    Text(
+                                        text = "Retry",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrandPrimary,
+                                        modifier = Modifier.clickable { retryTrigger++ }
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -199,8 +215,20 @@ fun PinEntryScreen(
                         buttonSize = padButtonSize,
                         rowSpacing = if (isTablet) 8.dp else 5.dp,
                         columnSpacing = if (isTablet) 14.dp else 10.dp,
-                        onDigitPress = { digit -> if (!isLoading) { hasFailedAttempt = false; if (pin.length < 4) pin += digit } },
-                        onDelete = { if (pin.isNotEmpty() && !isLoading) { hasFailedAttempt = false; pin = pin.dropLast(1) } },
+                        onDigitPress = { digit ->
+                            if (!isLoading) {
+                                hasFailedAttempt = false
+                                onClearError()
+                                if (pin.length < 4) pin += digit
+                            }
+                        },
+                        onDelete = {
+                            if (pin.isNotEmpty() && !isLoading) {
+                                hasFailedAttempt = false
+                                onClearError()
+                                pin = pin.dropLast(1)
+                            }
+                        },
                     )
                 }
             }
@@ -325,13 +353,27 @@ fun PinEntryScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 if (errorMessage != null) {
-                    Text(
-                        text = errorMessage,
-                        color = BrandCoral,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            text = errorMessage,
+                            color = BrandCoral,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                        )
+                        if (errorMessage.contains("connection", ignoreCase = true) || errorMessage.contains("internet", ignoreCase = true)) {
+                            Text(
+                                text = "Retry",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = BrandPrimary,
+                                modifier = Modifier.clickable { retryTrigger++ }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -345,6 +387,7 @@ fun PinEntryScreen(
                 onDigitPress = { digit ->
                     if (!isLoading) {
                         hasFailedAttempt = false
+                        onClearError()
                         if (pin.length < 4) {
                             pin += digit
                         }
@@ -353,6 +396,7 @@ fun PinEntryScreen(
                 onDelete = {
                     if (pin.isNotEmpty() && !isLoading) {
                         hasFailedAttempt = false
+                        onClearError()
                         pin = pin.dropLast(1)
                     }
                 },
@@ -396,7 +440,7 @@ fun PinEntryScreen(
         }
     }
 
-    LaunchedEffect(pin) {
+    LaunchedEffect(pin, retryTrigger) {
         if (pin.length == 4) {
             val verified = onVerifyPin(childId, pin)
             if (!verified) {

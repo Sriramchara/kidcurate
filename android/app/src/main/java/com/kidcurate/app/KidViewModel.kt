@@ -55,12 +55,23 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
     private val parentPrefs = ParentPreferences.get(application)
     private val gson = Gson()
 
+    private var loadProfilesJob: kotlinx.coroutines.Job? = null
+
     init {
+        ApiClient.onSessionExpired = {
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                _state.value = KidAppState(
+                    screen = AppScreen.ChildSelect,
+                    error = "Your parent session ended. Sign in with Google to continue.",
+                )
+            }
+        }
         loadProfiles()
     }
 
     fun loadProfiles() {
-        viewModelScope.launch {
+        loadProfilesJob?.cancel()
+        loadProfilesJob = viewModelScope.launch {
             if (!parentPrefs.isParentLoggedIn) {
                 ApiClient.authToken = ""
                 _state.value = KidAppState(screen = AppScreen.ChildSelect)
@@ -70,6 +81,8 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
             if (parentPrefs.serverUrl.isNotBlank()) {
                 ApiClient.updateBaseUrl(parentPrefs.serverUrl)
             }
+            val currentScreen = _state.value.screen
+            val retainedScreen = if (currentScreen is AppScreen.ChildSelect) AppScreen.ChildSelect else currentScreen
             // Restore cached profiles only while an authenticated parent session exists.
             if (parentPrefs.cachedProfilesJson.isNotBlank()) {
                 try {
@@ -80,7 +93,7 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                             availableProfiles = cached,
                             isLoading = false,
                             error = null,
-                            screen = AppScreen.ChildSelect,
+                            screen = retainedScreen,
                         )
                     }
                 } catch (_: Exception) {}
@@ -92,11 +105,13 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
             var fetchedProfiles: List<ChildProfileItem>? = null
             val primaryUrl = parentPrefs.serverUrl.ifBlank { com.kidcurate.app.BuildConfig.API_BASE_URL }
             val candidateUrls = buildList {
-                add(primaryUrl)
+                if (primaryUrl.isNotBlank() && !primaryUrl.contains("127.0.0.1")) {
+                    add(primaryUrl)
+                }
                 add(com.kidcurate.app.BuildConfig.API_BASE_URL)
                 if (com.kidcurate.app.BuildConfig.DEBUG) {
+                    add("http://192.168.0.107:8000/")
                     add("http://localhost:8000/")
-                    add("http://10.0.2.2:8000/")
                 }
             }.filter { it.isNotBlank() }
              .map { if (it.endsWith("/")) it else "$it/" }
@@ -107,7 +122,7 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 var found: List<ChildProfileItem>? = null
                 var err: Exception? = null
                 for (url in candidateUrls) {
-                    val isCloud = !url.contains("localhost") && !url.contains("10.0.2.2") && !url.contains("127.0.0.1")
+                    val isCloud = !CloudConnectionPolicy.isLocalHost(url)
                     val maxAttempts = if (isCloud) 2 else 1
                     var attempt = 0
                     while (attempt < maxAttempts) {
@@ -121,6 +136,23 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                             parentPrefs.serverUrl = url
                             err = null
                             break
+                        } catch (e: retrofit2.HttpException) {
+                            if (e.code() == 401 || e.code() == 403) {
+                                // HTTP 401/403 confirms the server IS alive and reachable!
+                                // The token is simply invalid, expired, or belongs to another backend.
+                                ApiClient.updateBaseUrl(url)
+                                parentPrefs.serverUrl = url
+                                parentPrefs.clearParentSession()
+                                ApiClient.authToken = ""
+                                err = null
+                                break
+                            } else if (e.code() in listOf(408, 429, 500, 502, 503, 504) && attempt < maxAttempts) {
+                                err = e
+                                kotlinx.coroutines.delay(2000)
+                            } else {
+                                err = e
+                                break
+                            }
                         } catch (e: Exception) {
                             err = e
                             if (attempt < maxAttempts) {
@@ -128,7 +160,7 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                             }
                         }
                     }
-                    if (found != null) break
+                    if (found != null || (!parentPrefs.isParentLoggedIn && err == null)) break
                 }
                 Pair(found, err)
             }
@@ -141,6 +173,9 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
+            val activeScreen = _state.value.screen
+            val finalScreen = if (activeScreen is AppScreen.ChildSelect) AppScreen.ChildSelect else activeScreen
+
             if (fetchedProfiles != null) {
                 if (fetchedProfiles.isNotEmpty()) {
                     parentPrefs.cachedProfilesJson = gson.toJson(fetchedProfiles)
@@ -148,27 +183,16 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                         availableProfiles = fetchedProfiles,
                         isLoading = false,
                         error = null,
-                        screen = AppScreen.ChildSelect,
+                        screen = finalScreen,
                     )
                 } else {
-                    if (_state.value.availableProfiles.isEmpty()) {
-                        parentPrefs.cachedProfilesJson = ""
-                        _state.value = _state.value.copy(
-                            availableProfiles = emptyList(),
-                            isLoading = false,
-                            error = null,
-                            screen = AppScreen.ChildSelect,
-                        )
-                    } else {
-                        // The cloud is authoritative. Never recreate profiles with a default PIN.
-                        parentPrefs.cachedProfilesJson = ""
-                        _state.value = _state.value.copy(
-                            availableProfiles = emptyList(),
-                            isLoading = false,
-                            error = null,
-                            screen = AppScreen.ChildSelect,
-                        )
-                    }
+                    parentPrefs.cachedProfilesJson = ""
+                    _state.value = _state.value.copy(
+                        availableProfiles = emptyList(),
+                        isLoading = false,
+                        error = null,
+                        screen = finalScreen,
+                    )
                 }
             } else {
                 // If network failed but we have cached profiles, do NOT show blocking error screen!
@@ -177,16 +201,19 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 _state.value = _state.value.copy(
                     isLoading = false,
                     error = if (!hasCached && lastNetworkError != null) "Could not connect to server. Check your connection or tap to retry." else null,
-                    screen = AppScreen.ChildSelect,
+                    screen = finalScreen,
                 )
             }
         }
     }
 
     fun updateServerUrl(newUrl: String) {
-        ApiClient.updateBaseUrl(newUrl)
-        parentPrefs.serverUrl = newUrl
-        loadProfiles()
+        val sanitized = CloudConnectionPolicy.sanitizeBaseUrl(newUrl)
+        if (sanitized.isNotBlank()) {
+            ApiClient.updateBaseUrl(sanitized)
+            parentPrefs.serverUrl = sanitized
+            loadProfiles()
+        }
     }
 
     fun selectProfile(profile: ChildProfileItem) {
@@ -197,13 +224,25 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
             )
             return
         }
-        _state.value = _state.value.copy(
-            childId = profile.id,
-            childName = profile.name,
-            childAvatar = profile.avatar,
-            error = null,
-            screen = AppScreen.PinEntry(profile.id, profile.name, profile.avatar),
-        )
+        val requiresPin = parentPrefs.requireChildPin && profile.hasPin
+        if (requiresPin) {
+            _state.value = _state.value.copy(
+                childId = profile.id,
+                childName = profile.name,
+                childAvatar = profile.avatar,
+                error = null,
+                screen = AppScreen.PinEntry(profile.id, profile.name, profile.avatar),
+            )
+        } else {
+            // Instant Tap-to-Play: friction-free profile launch for kids
+            unlockChildDirectly(profile.id, profile.name, profile.avatar)
+        }
+    }
+
+    fun clearError() {
+        if (_state.value.error != null) {
+            _state.value = _state.value.copy(error = null)
+        }
     }
 
     fun backToChildSelect() {
@@ -223,6 +262,11 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
     fun resetAllAccountData() {
         parentPrefs.clearAccountData()
         ApiClient.authToken = ""
+        viewModelScope.launch {
+            try {
+                GoogleCredentialAuth.signOut(getApplication())
+            } catch (_: Exception) {}
+        }
         _state.value = KidAppState(
             screen = AppScreen.ChildSelect,
             availableProfiles = emptyList(),
@@ -253,20 +297,22 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 ChildVerifyRequest(childId = childId, pin = pin)
             )
             if (response.verified) {
-                _state.value = _state.value.copy(
-                    childId = response.childId,
-                    childName = response.name,
-                    childAvatar = response.avatar,
-                    playlist = null,
-                    screen = AppScreen.Playlist(
+                if (_state.value.screen is AppScreen.PinEntry) {
+                    _state.value = _state.value.copy(
                         childId = response.childId,
                         childName = response.name,
                         childAvatar = response.avatar,
-                    ),
-                    isLoading = false,
-                    error = null,
-                )
-                loadTodaysPlaylist(response.childId)
+                        playlist = null,
+                        screen = AppScreen.Playlist(
+                            childId = response.childId,
+                            childName = response.name,
+                            childAvatar = response.avatar,
+                        ),
+                        isLoading = false,
+                        error = null,
+                    )
+                    loadTodaysPlaylist(response.childId)
+                }
                 true
             } else {
                 _state.value = _state.value.copy(
@@ -350,9 +396,11 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 return@launch
             }
+            _state.value = _state.value.copy(isLoading = true, error = null)
             try {
                 val response = ApiClient.api.getTodaysPlaylist(childId)
-                _state.value = _state.value.copy(playlist = response.playlist, error = null)
+                parentPrefs.setCachedPlaylist(childId, gson.toJson(response.playlist))
+                _state.value = _state.value.copy(playlist = response.playlist, isLoading = false, error = null)
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 401) {
                     parentPrefs.clearParentSession()
@@ -364,12 +412,32 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     _state.value = _state.value.copy(
                         playlist = null,
+                        isLoading = false,
                         error = "Could not load playlist. Please try again.",
+                    )
+                }
+            } catch (e: java.io.IOException) {
+                val cached = parentPrefs.getCachedPlaylist(childId)
+                val cachedPl = if (cached.isNotBlank()) {
+                    try { gson.fromJson(cached, PlaylistData::class.java) } catch (_: Exception) { null }
+                } else null
+                if (cachedPl != null) {
+                    _state.value = _state.value.copy(
+                        playlist = cachedPl,
+                        isLoading = false,
+                        error = null,
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        playlist = null,
+                        isLoading = false,
+                        error = "Could not load playlist. Please check your connection.",
                     )
                 }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     playlist = null,
+                    isLoading = false,
                     error = "Could not load playlist. Please check your connection.",
                 )
             }
@@ -378,12 +446,14 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startPlaying(startIndex: Int) {
         val s = _state.value
+        val total = s.playlist?.items?.size ?: 0
+        val clamped = if (total > 0) startIndex.coerceIn(0, total - 1) else 0
         _state.value = s.copy(
             screen = AppScreen.Player(
                 childId = s.childId,
                 childName = s.childName,
                 childAvatar = s.childAvatar,
-                startIndex = startIndex,
+                startIndex = clamped,
             )
         )
     }
@@ -445,5 +515,18 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openParentZone() {
         _state.value = _state.value.copy(screen = AppScreen.ParentZone)
+    }
+
+    fun setDemoWalkthroughData(profile: ChildProfileItem, playlist: PlaylistData) {
+        if (!com.kidcurate.app.BuildConfig.DEBUG) return
+        _state.value = _state.value.copy(
+            availableProfiles = listOf(profile),
+            childId = profile.id,
+            childName = profile.name,
+            childAvatar = profile.avatar,
+            playlist = playlist,
+            isLoading = false,
+            error = null,
+        )
     }
 }

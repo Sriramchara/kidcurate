@@ -9,7 +9,11 @@ echo [1/3] Reverse-port forwarding port 8000 for backend access...
 %ADB% reverse tcp:8000 tcp:8000
 
 echo [2/3] Installing KidCurate to your connected Android phone...
-%ADB% push "%~dp0android\app\build\outputs\apk\debug\app-debug.apk" /data/local/tmp/app.apk
+set APK_PATH="%~dp0android\app\build\outputs\apk\debug\app-debug.apk"
+if not exist %APK_PATH% (
+    set APK_PATH="C:\tmp\kidcurate-build\app\outputs\apk\debug\app-debug.apk"
+)
+%ADB% push %APK_PATH% /data/local/tmp/app.apk
 %ADB% shell pm install -r /data/local/tmp/app.apk
 
 echo [3/3] Launching KidCurate...

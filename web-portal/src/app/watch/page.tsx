@@ -91,31 +91,14 @@ export default function ChildWatchPage() {
     setIsVerifyingPin(true);
     setPinError(false);
     try {
-      // Backend validates child PIN securely
+      // Backend validates child PIN securely with rate-limiting
       await api.verifyChildPin(showPinModal.id, pinInput);
       const child = showPinModal;
       setShowPinModal(null);
       unlockChild(child);
     } catch {
-      // Allow parent password as emergency override
-      let overrideSuccess = false;
-      const savedUser = typeof window !== 'undefined' ? localStorage.getItem('kc_user') : null;
-      const parentEmail = savedUser ? JSON.parse(savedUser).email : '';
-      if (parentEmail && pinInput.length >= 4) {
-        try {
-          await api.verifyParentPassword(parentEmail, pinInput);
-          overrideSuccess = true;
-        } catch {}
-      }
-
-      if (overrideSuccess) {
-        const child = showPinModal;
-        setShowPinModal(null);
-        unlockChild(child);
-      } else {
-        setPinError(true);
-        setPinInput('');
-      }
+      setPinError(true);
+      setPinInput('');
     } finally {
       setIsVerifyingPin(false);
     }
@@ -384,7 +367,7 @@ export default function ChildWatchPage() {
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-black text-[var(--text-primary)] tracking-tight mb-4">
-            Who's ready to watch? 🌟
+            Who's ready to watch?
           </h1>
           <p className="text-sm sm:text-base text-[var(--text-secondary)] max-w-md mx-auto mb-10">
             Pick your profile to jump into today's parent-approved wholesome stories and creative fun!
@@ -510,7 +493,7 @@ export default function ChildWatchPage() {
               className="btn-primary !bg-amber-500 hover:!bg-amber-600 text-sm font-bold shadow-lg inline-flex items-center gap-2"
             >
               <Lock className="w-4 h-4" />
-              <span>Parent: Choose Stories Now 🛡️</span>
+              <span>Parent: Choose Stories Now</span>
             </button>
           </div>
         ) : isCompleted ? (
@@ -521,7 +504,7 @@ export default function ChildWatchPage() {
               <div className="w-20 h-20 rounded-full bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center mx-auto mb-6 text-amber-400 animate-bounce">
                 <Star className="w-10 h-10 fill-amber-400" />
               </div>
-              <h2 className="text-3xl sm:text-4xl font-black mb-3 text-[var(--text-primary)]">All Done for Today! 🌟</h2>
+              <h2 className="text-3xl sm:text-4xl font-black mb-3 text-[var(--text-primary)]">All Done for Today!</h2>
               <p className="text-sm text-[var(--text-secondary)] max-w-md mx-auto mb-8">
                 Great job! You enjoyed pure, wholesome stories with kindness and heart. Come back tomorrow for more adventures!
               </p>
@@ -530,13 +513,13 @@ export default function ChildWatchPage() {
                   onClick={() => { playTactileClick(); setCurrentIndex(0); setIsCompleted(false); }}
                   className="btn-secondary text-xs font-bold py-3 px-5 rounded-2xl"
                 >
-                  Replay Stories 🔄
+                  Replay Stories
                 </button>
                 <button
                   onClick={() => { playTactileClick(); setShowExitPinModal(true); }}
                   className="btn-primary text-xs !bg-emerald-500 hover:!bg-emerald-600 font-bold py-3 px-5 rounded-2xl shadow-lg"
                 >
-                  Finish & Go Home 🏠
+                  Finish & Go Home
                 </button>
               </div>
             </div>
@@ -551,9 +534,10 @@ export default function ChildWatchPage() {
                   <iframe
                     ref={iframeRef}
                     key={currentVideo.youtube_id}
-                    src={`https://www.youtube-nocookie.com/embed/${currentVideo.youtube_id}?autoplay=1&rel=0&modestbranding=1&controls=1&playsinline=1&enablejsapi=1`}
+                    src={`https://www.youtube-nocookie.com/embed/${currentVideo.youtube_id}?autoplay=1&rel=0&modestbranding=1&controls=1&playsinline=1&enablejsapi=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
                     title={currentVideo.title}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    sandbox="allow-scripts allow-same-origin allow-presentation"
                     allowFullScreen
                     className="w-full h-full border-0"
                   />

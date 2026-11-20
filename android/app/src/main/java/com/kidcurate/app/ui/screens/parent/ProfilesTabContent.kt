@@ -102,39 +102,13 @@ fun ChildProfilesTab(
                                     color = TextSecondary,
                                 )
                                 Text("•", fontSize = 12.sp, color = TextSecondary)
-                                val context = LocalContext.current
-                                val parentPrefs = remember { ParentPreferences.get(context) }
-                                var showPin by remember { mutableStateOf(false) }
-                                val rawPin = child.pin.orEmpty()
-                                val localPin = parentPrefs.getChildLocalPin(child.id)
-                                val knownPin = when {
-                                    localPin.isNotBlank() && localPin.all { it.isDigit() } -> localPin
-                                    rawPin.isNotBlank() && !rawPin.startsWith("$2") && rawPin.all { it.isDigit() } -> rawPin
-                                    else -> ""
-                                }
-                                val displayPin = when {
-                                    knownPin.isNotBlank() -> if (showPin) knownPin else "••••"
-                                    rawPin.startsWith("$2") || rawPin.isNotBlank() -> if (showPin) "••••" else "••••"
-                                    else -> "Not set"
-                                }
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.clickable { showPin = !showPin }
-                                ) {
-                                    Text(
-                                        text = "PIN: $displayPin",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = BrandPrimary,
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Icon(
-                                        if (showPin) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                                        contentDescription = if (showPin) "Hide PIN" else "Show PIN",
-                                        tint = BrandPrimary,
-                                        modifier = Modifier.size(14.dp),
-                                    )
-                                }
+                                val hasPin = child.hasPin == true || !child.pin.isNullOrBlank()
+                                Text(
+                                    text = "PIN: ${if (hasPin) "Active" else "Not set"}",
+                                    fontSize = 12.sp,
+                                    fontWeight = if (hasPin) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (hasPin) BrandPrimary else TextSecondary,
+                                )
                             }
                         }
                     }

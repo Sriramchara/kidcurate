@@ -1,5 +1,6 @@
 package com.kidcurate.app.data
 
+import android.app.Activity
 import android.content.Context
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
@@ -16,7 +17,7 @@ data class GoogleCredentialAccount(
 )
 
 object GoogleCredentialAuth {
-    suspend fun signIn(context: Context, serverClientId: String): GoogleCredentialAccount {
+    suspend fun signIn(activity: Activity, serverClientId: String): GoogleCredentialAccount {
         require(serverClientId.isNotBlank()) { "Google OAuth client ID is not configured." }
 
         val option = GetSignInWithGoogleOption.Builder(serverClientId).build()
@@ -24,8 +25,8 @@ object GoogleCredentialAuth {
             .addCredentialOption(option)
             .build()
 
-        val result = CredentialManager.create(context).getCredential(
-            context = context,
+        val result = CredentialManager.create(activity).getCredential(
+            context = activity,
             request = request,
         )
         val credential = result.credential
@@ -56,8 +57,16 @@ object GoogleCredentialAuth {
         CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest())
     }
 
-    fun userMessage(error: Throwable): String = when (error) {
-        is GetCredentialException -> "Google sign-in was cancelled or no account is available."
-        else -> error.message ?: "Google sign-in failed. Please try again."
+    fun userMessage(error: Throwable): String {
+        android.util.Log.e("GoogleCredentialAuth", "Sign-in error: ${error.javaClass.name}: ${error.message}", error)
+        return when (error) {
+            is androidx.credentials.exceptions.GetCredentialCancellationException ->
+                "Google sign-in was cancelled."
+            is androidx.credentials.exceptions.NoCredentialException ->
+                "No Google account available or account not authorized for this app signature."
+            is GetCredentialException ->
+                error.message ?: "Google sign-in failed. Please try again."
+            else -> error.message ?: "Google sign-in failed. Please try again."
+        }
     }
 }

@@ -1,0 +1,931 @@
+package com.kidcurate.app.ui.components
+
+import android.app.Activity
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
+import kotlinx.coroutines.launch
+import retrofit2.HttpException
+import com.kidcurate.app.data.ApiClient
+import com.kidcurate.app.data.ParentBiometricAuth
+import androidx.fragment.app.FragmentActivity
+import com.kidcurate.app.data.GoogleCredentialAuth
+import com.kidcurate.app.data.ParentSessionPolicy
+import com.kidcurate.app.data.ResponsiveLayoutPolicy
+import com.kidcurate.app.data.ParentPreferences
+import com.kidcurate.app.ui.theme.*
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.BorderStroke
+
+/**
+ * Clean, thematic character avatar without raw emojis.
+ * Matches child names and character badges to dedicated vibrant vector themes.
+ */
+@Composable
+fun ThematicAvatar(
+    name: String,
+    avatar: String = "",
+    size: Dp = 64.dp,
+    iconSize: Dp = 32.dp,
+    modifier: Modifier = Modifier,
+) {
+    val (icon, bgColors, ringColor) = remember(name, avatar) {
+        val rawAvatar = avatar.trim().lowercase()
+        val rawName = name.trim().lowercase()
+        when {
+            rawAvatar.contains("compass") || rawAvatar.contains("explorer") || rawAvatar.contains("lion") ->
+                Triple(Icons.Rounded.Explore, listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A)), Color(0xFFD97706))
+            rawAvatar.contains("sparkle") || rawAvatar.contains("magic") || rawAvatar.contains("unicorn") ->
+                Triple(Icons.Rounded.AutoAwesome, listOf(Color(0xFFF3E8FF), Color(0xFFE9D5FF)), Color(0xFF8B5CF6))
+            rawAvatar.contains("rocket") || rawAvatar.contains("space") ->
+                Triple(Icons.Rounded.RocketLaunch, listOf(Color(0xFFE0F2FE), Color(0xFFBAE6FD)), Color(0xFF0284C7))
+            rawAvatar.contains("heart") || rawAvatar.contains("love") || rawAvatar.contains("kind") ->
+                Triple(Icons.Rounded.Favorite, listOf(Color(0xFFFFE4E6), Color(0xFFFECDD3)), Color(0xFFE11D48))
+            rawAvatar.contains("waves") || rawAvatar.contains("ocean") || rawAvatar.contains("water") || rawAvatar.contains("dolphin") ->
+                Triple(Icons.Rounded.Waves, listOf(Color(0xFFCCFBF1), Color(0xFF99F6E4)), Color(0xFF0D9488))
+            rawAvatar.contains("flame") || rawAvatar.contains("fire") || rawAvatar.contains("blaze") || rawAvatar.contains("fox") ->
+                Triple(Icons.Rounded.LocalFireDepartment, listOf(Color(0xFFFFEDD5), Color(0xFFFED7AA)), Color(0xFFEA580C))
+            rawAvatar.contains("shield") || rawAvatar.contains("guardian") || rawAvatar.contains("safe") || rawAvatar.contains("elephant") ->
+                Triple(Icons.Rounded.Shield, listOf(Color(0xFFDCFCE7), Color(0xFFBBF7D0)), Color(0xFF16A34A))
+            rawAvatar.contains("palette") || rawAvatar.contains("artist") || rawAvatar.contains("paint") || rawAvatar.contains("butterfly") ->
+                Triple(Icons.Rounded.Palette, listOf(Color(0xFFF3E8FF), Color(0xFFE9D5FF)), Color(0xFF9333EA))
+            rawAvatar.contains("star") ->
+                Triple(Icons.Rounded.Star, listOf(Color(0xFFFEF9C3), Color(0xFFFEF08A)), Color(0xFFCA8A04))
+            rawName.contains("compass") || rawName.contains("explorer") ->
+                Triple(Icons.Rounded.Explore, listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A)), Color(0xFFD97706))
+            rawName.contains("sparkle") ->
+                Triple(Icons.Rounded.AutoAwesome, listOf(Color(0xFFF3E8FF), Color(0xFFE9D5FF)), Color(0xFF8B5CF6))
+            rawName.contains("rocket") ->
+                Triple(Icons.Rounded.RocketLaunch, listOf(Color(0xFFE0F2FE), Color(0xFFBAE6FD)), Color(0xFF0284C7))
+            rawName.contains("heart") ->
+                Triple(Icons.Rounded.Favorite, listOf(Color(0xFFFFE4E6), Color(0xFFFECDD3)), Color(0xFFE11D48))
+            rawName.contains("waves") ->
+                Triple(Icons.Rounded.Waves, listOf(Color(0xFFCCFBF1), Color(0xFF99F6E4)), Color(0xFF0D9488))
+            rawName.contains("flame") ->
+                Triple(Icons.Rounded.LocalFireDepartment, listOf(Color(0xFFFFEDD5), Color(0xFFFED7AA)), Color(0xFFEA580C))
+            rawName.contains("shield") ->
+                Triple(Icons.Rounded.Shield, listOf(Color(0xFFDCFCE7), Color(0xFFBBF7D0)), Color(0xFF16A34A))
+            rawName.contains("palette") ->
+                Triple(Icons.Rounded.Palette, listOf(Color(0xFFF3E8FF), Color(0xFFE9D5FF)), Color(0xFF9333EA))
+            rawName.contains("star") ->
+                Triple(Icons.Rounded.Star, listOf(Color(0xFFFEF9C3), Color(0xFFFEF08A)), Color(0xFFCA8A04))
+            else -> {
+                val hash = kotlin.math.abs(rawName.hashCode()) % 9
+                when (hash) {
+                    0 -> Triple(Icons.Rounded.RocketLaunch, listOf(Color(0xFFE0F2FE), Color(0xFFBAE6FD)), Color(0xFF0284C7))
+                    1 -> Triple(Icons.Rounded.AutoAwesome, listOf(Color(0xFFF3E8FF), Color(0xFFE9D5FF)), Color(0xFF8B5CF6))
+                    2 -> Triple(Icons.Rounded.Explore, listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A)), Color(0xFFD97706))
+                    3 -> Triple(Icons.Rounded.Favorite, listOf(Color(0xFFFFE4E6), Color(0xFFFECDD3)), Color(0xFFE11D48))
+                    4 -> Triple(Icons.Rounded.Waves, listOf(Color(0xFFCCFBF1), Color(0xFF99F6E4)), Color(0xFF0D9488))
+                    5 -> Triple(Icons.Rounded.LocalFireDepartment, listOf(Color(0xFFFFEDD5), Color(0xFFFED7AA)), Color(0xFFEA580C))
+                    6 -> Triple(Icons.Rounded.Shield, listOf(Color(0xFFDCFCE7), Color(0xFFBBF7D0)), Color(0xFF16A34A))
+                    7 -> Triple(Icons.Rounded.Palette, listOf(Color(0xFFF3E8FF), Color(0xFFE9D5FF)), Color(0xFF9333EA))
+                    else -> Triple(Icons.Rounded.Star, listOf(Color(0xFFFEF9C3), Color(0xFFFEF08A)), Color(0xFFCA8A04))
+                }
+            }
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .size(size)
+            .shadow(4.dp, CircleShape)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(bgColors))
+            .border(2.5.dp, ringColor, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = name,
+            tint = ringColor,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
+
+/**
+ * Stylized feature badge with vector icons.
+ */
+@Composable
+fun ThematicPill(
+    icon: ImageVector,
+    label: String,
+    tint: Color = BrandPrimary,
+    background: Color = Color.Unspecified,
+    modifier: Modifier = Modifier,
+) {
+    val effectiveBackground = if (background != Color.Unspecified) background else MaterialTheme.colorScheme.primaryContainer
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = effectiveBackground,
+        modifier = modifier,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = tint,
+            )
+        }
+    }
+}
+
+/**
+ * Ambient Glassmorphic Aurora Mesh background for Compose screens.
+ * Places soft, glowing ambient orbs (violet, amber, sky) behind translucent glass cards.
+ */
+@Composable
+fun GlassBackgroundAura(
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.fillMaxSize()
+    ) {
+        // Top-left Violet / Indigo Ambient Orb
+        Box(
+            modifier = Modifier
+                .size(320.dp)
+                .offset(x = (-80).dp, y = (-80).dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            BrandPrimary.copy(alpha = 0.32f),
+                            BrandPrimary.copy(alpha = 0.08f),
+                            Color.Transparent,
+                        )
+                    )
+                )
+        )
+        // Top-right Warm Amber Ambient Orb
+        Box(
+            modifier = Modifier
+                .size(280.dp)
+                .align(Alignment.TopEnd)
+                .offset(x = 80.dp, y = 60.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            BrandAccent.copy(alpha = 0.25f),
+                            BrandAccent.copy(alpha = 0.05f),
+                            Color.Transparent,
+                        )
+                    )
+                )
+        )
+        // Bottom-center Cyan Ambient Orb
+        Box(
+            modifier = Modifier
+                .size(340.dp)
+                .align(Alignment.BottomCenter)
+                .offset(y = 120.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            BrandSky.copy(alpha = 0.22f),
+                            BrandSky.copy(alpha = 0.04f),
+                            Color.Transparent,
+                        )
+                    )
+                )
+        )
+    }
+}
+
+/**
+ * Premium Frosted Glass Card container.
+ * Features translucent fill, specular gradient border, and soft elevation shadow.
+ */
+@Composable
+fun GlassCard(
+    modifier: Modifier = Modifier,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(24.dp),
+    borderAlpha: Float = 0.25f,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val glassBg = if (isDark) {
+        Color(0xFF111827).copy(alpha = 0.72f)
+    } else {
+        Color(0xFFFFFFFF).copy(alpha = 0.88f)
+    }
+
+    val borderBrush = if (isDark) {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color.White.copy(alpha = borderAlpha),
+                Color.White.copy(alpha = 0.06f)
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0xFFCBD5E1).copy(alpha = 0.85f),
+                Color(0xFFE2E8F0).copy(alpha = 0.5f)
+            )
+        )
+    }
+
+    Box(
+        modifier = modifier
+            .shadow(
+                elevation = if (isDark) 12.dp else 6.dp,
+                shape = shape,
+                spotColor = if (isDark) BrandPrimary.copy(alpha = 0.25f) else Color(0xFF64748B).copy(alpha = 0.15f)
+            )
+            .clip(shape)
+            .background(glassBg)
+            .border(width = 1.2.dp, brush = borderBrush, shape = shape),
+        content = content
+    )
+}
+
+/**
+ * Parent Verification Dialog (Password Gate)
+ * Allows parents to unlock child kiosk mode, exit, or manage playlists using their parent account password.
+ */
+enum class ParentGateMode {
+    PIN_UNLOCK,
+    GOOGLE_LOGIN,
+    BIOMETRIC_VERIFY,
+    SET_PIN,
+}
+
+/**
+ * Parent Verification Dialog (Google-First Identity & PIN Gate)
+ * Uses Google Sign-In and Hardware Biometrics for parent authentication and identity.
+ * Uses 4-digit PIN for daily in-app unlock and child lock gates.
+ */
+@Composable
+fun ParentPasswordDialog(
+    title: String = "Parent Verification",
+    subtitle: String = "Enter 4-digit Parent PIN",
+    allowGoogleSignIn: Boolean = true,
+    forceGoogleOnly: Boolean = false,
+    onSuccess: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val appContext = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val parentPrefs = remember { ParentPreferences.get(appContext) }
+    val isBiometricAvailable = remember {
+        ParentBiometricAuth.isBiometricOrDeviceLockAvailable(appContext)
+    }
+
+    val initialMode = remember {
+        val effectiveAllowGoogle = allowGoogleSignIn || !parentPrefs.hasParentPin
+        if (forceGoogleOnly || (!parentPrefs.isParentLoggedIn && effectiveAllowGoogle)) {
+            ParentGateMode.GOOGLE_LOGIN
+        } else if (ParentSessionPolicy.canReusePin(
+                hasPin = parentPrefs.hasParentPin,
+                pinOwnerEmail = parentPrefs.parentPinOwnerEmail,
+                currentAccountEmail = parentPrefs.parentEmail,
+                signingInEmail = parentPrefs.parentEmail,
+            )) {
+            ParentGateMode.PIN_UNLOCK
+        } else if (isBiometricAvailable) {
+            // NEVER let unauthenticated children see SET_PIN directly!
+            // First require device biometric / lock screen authentication
+            ParentGateMode.BIOMETRIC_VERIFY
+        } else if (effectiveAllowGoogle) {
+            ParentGateMode.GOOGLE_LOGIN
+        } else {
+            ParentGateMode.SET_PIN
+        }
+    }
+
+    var currentMode by remember { mutableStateOf(initialMode) }
+    var pinInput by remember { mutableStateOf("") }
+    var newPinInput by remember { mutableStateOf("") }
+    var confirmPinInput by remember { mutableStateOf("") }
+    var showPinText by remember { mutableStateOf(false) }
+    var isVerifying by remember { mutableStateOf(false) }
+    var isResettingPin by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var failedAttempts by remember { mutableIntStateOf(0) }
+    var lockoutRemainingSeconds by remember { mutableIntStateOf(parentPrefs.getPinLockoutRemainingSeconds()) }
+
+    LaunchedEffect(lockoutRemainingSeconds) {
+        if (lockoutRemainingSeconds > 0) {
+            kotlinx.coroutines.delay(1000)
+            lockoutRemainingSeconds--
+            if (lockoutRemainingSeconds == 0 && errorMessage?.contains("Locked for") == true) {
+                errorMessage = null
+            }
+        }
+    }
+
+    val hostActivity = appContext as? android.app.Activity
+    if (com.kidcurate.app.BuildConfig.DEBUG) {
+        val autoWalkthrough = hostActivity?.intent?.getStringExtra("test_auto_walkthrough")
+        if (autoWalkthrough == "child_lock_check" && currentMode == ParentGateMode.PIN_UNLOCK) {
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(1200)
+                // First simulate entering wrong PIN
+                pinInput = "9999"
+                errorMessage = "Incorrect 4-digit PIN."
+                kotlinx.coroutines.delay(2200)
+                // Then simulate entering correct parent PIN
+                pinInput = parentPrefs.parentPin.ifBlank { "1234" }
+                errorMessage = null
+                kotlinx.coroutines.delay(800)
+                onSuccess()
+            }
+        }
+    }
+
+    fun triggerGoogleSignIn() {
+        val activity = appContext as? Activity
+            ?: (appContext as? android.content.ContextWrapper)?.baseContext as? Activity
+            ?: return
+        coroutineScope.launch {
+            isVerifying = true
+            errorMessage = null
+            try {
+                val account = GoogleCredentialAuth.signIn(
+                    activity = activity,
+                    serverClientId = parentPrefs.googleClientId.trim(),
+                )
+                val email = account.email
+                val savedPinMatchesAccount = ParentSessionPolicy.canReusePin(
+                    hasPin = parentPrefs.hasParentPin,
+                    pinOwnerEmail = parentPrefs.parentPinOwnerEmail,
+                    currentAccountEmail = parentPrefs.parentEmail,
+                    signingInEmail = email,
+                )
+                parentPrefs.parentName = account.name
+                parentPrefs.parentEmail = email
+
+                val resp = ApiClient.api.googleLogin(
+                    mapOf(
+                        "id_token" to account.idToken,
+                        "email" to email,
+                        "name" to account.name,
+                    )
+                )
+                val token = resp["access_token"] as? String ?: ""
+                val refreshToken = resp["refresh_token"] as? String ?: ""
+                val serverName = (resp["name"] as? String)?.trim() ?: ""
+                if (serverName.isNotBlank() && serverName != "Parent") {
+                    parentPrefs.parentName = serverName
+                }
+                if (token.isBlank()) {
+                    errorMessage = "Server did not issue a session token."
+                    return@launch
+                }
+
+                parentPrefs.parentAuthToken = token
+                parentPrefs.parentRefreshToken = refreshToken
+                ApiClient.authToken = token
+                if (isResettingPin || !savedPinMatchesAccount) {
+                    parentPrefs.parentPin = ""
+                    parentPrefs.parentPinOwnerEmail = ""
+                    newPinInput = ""
+                    confirmPinInput = ""
+                    isResettingPin = false
+                    currentMode = ParentGateMode.SET_PIN
+                } else {
+                    parentPrefs.parentPinOwnerEmail = email
+                    onSuccess()
+                }
+            } catch (e: Exception) {
+                errorMessage = GoogleCredentialAuth.userMessage(e)
+            } finally {
+                isVerifying = false
+            }
+        }
+    }
+
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
+    val compactHeight = ResponsiveLayoutPolicy.isCompactLandscape(
+        configuration.screenWidthDp,
+        configuration.screenHeightDp,
+    )
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        GlassCard(
+            shape = RoundedCornerShape(28.dp),
+            modifier = Modifier
+                .fillMaxWidth(if (isLandscape) 0.52f else 0.92f)
+                .widthIn(max = 520.dp)
+                .padding(if (compactHeight) 8.dp else 16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = (configuration.screenHeightDp * 0.9f).dp)
+                    .verticalScroll(rememberScrollState())
+                    .imePadding()
+                    .padding(if (compactHeight) 12.dp else 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                // Icon Header
+                Box(
+                    modifier = Modifier
+                        .size(if (compactHeight) 40.dp else 56.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        when (currentMode) {
+                            ParentGateMode.PIN_UNLOCK -> Icons.Rounded.Lock
+                            ParentGateMode.SET_PIN -> Icons.Rounded.LockReset
+                            ParentGateMode.BIOMETRIC_VERIFY -> Icons.Rounded.Fingerprint
+                            ParentGateMode.GOOGLE_LOGIN -> Icons.Rounded.AccountCircle
+                        },
+                        contentDescription = "Parent Gate",
+                        tint = BrandPrimary,
+                        modifier = Modifier.size(if (compactHeight) 22.dp else 28.dp),
+                    )
+                }
+
+                Spacer(Modifier.height(if (compactHeight) 6.dp else 14.dp))
+
+                // Title and Subtitle based on state
+                Text(
+                    text = when (currentMode) {
+                        ParentGateMode.PIN_UNLOCK -> title
+                        ParentGateMode.SET_PIN -> "Create 4-Digit In-App PIN"
+                        ParentGateMode.BIOMETRIC_VERIFY -> "Parent Identity Verification"
+                        ParentGateMode.GOOGLE_LOGIN -> if (isResettingPin) "Reset Parent PIN" else "Parent Account Sign In"
+                    },
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+
+                Text(
+                    text = when (currentMode) {
+                        ParentGateMode.PIN_UNLOCK -> subtitle
+                        ParentGateMode.SET_PIN -> "Choose a 4-digit PIN for quick daily in-app unlock and child safety."
+                        ParentGateMode.BIOMETRIC_VERIFY -> "Confirm your fingerprint or phone screen lock to verify you are the parent."
+                        ParentGateMode.GOOGLE_LOGIN -> if (isResettingPin) {
+                            "Sign in with your Google account to verify your identity and reset your 4-digit PIN."
+                        } else {
+                            "Sign in with your Google account to set up child profiles and safe playlists."
+                        }
+                    },
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(
+                        top = if (compactHeight) 2.dp else 4.dp,
+                        bottom = if (compactHeight) 8.dp else 16.dp,
+                    ),
+                )
+
+                // Mode-specific content
+                when (currentMode) {
+                    ParentGateMode.PIN_UNLOCK -> {
+                        OutlinedTextField(
+                            value = pinInput,
+                            onValueChange = {
+                                if (lockoutRemainingSeconds > 0) return@OutlinedTextField
+                                if (it.length <= 4 && it.all { char -> char.isDigit() }) {
+                                    pinInput = it
+                                    errorMessage = null
+                                    if (it.length == 4) {
+                                        if (parentPrefs.verifyParentPin(it)) {
+                                            failedAttempts = 0
+                                            lockoutRemainingSeconds = 0
+                                            onSuccess()
+                                        } else {
+                                            val remainingSec = parentPrefs.getPinLockoutRemainingSeconds()
+                                            if (remainingSec > 0) {
+                                                lockoutRemainingSeconds = remainingSec
+                                                errorMessage = "Too many failed attempts. Locked for ${remainingSec}s."
+                                            } else {
+                                                failedAttempts++
+                                                val rem = 5 - failedAttempts
+                                                errorMessage = if (rem > 0) "Incorrect PIN. $rem attempt(s) remaining." else "Incorrect PIN."
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = !isVerifying && lockoutRemainingSeconds == 0,
+                            label = { 
+                                Text(if (lockoutRemainingSeconds > 0) "Locked (${lockoutRemainingSeconds}s)" else "Parent PIN") 
+                            },
+                            placeholder = { Text("••••") },
+                            visualTransformation = if (showPinText) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { showPinText = !showPinText }) {
+                                    Icon(
+                                        if (showPinText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                        contentDescription = if (showPinText) "Hide PIN" else "Show PIN",
+                                        tint = if (showPinText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                        )
+
+                        if (isBiometricAvailable) {
+                            Spacer(Modifier.height(10.dp))
+                            FilledTonalButton(
+                                onClick = {
+                                    errorMessage = null
+                                    val fragmentActivity = appContext as? androidx.fragment.app.FragmentActivity
+                                    if (fragmentActivity != null) {
+                                        ParentBiometricAuth.authenticate(
+                                            activity = fragmentActivity,
+                                            title = "Verify Parent Identity",
+                                            subtitle = "Confirm fingerprint or screen lock to reset your Parent PIN.",
+                                            onSuccess = {
+                                                isResettingPin = true
+                                                newPinInput = ""
+                                                confirmPinInput = ""
+                                                errorMessage = null
+                                                currentMode = ParentGateMode.SET_PIN
+                                            },
+                                            onError = { err ->
+                                                errorMessage = err
+                                            },
+                                        )
+                                    } else {
+                                        errorMessage = "Biometric authentication not supported."
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Fingerprint,
+                                    contentDescription = null,
+                                    tint = BrandPrimary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "Forgot PIN? Verify with Fingerprint / Phone Lock",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = BrandPrimary,
+                                )
+                            }
+                        }
+
+                        if (allowGoogleSignIn) {
+                            Spacer(Modifier.height(6.dp))
+                            TextButton(
+                                onClick = {
+                                    errorMessage = null
+                                    isResettingPin = true
+                                    currentMode = ParentGateMode.GOOGLE_LOGIN
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Rounded.AccountCircle,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = if (isBiometricAvailable) "Or verify with Google Account" else "Forgot PIN? Verify with Google",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+
+                    ParentGateMode.BIOMETRIC_VERIFY -> {
+                        Button(
+                            onClick = {
+                                errorMessage = null
+                                val fragmentActivity = appContext as? androidx.fragment.app.FragmentActivity
+                                if (fragmentActivity != null) {
+                                    ParentBiometricAuth.authenticate(
+                                        activity = fragmentActivity,
+                                        title = "Parent Identity Verification",
+                                        subtitle = "Confirm fingerprint, face, or device screen lock to create your Parent PIN.",
+                                        onSuccess = {
+                                            errorMessage = null
+                                            currentMode = ParentGateMode.SET_PIN
+                                        },
+                                        onError = { err ->
+                                            errorMessage = err
+                                        },
+                                    )
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                        ) {
+                            Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Verify Fingerprint / Phone Lock", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+
+                        if (allowGoogleSignIn) {
+                            Spacer(Modifier.height(8.dp))
+                            TextButton(
+                                onClick = {
+                                    errorMessage = null
+                                    currentMode = ParentGateMode.GOOGLE_LOGIN
+                                }
+                            ) {
+                                Text(
+                                    text = "Or verify with Google Sign-In",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+
+                    ParentGateMode.SET_PIN -> {
+                        OutlinedTextField(
+                            value = newPinInput,
+                            onValueChange = {
+                                if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                                    newPinInput = it
+                                    errorMessage = null
+                                }
+                            },
+                            label = { Text("New 4-digit PIN") },
+                            placeholder = { Text("••••") },
+                            visualTransformation = if (showPinText) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { showPinText = !showPinText }) {
+                                    Icon(
+                                        if (showPinText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                        contentDescription = if (showPinText) "Hide PIN" else "Show PIN",
+                                        tint = if (showPinText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                        )
+
+                        Spacer(Modifier.height(10.dp))
+
+                        OutlinedTextField(
+                            value = confirmPinInput,
+                            onValueChange = {
+                                if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                                    confirmPinInput = it
+                                    errorMessage = null
+                                }
+                            },
+                            label = { Text("Confirm 4-digit PIN") },
+                            placeholder = { Text("••••") },
+                            visualTransformation = if (showPinText) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { showPinText = !showPinText }) {
+                                    Icon(
+                                        if (showPinText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                        contentDescription = if (showPinText) "Hide PIN" else "Show PIN",
+                                        tint = if (showPinText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                        )
+                    }
+
+                    ParentGateMode.GOOGLE_LOGIN -> {
+                        Button(
+                            onClick = {
+                                errorMessage = null
+                                triggerGoogleSignIn()
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                            enabled = !isVerifying,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                if (isVerifying) {
+                                    CircularProgressIndicator(
+                                        color = Color.White,
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        text = "Verifying with Google...",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Color.White,
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Rounded.AccountCircle,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = "Continue with Google",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = Color.White,
+                                    )
+                                }
+                            }
+                        }
+
+                        if (isResettingPin) {
+                            Spacer(Modifier.height(8.dp))
+                            TextButton(
+                                onClick = {
+                                    isResettingPin = false
+                                    errorMessage = null
+                                    currentMode = ParentGateMode.PIN_UNLOCK
+                                }
+                            ) {
+                                Text(
+                                    text = "Back to PIN",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+
+                        if (com.kidcurate.app.BuildConfig.DEBUG) {
+                            Spacer(Modifier.height(6.dp))
+                            TextButton(
+                                onClick = {
+                                    parentPrefs.parentName = "Test Parent"
+                                    parentPrefs.parentEmail = "cleanparent@test.com"
+                                    parentPrefs.parentAuthToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2OGVlMDMyNi00Yzg2LTQwNmUtYmRmNi0wNjYxM2EwYmEyYmUiLCJlbWFpbCI6ImNsZWFucGFyZW50QHRlc3QuY29tIiwidHlwZSI6ImFjY2VzcyIsImV4cCI6MTc5NTY5NTA4N30.gsRcdYIUtjfDVQtUWdKQo3PWGIeb_GqmRvuV3KNwQss"
+                                    parentPrefs.parentPin = "1234"
+                                    parentPrefs.parentPinOwnerEmail = "cleanparent@test.com"
+                                    com.kidcurate.app.data.ApiClient.authToken = parentPrefs.parentAuthToken
+                                    onSuccess()
+                                }
+                            ) {
+                                Text(
+                                    text = "Debug: Quick Sign-In (Test Parent)",
+                                    fontSize = 12.sp,
+                                    color = BrandPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (errorMessage != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = errorMessage!!,
+                        color = BrandCoral,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+
+                Spacer(Modifier.height(if (compactHeight) 8.dp else 16.dp))
+
+                // Bottom Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text("Cancel")
+                    }
+
+                    when (currentMode) {
+                        ParentGateMode.PIN_UNLOCK -> {
+                            Button(
+                                onClick = {
+                                    if (lockoutRemainingSeconds > 0) return@Button
+                                    if (parentPrefs.verifyParentPin(pinInput)) {
+                                        failedAttempts = 0
+                                        lockoutRemainingSeconds = 0
+                                        onSuccess()
+                                    } else {
+                                        failedAttempts++
+                                        if (failedAttempts >= 5) {
+                                            lockoutRemainingSeconds = 30
+                                            errorMessage = "Too many failed attempts. Locked for 30s."
+                                        } else {
+                                            val rem = 5 - failedAttempts
+                                            errorMessage = "Incorrect PIN. $rem attempt(s) remaining."
+                                        }
+                                    }
+                                },
+                                enabled = pinInput.length == 4 && lockoutRemainingSeconds == 0,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                            ) {
+                                Text("Unlock")
+                            }
+                        }
+
+                        ParentGateMode.SET_PIN -> {
+                            Button(
+                                onClick = {
+                                    if (newPinInput.length != 4) {
+                                        errorMessage = "PIN must be exactly 4 digits."
+                                    } else if (newPinInput != confirmPinInput) {
+                                        errorMessage = "PINs do not match."
+                                    } else {
+                                        parentPrefs.parentPin = newPinInput
+                                        parentPrefs.parentPinOwnerEmail = parentPrefs.parentEmail
+                                        onSuccess()
+                                    }
+                                },
+                                enabled = newPinInput.length == 4 && confirmPinInput.length == 4,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                            ) {
+                                Text("Save PIN")
+                            }
+                        }
+
+                        ParentGateMode.GOOGLE_LOGIN,
+                        ParentGateMode.BIOMETRIC_VERIFY -> {
+                            // Cancel already covers dismissing
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

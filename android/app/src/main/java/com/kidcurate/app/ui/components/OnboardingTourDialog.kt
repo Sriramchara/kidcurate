@@ -71,7 +71,7 @@ val TOUR_STEPS = listOf(
                 actionDescription = "Opens Parent Zone using your 4-digit Parent PIN."
             ),
             ButtonGuideItem(
-                buttonName = "Backspace ⌫",
+                buttonName = "Backspace",
                 icon = Icons.AutoMirrored.Rounded.Backspace,
                 actionDescription = "Deletes digits one by one so mistakes can be easily fixed."
             ),

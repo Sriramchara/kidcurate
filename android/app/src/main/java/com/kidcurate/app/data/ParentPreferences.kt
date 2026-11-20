@@ -35,9 +35,120 @@ class ParentPreferences(context: Context) {
         get() = prefs.getString(KEY_VIDEO_QUALITY, "auto") ?: "auto"
         set(value) = prefs.edit().putString(KEY_VIDEO_QUALITY, value).apply()
 
+    var requireChildPin: Boolean
+        get() = prefs.getBoolean(KEY_REQUIRE_CHILD_PIN, false)
+        set(value) = prefs.edit().putBoolean(KEY_REQUIRE_CHILD_PIN, value).apply()
+
     var parentPin: String
         get() = prefs.getString(KEY_PARENT_PIN, "") ?: ""
-        set(value) = prefs.edit().putString(KEY_PARENT_PIN, value).apply()
+        set(value) {
+            val toStore = if (value.isBlank() || value.startsWith("pbkdf2$") || value.startsWith("sha256$")) value else hashPinPbkdf2(value)
+            prefs.edit().putString(KEY_PARENT_PIN, toStore).apply()
+        }
+
+    private fun getOrCreatePinSalt(): ByteArray {
+        val storedSaltHex = prefs.getString("parent_pin_salt", "") ?: ""
+        if (storedSaltHex.isNotBlank() && storedSaltHex.length == 32) {
+            return hexToBytes(storedSaltHex)
+        }
+        val salt = ByteArray(16)
+        java.security.SecureRandom().nextBytes(salt)
+        val saltHex = bytesToHex(salt)
+        prefs.edit().putString("parent_pin_salt", saltHex).apply()
+        return salt
+    }
+
+    private fun bytesToHex(bytes: ByteArray): String =
+        bytes.joinToString("") { "%02x".format(it) }
+
+    private fun hexToBytes(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+            i += 2
+        }
+        return data
+    }
+
+    fun hashPinPbkdf2(pin: String, salt: ByteArray = getOrCreatePinSalt()): String {
+        if (pin.isBlank()) return ""
+        val spec = javax.crypto.spec.PBEKeySpec(pin.toCharArray(), salt, 100_000, 256)
+        val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        val hash = factory.generateSecret(spec).encoded
+        return "pbkdf2$100000$${bytesToHex(salt)}$${bytesToHex(hash)}"
+    }
+
+    private fun hashPinLegacySha256(pin: String): String {
+        if (pin.isBlank()) return ""
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        val bytes = md.digest("kidcurate_salt_${pin}".toByteArray(Charsets.UTF_8))
+        return "sha256$" + bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    fun hashPin(pin: String): String = hashPinPbkdf2(pin)
+
+    fun getPinLockoutRemainingSeconds(): Int {
+        val lockoutUntil = prefs.getLong("parent_pin_lockout_until", 0L)
+        val now = System.currentTimeMillis()
+        return if (lockoutUntil > now) (((lockoutUntil - now) / 1000) + 1).toInt() else 0
+    }
+
+    fun isPinLockedOut(): Boolean = getPinLockoutRemainingSeconds() > 0
+
+    private fun recordFailedPinAttempt() {
+        val currentFailed = prefs.getInt("parent_pin_failed_attempts", 0) + 1
+        val editor = prefs.edit().putInt("parent_pin_failed_attempts", currentFailed)
+        if (currentFailed >= 5) {
+            val multiplier = 1 shl (currentFailed - 5).coerceAtMost(5)
+            val lockoutMs = 30_000L * multiplier
+            editor.putLong("parent_pin_lockout_until", System.currentTimeMillis() + lockoutMs)
+        }
+        editor.apply()
+    }
+
+    private fun recordSuccessfulPinAttempt() {
+        prefs.edit()
+            .putInt("parent_pin_failed_attempts", 0)
+            .putLong("parent_pin_lockout_until", 0L)
+            .apply()
+    }
+
+    fun verifyParentPin(candidatePin: String): Boolean {
+        if (candidatePin.isBlank() || isPinLockedOut()) return false
+        val stored = parentPin
+        if (stored.isBlank()) return false
+
+        var matches = false
+        if (stored.startsWith("pbkdf2$")) {
+            val parts = stored.split("$")
+            if (parts.size >= 4) {
+                val salt = hexToBytes(parts[2])
+                val expectedHashHex = parts[3]
+                val spec = javax.crypto.spec.PBEKeySpec(candidatePin.toCharArray(), salt, 100_000, 256)
+                val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+                val hash = factory.generateSecret(spec).encoded
+                matches = bytesToHex(hash) == expectedHashHex
+            }
+        } else if (stored.startsWith("sha256$")) {
+            matches = (stored == hashPinLegacySha256(candidatePin))
+            if (matches) {
+                parentPin = candidatePin
+            }
+        } else if (stored == candidatePin) {
+            matches = true
+            parentPin = candidatePin
+        }
+
+        if (matches) {
+            recordSuccessfulPinAttempt()
+            return true
+        } else {
+            recordFailedPinAttempt()
+            return false
+        }
+    }
 
     var parentPinOwnerEmail: String
         get() = prefs.getString(KEY_PARENT_PIN_OWNER_EMAIL, "") ?: ""
@@ -70,7 +181,9 @@ class ParentPreferences(context: Context) {
         prefs.all.keys
             .filter {
                 it.startsWith(KEY_CHILD_PIN_PREFIX) ||
-                    it.startsWith(KEY_CACHED_PLAYLIST_PREFIX)
+                    it.startsWith(KEY_CACHED_PLAYLIST_PREFIX) ||
+                    it.startsWith("video_pos_") ||
+                    it.startsWith("today_watched_seconds_")
             }
             .forEach(editor::remove)
         editor
@@ -84,6 +197,12 @@ class ParentPreferences(context: Context) {
             .remove(KEY_RECENT_SEARCHES)
             .remove(KEY_LAST_WATCHED_DATE)
             .remove(KEY_TODAY_WATCHED_SECONDS)
+            .remove(KEY_LAST_RECORDED_TIMESTAMP)
+            .remove(KEY_DAILY_SCREEN_TIME_MINUTES)
+            .remove(KEY_CURFEW_ENABLED)
+            .remove(KEY_CURFEW_START_HOUR)
+            .remove(KEY_CURFEW_END_HOUR)
+            .remove(KEY_REQUIRE_CHILD_PIN)
             .apply()
     }
 
@@ -94,7 +213,7 @@ class ParentPreferences(context: Context) {
     var serverUrl: String
         get() {
             val url = prefs.getString(KEY_SERVER_URL, "") ?: ""
-            if (url.isBlank() || url.contains("localhost") || url.contains("127.0.0.1")) {
+            if (url.isBlank() || url.contains("127.0.0.1") || (!com.kidcurate.app.BuildConfig.DEBUG && url.contains("localhost"))) {
                 val defaultUrl = com.kidcurate.app.BuildConfig.API_BASE_URL
                 prefs.edit().putString(KEY_SERVER_URL, defaultUrl).apply()
                 return defaultUrl
@@ -119,12 +238,8 @@ class ParentPreferences(context: Context) {
         get() = prefs.getString(KEY_PARENT_NAME, "") ?: ""
         set(value) = prefs.edit().putString(KEY_PARENT_NAME, value).apply()
 
-    var googleClientId: String
-        get() {
-            val id = prefs.getString("google_client_id", "") ?: ""
-            return if (id.isNotBlank() && id.contains(".apps.googleusercontent.com")) id else com.kidcurate.app.BuildConfig.GOOGLE_CLIENT_ID
-        }
-        set(value) = prefs.edit().putString("google_client_id", value).apply()
+    val googleClientId: String
+        get() = com.kidcurate.app.BuildConfig.GOOGLE_CLIENT_ID
 
     var dailyScreenTimeMinutes: Int
         get() = prefs.getInt(KEY_DAILY_SCREEN_TIME_MINUTES, 45) // 0 means unlimited
@@ -151,6 +266,14 @@ class ParentPreferences(context: Context) {
         get() {
             val savedDate = prefs.getString(KEY_LAST_WATCHED_DATE, "")
             val today = getTodayDate()
+            val now = System.currentTimeMillis()
+            val lastRecorded = prefs.getLong(KEY_LAST_RECORDED_TIMESTAMP, 0L)
+            
+            // Anti-Tamper: If device clock was rolled backwards by more than 5 minutes, retain previous watch time!
+            if (lastRecorded > 0L && now < lastRecorded - (5 * 60 * 1000L)) {
+                return prefs.getInt(KEY_TODAY_WATCHED_SECONDS, 0)
+            }
+
             return if (savedDate == today) {
                 prefs.getInt(KEY_TODAY_WATCHED_SECONDS, 0)
             } else {
@@ -159,9 +282,13 @@ class ParentPreferences(context: Context) {
         }
         set(value) {
             val today = getTodayDate()
+            val now = System.currentTimeMillis()
+            val lastRecorded = prefs.getLong(KEY_LAST_RECORDED_TIMESTAMP, 0L)
+            val toRecord = if (now > lastRecorded) now else lastRecorded
             prefs.edit()
                 .putString(KEY_LAST_WATCHED_DATE, today)
                 .putInt(KEY_TODAY_WATCHED_SECONDS, value)
+                .putLong(KEY_LAST_RECORDED_TIMESTAMP, toRecord)
                 .apply()
         }
 
@@ -178,11 +305,11 @@ class ParentPreferences(context: Context) {
         set(value) = prefs.edit().putString(KEY_CACHED_PROFILES, value).apply()
 
     fun getChildLocalPin(childId: String): String {
-        return prefs.getString(KEY_CHILD_PIN_PREFIX + childId, "") ?: ""
+        return ""
     }
 
     fun setChildLocalPin(childId: String, pin: String) {
-        prefs.edit().putString(KEY_CHILD_PIN_PREFIX + childId, pin).apply()
+        // Plaintext PIN storage removed for security. Child PINs are verified securely via ApiClient.
     }
 
     fun getCachedPlaylist(childId: String): String {
@@ -193,8 +320,24 @@ class ParentPreferences(context: Context) {
         prefs.edit().putString(KEY_CACHED_PLAYLIST_PREFIX + childId, json).apply()
     }
 
+    fun getVideoProgress(youtubeId: String): Float {
+        if (youtubeId.isBlank()) return 0f
+        return prefs.getFloat("video_pos_$youtubeId", 0f)
+    }
+
+    fun setVideoProgress(youtubeId: String, seconds: Float) {
+        if (youtubeId.isBlank()) return
+        prefs.edit().putFloat("video_pos_$youtubeId", seconds).apply()
+    }
+
+    fun clearVideoProgress(youtubeId: String) {
+        if (youtubeId.isBlank()) return
+        prefs.edit().remove("video_pos_$youtubeId").apply()
+    }
+
     fun isCurfewActive(): Boolean {
         if (!curfewEnabled) return false
+        if (curfewStartHour == curfewEndHour) return true
         val currentHour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
         return if (curfewStartHour > curfewEndHour) {
             // Over midnight, e.g. 20 (8 PM) to 7 (7 AM)
@@ -254,6 +397,7 @@ class ParentPreferences(context: Context) {
         private const val KEY_EARLY_READER_SUBTITLES = "early_reader_subtitles"
         private const val KEY_RECENT_SEARCHES = "recent_searches_json"
         private const val KEY_VIDEO_QUALITY = "video_quality"
+        private const val KEY_REQUIRE_CHILD_PIN = "require_child_pin"
         private const val KEY_PARENT_PIN = "parent_pin"
         private const val KEY_PARENT_PIN_OWNER_EMAIL = "parent_pin_owner_email"
         private const val KEY_APP_THEME = "app_theme"
@@ -267,6 +411,7 @@ class ParentPreferences(context: Context) {
         private const val KEY_CURFEW_START_HOUR = "curfew_start_hour"
         private const val KEY_CURFEW_END_HOUR = "curfew_end_hour"
         private const val KEY_LAST_WATCHED_DATE = "last_watched_date"
+        private const val KEY_LAST_RECORDED_TIMESTAMP = "last_recorded_wall_time_ms"
         private const val KEY_TODAY_WATCHED_SECONDS = "today_watched_seconds"
         private const val KEY_CACHED_PROFILES = "cached_profiles_json"
         private const val KEY_CACHED_PLAYLIST_PREFIX = "cached_playlist_json_"

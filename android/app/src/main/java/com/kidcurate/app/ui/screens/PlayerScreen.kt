@@ -106,6 +106,8 @@ fun PlayerScreen(
     var pendingUnlockAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     var lastRecordedSecond by remember(currentIndex) { mutableIntStateOf(0) }
+    var lastReportedProgressBucket by remember(currentIndex) { mutableIntStateOf(-1) }
+    var hasReportedCompletion by remember(currentIndex) { mutableStateOf(false) }
     var showEndCelebration by remember { mutableStateOf(false) }
     var celebrationCountdown by remember { mutableIntStateOf(4) }
 
@@ -114,7 +116,21 @@ fun PlayerScreen(
     var currentVideoTotalDuration by remember(currentIndex) { mutableFloatStateOf(0f) }
     var currentVideoHasError by remember(currentIndex) { mutableStateOf(false) }
 
-    LaunchedEffect(showEndCelebration) {
+    fun advanceFromCelebration() {
+        showEndCelebration = false
+        if (currentVideo != null && !hasReportedCompletion) {
+            hasReportedCompletion = true
+            parentPrefs.clearVideoProgress(currentVideo.youtubeId)
+            onVideoCompleted(currentVideo, currentVideoSeconds.toInt().coerceAtLeast(1))
+        }
+        if (currentIndex + 1 < videos.size) {
+            currentIndex++
+        } else {
+            onAllCompleted()
+        }
+    }
+
+    LaunchedEffect(showEndCelebration, currentIndex) {
         if (showEndCelebration) {
             SoundHaptics.playCelebration(view, haptic)
             celebrationCountdown = 4
@@ -122,15 +138,7 @@ fun PlayerScreen(
                 delay(1000)
                 celebrationCountdown--
             }
-            showEndCelebration = false
-            if (currentVideo != null) {
-                onVideoCompleted(currentVideo, 60)
-            }
-            if (currentIndex + 1 < videos.size) {
-                currentIndex++
-            } else {
-                onAllCompleted()
-            }
+            advanceFromCelebration()
         }
     }
 
@@ -143,12 +151,12 @@ fun PlayerScreen(
     val effectiveFullscreen = isFullscreen || (isWindowLandscape && !isTablet)
 
     fun attemptBack() {
-        if (isFullscreen) {
-            isFullscreen = false
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
-        } else if (isChildLockActive) {
+        if (isChildLockActive) {
             isExitingPlayer = true
             showParentPasswordDialog = true
+        } else if (effectiveFullscreen) {
+            isFullscreen = false
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         } else {
             onBack()
         }
@@ -199,11 +207,10 @@ fun PlayerScreen(
         }
     }
 
-    // Reset orientation to user preference, release lock task, and release wake lock when leaving the screen
+    // Reset orientation to user preference and release wake lock when leaving the screen
     DisposableEffect(Unit) {
         activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose {
-            try { activity?.stopLockTask() } catch (_: Exception) {}
             activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
             activity?.window?.let {
@@ -213,25 +220,48 @@ fun PlayerScreen(
     }
 
     // Retain video player instance across orientation & layout transitions with zero teardown
-    val playerComposable = remember(currentVideo?.youtubeId) {
-        movableContentOf { isFs: Boolean ->
-            if (currentVideo != null) {
+    val playerComposable = remember {
+        movableContentOf { isFs: Boolean, isLocked: Boolean ->
+            val activeVideo = currentVideo
+            if (activeVideo != null) {
                 OptimizedVideoPlayer(
-                    video = currentVideo,
+                    video = activeVideo,
                     isFullscreen = isFs,
+                    isChildLockActive = isLocked,
+                    isPlaybackBlocked = activeLimitType != null,
                     subtitlesEnabled = subtitlesEnabled,
                     onToggleSubtitles = {
                         val newState = !subtitlesEnabled
                         subtitlesEnabled = newState
                         parentPrefs.subtitlesEnabled = newState
                     },
-                    onToggleFullscreen = { isFullscreen = !isFs },
+                    onToggleFullscreen = {
+                        if (effectiveFullscreen) {
+                            isFullscreen = false
+                            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        } else {
+                            isFullscreen = true
+                            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                        }
+                    },
+                    onToggleChildLock = {
+                        if (isChildLockActive) {
+                            isExitingPlayer = false
+                            showParentPasswordDialog = true
+                        } else {
+                            isChildLockActive = true
+                        }
+                    },
                     onVideoEnded = { _ ->
                         isCurrentVideoCompleted = true
                         if (currentIndex + 1 < videos.size) {
                             showEndCelebration = true
                         } else {
-                            onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
+                            if (!hasReportedCompletion) {
+                                hasReportedCompletion = true
+                                parentPrefs.clearVideoProgress(activeVideo.youtubeId)
+                                onVideoCompleted(activeVideo, currentVideoSeconds.toInt().coerceAtLeast(1))
+                            }
                             onAllCompleted()
                         }
                     },
@@ -247,8 +277,10 @@ fun PlayerScreen(
                         if (dur > 5f && sec >= (dur - 4f).coerceAtMost(dur * 0.85f)) {
                             isCurrentVideoCompleted = true
                         }
-                        if (secInt > 0 && secInt % 30 == 0) {
-                            onProgressUpdate(currentVideo, secInt)
+                        val currentBucket = secInt / 30
+                        if (secInt > 0 && secInt % 30 == 0 && currentBucket != lastReportedProgressBucket) {
+                            lastReportedProgressBucket = currentBucket
+                            onProgressUpdate(activeVideo, secInt)
                         }
                         if (!curfewBypassed && parentPrefs.isCurfewActive()) {
                             activeLimitType = "curfew"
@@ -256,9 +288,32 @@ fun PlayerScreen(
                             activeLimitType = "limit"
                         }
                     },
-                    onSkipNext = if (currentIndex + 1 < videos.size && (isCurrentVideoCompleted || currentVideoHasError)) { { currentIndex++ } } else null,
-                    onFinishPlaylist = if (currentIndex + 1 >= videos.size) { { onBack() } } else null,
-                    onPlaybackError = { hasErr -> currentVideoHasError = hasErr },
+                    onSkipNext = if (currentIndex + 1 < videos.size && (isCurrentVideoCompleted || currentVideoHasError)) {
+                        {
+                            parentPrefs.clearVideoProgress(activeVideo.youtubeId)
+                            if (isCurrentVideoCompleted && !hasReportedCompletion) {
+                                hasReportedCompletion = true
+                                onVideoCompleted(activeVideo, currentVideoSeconds.toInt().coerceAtLeast(1))
+                            }
+                            currentIndex++
+                        }
+                    } else null,
+                    onFinishPlaylist = if (currentIndex + 1 >= videos.size) {
+                        {
+                            parentPrefs.clearVideoProgress(activeVideo.youtubeId)
+                            if (isCurrentVideoCompleted && !hasReportedCompletion) {
+                                hasReportedCompletion = true
+                                onVideoCompleted(activeVideo, currentVideoSeconds.toInt().coerceAtLeast(1))
+                            }
+                            onBack()
+                        }
+                    } else null,
+                    onPlaybackError = { hasErr ->
+                        currentVideoHasError = hasErr
+                        if (hasErr) {
+                            lastRecordedSecond = 0
+                        }
+                    },
                     onAttemptBack = { attemptBack() },
                 )
             }
@@ -279,7 +334,7 @@ fun PlayerScreen(
                         .weight(0.65f)
                         .fillMaxHeight()
                 ) {
-                    playerComposable(false)
+                    playerComposable(false, isChildLockActive)
                 }
                 // Right pane: title, controls, queue
                 Column(
@@ -319,7 +374,8 @@ fun PlayerScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                             if (currentIndex > 0) {
                                 OutlinedButton(
-                                    onClick = { currentIndex-- },
+                                    onClick = { if (!isChildLockActive) currentIndex-- },
+                                    enabled = !isChildLockActive,
                                     modifier = Modifier.height(34.dp),
                                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                                     shape = RoundedCornerShape(10.dp),
@@ -327,7 +383,7 @@ fun PlayerScreen(
                                 ) { Icon(Icons.Filled.SkipPrevious, contentDescription = "Prev", modifier = Modifier.size(16.dp)) }
                             }
                             if (currentIndex + 1 < videos.size) {
-                                val canProceed = isCurrentVideoCompleted || currentVideoHasError
+                                val canProceed = !isChildLockActive && (isCurrentVideoCompleted || currentVideoHasError)
                                 Button(
                                     onClick = { if (canProceed) currentIndex++ },
                                     enabled = canProceed,
@@ -366,7 +422,7 @@ fun PlayerScreen(
                             val isCurrent = idx == currentIndex
                             Surface(
                                 onClick = {
-                                    if (idx <= currentIndex || isCurrentVideoCompleted || currentVideoHasError) {
+                                    if (!isChildLockActive && (idx <= currentIndex || isCurrentVideoCompleted || currentVideoHasError)) {
                                         currentIndex = idx
                                     }
                                 },
@@ -403,7 +459,7 @@ fun PlayerScreen(
                         .fillMaxWidth()
                         .aspectRatio(16f / 9f)
                 ) {
-                    playerComposable(effectiveFullscreen)
+                    playerComposable(effectiveFullscreen, isChildLockActive)
                 }
             }
 
@@ -453,31 +509,31 @@ fun PlayerScreen(
                             // Quick Subtitle pill toggle
                             Row(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(10.dp))
                                     .background(
                                         if (subtitlesEnabled) BrandPrimary.copy(alpha = 0.15f)
                                         else MaterialTheme.colorScheme.surfaceVariant
                                     )
-                                    .clickable {
+                                    .clickable(enabled = !isChildLockActive) {
                                         val newState = !subtitlesEnabled
                                         subtitlesEnabled = newState
                                         parentPrefs.subtitlesEnabled = newState
                                     }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Icon(
                                     imageVector = if (subtitlesEnabled) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionDisabled,
                                     contentDescription = "Subtitles",
                                     tint = if (subtitlesEnabled) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(15.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
                                 Text(
                                     text = if (subtitlesEnabled) {
                                         if (parentPrefs.earlyReaderSubtitles) "PHONICS CC" else "CC ON"
                                     } else "CC OFF",
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (subtitlesEnabled) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -490,7 +546,7 @@ fun PlayerScreen(
                         ) {
                             // Touch Lock button right next to Next button
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 color = if (isChildLockActive) BrandPrimary else MaterialTheme.colorScheme.surfaceVariant,
                                 border = androidx.compose.foundation.BorderStroke(1.dp, if (isChildLockActive) BrandPrimary else MaterialTheme.colorScheme.outline),
                                 onClick = {
@@ -499,25 +555,24 @@ fun PlayerScreen(
                                         showParentPasswordDialog = true
                                     } else {
                                         isChildLockActive = true
-                                        try { activity?.startLockTask() } catch (_: Exception) {}
                                     }
                                 },
-                                modifier = Modifier.height(36.dp),
+                                modifier = Modifier.height(44.dp),
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 ) {
                                     Icon(
                                         if (isChildLockActive) Icons.Filled.Lock else Icons.Filled.LockOpen,
                                         contentDescription = "Lock",
                                         tint = if (isChildLockActive) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(15.dp),
+                                        modifier = Modifier.size(18.dp),
                                     )
                                     Text(
                                         text = if (isChildLockActive) "Locked" else "Lock",
-                                        fontSize = 12.sp,
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isChildLockActive) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -526,33 +581,49 @@ fun PlayerScreen(
 
                             if (currentIndex > 0) {
                                 OutlinedButton(
-                                    onClick = { currentIndex-- },
-                                    modifier = Modifier.height(36.dp),
+                                    onClick = { if (!isChildLockActive) currentIndex-- },
+                                    enabled = !isChildLockActive,
+                                    modifier = Modifier.height(44.dp),
                                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                                 ) {
                                     Icon(
                                         Icons.Filled.SkipPrevious,
                                         contentDescription = "Previous",
-                                        tint = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier.size(18.dp),
+                                        tint = if (!isChildLockActive) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.38f),
+                                        modifier = Modifier.size(20.dp),
                                     )
                                 }
                             }
                             if (currentIndex + 1 < videos.size) {
+                                val canProceed = !isChildLockActive && (isCurrentVideoCompleted || currentVideoHasError)
                                 Button(
-                                    onClick = { currentIndex++ },
-                                    modifier = Modifier.height(36.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                    onClick = {
+                                        if (canProceed) {
+                                            parentPrefs.clearVideoProgress(currentVideo.youtubeId)
+                                            if (isCurrentVideoCompleted && !hasReportedCompletion) {
+                                                hasReportedCompletion = true
+                                                onVideoCompleted(currentVideo, currentVideoSeconds.toInt().coerceAtLeast(1))
+                                            }
+                                            currentIndex++
+                                        }
+                                    },
+                                    enabled = canProceed,
+                                    modifier = Modifier.height(44.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = BrandPrimary,
+                                        disabledContainerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                    ),
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                                 ) {
-                                    Text("Next", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text("Next", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                     Spacer(Modifier.width(4.dp))
                                     Icon(
                                         Icons.Filled.SkipNext,
                                         contentDescription = "Next",
-                                        modifier = Modifier.size(18.dp),
+                                        modifier = Modifier.size(20.dp),
                                     )
                                 }
                             }
@@ -612,8 +683,19 @@ fun PlayerScreen(
                         ) {
                             itemsIndexed(videos, key = { _, v -> v.itemId }) { idx, v ->
                                 val isCurrent = idx == currentIndex
+                                val canClick = !isChildLockActive && (idx <= currentIndex || isCurrentVideoCompleted || currentVideoHasError)
                                 Surface(
-                                    onClick = { currentIndex = idx },
+                                    onClick = {
+                                        if (canClick) {
+                                            if (idx > currentIndex && isCurrentVideoCompleted && !hasReportedCompletion) {
+                                                hasReportedCompletion = true
+                                                parentPrefs.clearVideoProgress(currentVideo.youtubeId)
+                                                onVideoCompleted(currentVideo, currentVideoSeconds.toInt().coerceAtLeast(1))
+                                            }
+                                            currentIndex = idx
+                                        }
+                                    },
+                                    enabled = canClick,
                                     shape = RoundedCornerShape(14.dp),
                                     color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surface,
                                     border = androidx.compose.foundation.BorderStroke(
@@ -704,7 +786,11 @@ fun PlayerScreen(
                         if (currentIndex + 1 < videos.size) {
                             Button(
                                 onClick = {
-                                    if (isCurrentVideoCompleted) onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
+                                    parentPrefs.clearVideoProgress(currentVideo.youtubeId)
+                                    if (isCurrentVideoCompleted && !hasReportedCompletion) {
+                                        hasReportedCompletion = true
+                                        onVideoCompleted(currentVideo, currentVideoSeconds.toInt().coerceAtLeast(1))
+                                    }
                                     currentIndex++
                                 },
                                 modifier = Modifier
@@ -720,7 +806,11 @@ fun PlayerScreen(
                         } else {
                             Button(
                                 onClick = {
-                                    if (isCurrentVideoCompleted) onVideoCompleted(currentVideo, currentVideoSeconds.toInt())
+                                    parentPrefs.clearVideoProgress(currentVideo.youtubeId)
+                                    if (isCurrentVideoCompleted && !hasReportedCompletion) {
+                                        hasReportedCompletion = true
+                                        onVideoCompleted(currentVideo, currentVideoSeconds.toInt().coerceAtLeast(1))
+                                    }
                                     if (isCurrentVideoCompleted) onAllCompleted() else onBack()
                                 },
                                 modifier = Modifier
@@ -783,7 +873,7 @@ fun PlayerScreen(
                 IconButton(
                     onClick = { attemptBack() },
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.65f)),
                 ) {
@@ -791,7 +881,7 @@ fun PlayerScreen(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
                         tint = Color.White,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(24.dp),
                     )
                 }
             }
@@ -805,11 +895,14 @@ fun PlayerScreen(
             onSuccess = {
                 showParentPasswordDialog = false
                 isChildLockActive = false
-                try { activity?.stopLockTask() } catch (_: Exception) {}
                 pendingUnlockAction?.invoke()
                 pendingUnlockAction = null
                 if (isExitingPlayer) {
                     isExitingPlayer = false
+                    if (isFullscreen) {
+                        isFullscreen = false
+                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
+                    }
                     onBack()
                 }
             },
@@ -835,7 +928,7 @@ fun PlayerScreen(
             },
             title = {
                 Text(
-                    text = if (limitKind == "curfew") "Bedtime Mode 🌙" else "Daily Limit Reached ⏱️",
+                    text = if (limitKind == "curfew") "Bedtime Mode" else "Daily Limit Reached",
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
@@ -871,7 +964,7 @@ fun PlayerScreen(
                 OutlinedButton(
                     onClick = {
                         activeLimitType = null
-                        onBack()
+                        attemptBack()
                     }
                 ) {
                     Text("Done for Today")
@@ -944,13 +1037,7 @@ fun PlayerScreen(
 
                     Button(
                         onClick = {
-                            showEndCelebration = false
-                            onVideoCompleted(currentVideo, 60)
-                            if (currentIndex + 1 < videos.size) {
-                                currentIndex++
-                            } else {
-                                onAllCompleted()
-                            }
+                            advanceFromCelebration()
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -971,6 +1058,8 @@ fun PlayerScreen(
 fun OptimizedVideoPlayer(
     video: VideoItem,
     isFullscreen: Boolean,
+    isChildLockActive: Boolean = false,
+    isPlaybackBlocked: Boolean = false,
     subtitlesEnabled: Boolean,
     onToggleSubtitles: () -> Unit,
     onToggleFullscreen: () -> Unit,
@@ -980,137 +1069,47 @@ fun OptimizedVideoPlayer(
     onFinishPlaylist: (() -> Unit)? = null,
     onPlaybackError: ((Boolean) -> Unit)? = null,
     onAttemptBack: (() -> Unit)? = null,
+    onToggleChildLock: (() -> Unit)? = null,
 ) {
+    val currentVideoState by rememberUpdatedState(video)
+    val currentOnVideoEnded by rememberUpdatedState(onVideoEnded)
+    val currentOnProgressUpdate by rememberUpdatedState(onProgressUpdate)
+    val currentOnPlaybackError by rememberUpdatedState(onPlaybackError)
+    val currentOnSkipNext by rememberUpdatedState(onSkipNext)
+    val currentOnFinishPlaylist by rememberUpdatedState(onFinishPlaylist)
+    val currentOnAttemptBack by rememberUpdatedState(onAttemptBack)
+    val currentOnToggleChildLock by rememberUpdatedState(onToggleChildLock)
+    val currentOnToggleFullscreen by rememberUpdatedState(onToggleFullscreen)
+    val currentOnToggleSubtitles by rememberUpdatedState(onToggleSubtitles)
+
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val parentPrefs = remember { ParentPreferences.get(context) }
     var playerViewRef by remember { mutableStateOf<YouTubePlayerView?>(null) }
     var youTubePlayerRef by remember { mutableStateOf<YouTubePlayer?>(null) }
     var webViewRef by remember { mutableStateOf<android.webkit.WebView?>(null) }
-    var currentSecond by rememberSaveable(video.youtubeId) { mutableFloatStateOf(0f) }
+    var currentSecond by rememberSaveable(video.youtubeId) { mutableFloatStateOf(parentPrefs.getVideoProgress(video.youtubeId)) }
     var videoDuration by rememberSaveable(video.youtubeId) { mutableFloatStateOf(0f) }
+    var lastSavedProgressSecond by remember(video.youtubeId) { mutableFloatStateOf(0f) }
     var playerState by remember { mutableStateOf(PlayerConstants.PlayerState.UNKNOWN) }
     var showControls by remember { mutableStateOf(true) }
     var playbackError by remember { mutableStateOf<String?>(null) }
     var toastMessage by remember { mutableStateOf<String?>(null) }
-    var showQualityDialog by remember { mutableStateOf(false) }
     var currentQuality by remember { mutableStateOf(parentPrefs.videoQuality) }
-    var availableQualities by remember { mutableStateOf<List<String>>(emptyList()) }
 
-    fun queryAvailableQualities() {
-        val script = """
-        (function() {
-            try {
-                if (typeof player !== 'undefined' && player && player.getAvailableQualityLevels) {
-                    var levels = player.getAvailableQualityLevels();
-                    if (levels && levels.length > 0) return JSON.stringify(levels);
-                }
-            } catch(e) {}
-            return "[]";
-        })();
-        """.trimIndent()
-        webViewRef?.post {
-            webViewRef?.evaluateJavascript(script) { resultJson ->
-                try {
-                    if (!resultJson.isNullOrBlank() && resultJson != "null" && resultJson != "\"[]\"") {
-                        val cleaned = resultJson.trim().removeSurrounding("\"").replace("\\\"", "\"")
-                        val parsed = org.json.JSONArray(cleaned)
-                        val list = mutableListOf<String>()
-                        for (i in 0 until parsed.length()) {
-                            val q = parsed.optString(i)
-                            if (q.isNotBlank()) list.add(q)
-                        }
-                        if (list.isNotEmpty()) {
-                            availableQualities = list
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
-        }
-    }
-
-    fun applyVideoQuality(qualityKey: String, qualityLabel: String) {
+    fun applyVideoQuality(qualityKey: String) {
         currentQuality = qualityKey
-        parentPrefs.videoQuality = qualityKey
-        val script = """
-        (function() {
-            try {
-                if (typeof player !== 'undefined' && player) {
-                    var q = '$qualityKey';
-                    if (q === 'highres') {
-                        if (player.setPlaybackQualityRange) player.setPlaybackQualityRange('highres', 'highres');
-                        if (player.setPlaybackQuality) {
-                            player.setPlaybackQuality('hd2160');
-                            player.setPlaybackQuality('highres');
-                        }
-                    } else {
-                        if (player.setPlaybackQuality) player.setPlaybackQuality(q);
-                        if (player.setPlaybackQualityRange) player.setPlaybackQualityRange(q, q);
-                    }
-                }
-            } catch(e) {}
-        })();
-        """.trimIndent()
-        webViewRef?.post {
-            webViewRef?.evaluateJavascript(script, null)
-        }
-        toastMessage = "Quality: $qualityLabel"
-        showQualityDialog = false
     }
 
-    fun applySubtitles(enabled: Boolean, isKaraoke: Boolean = parentPrefs.earlyReaderSubtitles) {
+    fun applySubtitles(enabled: Boolean) {
         val script = if (enabled) {
-            val karaokeCss = if (isKaraoke) {
-                """
-                var styleId = 'kidcurate-karaoke-subtitles-style';
-                var styleEl = document.getElementById(styleId);
-                if (!styleEl) {
-                    styleEl = document.createElement('style');
-                    styleEl.id = styleId;
-                    styleEl.innerHTML = `
-                        .caption-window {
-                            background-color: rgba(15, 23, 42, 0.88) !important;
-                            border: 2px solid #F59E0B !important;
-                            border-radius: 14px !important;
-                            padding: 8px 16px !important;
-                            box-shadow: 0 4px 18px rgba(0,0,0,0.7) !important;
-                        }
-                        .ytp-caption-segment {
-                            font-size: 26px !important;
-                            line-height: 1.35 !important;
-                            font-weight: 800 !important;
-                            font-family: system-ui, -apple-system, Roboto, sans-serif !important;
-                            letter-spacing: 0.06em !important;
-                            word-spacing: 0.12em !important;
-                            color: #FFFFFF !important;
-                            text-shadow: 0 2px 4px rgba(0,0,0,0.9) !important;
-                        }
-                        .ytp-caption-segment:last-child {
-                            color: #FBBF24 !important;
-                            text-shadow: 0 0 12px rgba(251, 191, 36, 0.8), 0 2px 4px rgba(0,0,0,0.9) !important;
-                        }
-                    `;
-                    document.head.appendChild(styleEl);
-                }
-                """.trimIndent()
-            } else {
-                """
-                var oldStyle = document.getElementById('kidcurate-karaoke-subtitles-style');
-                if (oldStyle) oldStyle.remove();
-                """.trimIndent()
-            }
-
             """
             (function() {
                 try {
-                    $karaokeCss
                     if (typeof player !== 'undefined' && player) {
                         player.loadModule('captions');
                         player.setOption('captions', 'track', {'languageCode': 'en'});
                         player.setOption('captions', 'reload', true);
-                        if (player.setOption) {
-                            player.setOption('captions', 'fontSize', ${if (isKaraoke) 3 else 1});
-                        }
                     }
                 } catch(e) {}
             })();
@@ -1119,8 +1118,6 @@ fun OptimizedVideoPlayer(
             """
             (function() {
                 try {
-                    var oldStyle = document.getElementById('kidcurate-karaoke-subtitles-style');
-                    if (oldStyle) oldStyle.remove();
                     if (typeof player !== 'undefined' && player) {
                         player.unloadModule('captions');
                         player.setOption('captions', 'track', {});
@@ -1131,6 +1128,12 @@ fun OptimizedVideoPlayer(
         }
         webViewRef?.post {
             webViewRef?.evaluateJavascript(script, null)
+        }
+    }
+
+    LaunchedEffect(isPlaybackBlocked) {
+        if (isPlaybackBlocked) {
+            youTubePlayerRef?.pause()
         }
     }
 
@@ -1157,7 +1160,19 @@ fun OptimizedVideoPlayer(
 
     // Release YouTube player and unbind lifecycle observer when composable leaves composition
     DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE || event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                if (currentSecond > 1f) {
+                    parentPrefs.setVideoProgress(currentVideoState.youtubeId, currentSecond)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            if (currentSecond > 1f) {
+                parentPrefs.setVideoProgress(currentVideoState.youtubeId, currentSecond)
+            }
+            lifecycleOwner.lifecycle.removeObserver(observer)
             playerViewRef?.let { pv ->
                 try {
                     lifecycleOwner.lifecycle.removeObserver(pv)
@@ -1172,9 +1187,10 @@ fun OptimizedVideoPlayer(
 
     LaunchedEffect(video.youtubeId) {
         playbackError = null
-        currentSecond = 0f
+        val savedProgress = parentPrefs.getVideoProgress(video.youtubeId)
+        currentSecond = savedProgress
         videoDuration = 0f
-        youTubePlayerRef?.loadVideo(video.youtubeId, 0f)
+        youTubePlayerRef?.loadVideo(video.youtubeId, savedProgress)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -1201,14 +1217,18 @@ fun OptimizedVideoPlayer(
                         override fun onReady(youTubePlayer: YouTubePlayer) {
                             youTubePlayerRef = youTubePlayer
                             playbackError = null
-                            val resumeSeconds = if (currentSecond > 1f) currentSecond else 0f
-                            youTubePlayer.loadVideo(video.youtubeId, resumeSeconds)
+                            val savedProgress = parentPrefs.getVideoProgress(currentVideoState.youtubeId)
+                            val resumeSeconds = if (currentSecond > 1f) currentSecond else if (savedProgress > 1f) savedProgress else 0f
+                            currentSecond = resumeSeconds
+                            youTubePlayer.loadVideo(currentVideoState.youtubeId, resumeSeconds)
                             val wv = findWebView(this@apply)
                             wv?.settings?.apply {
                                 domStorageEnabled = true
                                 mediaPlaybackRequiresUserGesture = false
                                 allowFileAccess = false
                                 allowContentAccess = false
+                                setSupportMultipleWindows(false)
+                                javaScriptCanOpenWindowsAutomatically = false
                             }
                             try {
                                 val cm = android.webkit.CookieManager.getInstance()
@@ -1221,12 +1241,16 @@ fun OptimizedVideoPlayer(
 
                         override fun onCurrentSecond(youTubePlayer: YouTubePlayer, second: Float) {
                             currentSecond = second
-                            onProgressUpdate(second, videoDuration)
+                            currentOnProgressUpdate(second, videoDuration)
+                            if (second > 1f && (second - lastSavedProgressSecond >= 4f || second < lastSavedProgressSecond)) {
+                                lastSavedProgressSecond = second
+                                parentPrefs.setVideoProgress(currentVideoState.youtubeId, second)
+                            }
                         }
 
                         override fun onVideoDuration(youTubePlayer: YouTubePlayer, duration: Float) {
                             videoDuration = duration
-                            onProgressUpdate(currentSecond, duration)
+                            currentOnProgressUpdate(currentSecond, duration)
                         }
 
                         override fun onStateChange(
@@ -1236,10 +1260,10 @@ fun OptimizedVideoPlayer(
                             playerState = state
                             if (state == PlayerConstants.PlayerState.PLAYING) {
                                 applySubtitles(subtitlesEnabled)
-                                queryAvailableQualities()
                             }
                             if (state == PlayerConstants.PlayerState.ENDED) {
-                                onVideoEnded(currentSecond.toInt())
+                                parentPrefs.clearVideoProgress(currentVideoState.youtubeId)
+                                currentOnVideoEnded(currentSecond.toInt())
                             }
                         }
 
@@ -1258,7 +1282,7 @@ fun OptimizedVideoPlayer(
                                     "HTML5 player error encountered."
                                 else -> "Video playback is currently unavailable. Please check your connection."
                             }
-                            onPlaybackError?.invoke(true)
+                            currentOnPlaybackError?.invoke(true)
                         }
                     }, options)
                 }
@@ -1287,6 +1311,8 @@ fun OptimizedVideoPlayer(
                     mediaPlaybackRequiresUserGesture = false
                     allowFileAccess = false
                     allowContentAccess = false
+                    setSupportMultipleWindows(false)
+                    javaScriptCanOpenWindowsAutomatically = false
                 }
                 try {
                     val cm = android.webkit.CookieManager.getInstance()
@@ -1353,25 +1379,28 @@ fun OptimizedVideoPlayer(
                         OutlinedButton(
                             onClick = {
                                 playbackError = null
-                                onPlaybackError?.invoke(false)
-                                youTubePlayerRef?.loadVideo(video.youtubeId, 0f)
+                                currentOnPlaybackError?.invoke(false)
+                                currentSecond = 0f
+                                lastSavedProgressSecond = 0f
+                                parentPrefs.clearVideoProgress(currentVideoState.youtubeId)
+                                youTubePlayerRef?.loadVideo(currentVideoState.youtubeId, 0f)
                             },
                             shape = RoundedCornerShape(12.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.6f)),
                         ) {
                             Text("Retry", color = Color.White)
                         }
-                        if (onSkipNext != null) {
+                        if (currentOnSkipNext != null) {
                             Button(
-                                onClick = onSkipNext,
+                                onClick = currentOnSkipNext!!,
                                 colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                                 shape = RoundedCornerShape(12.dp),
                             ) {
                                 Text("Next Video", fontWeight = FontWeight.Bold)
                             }
-                        } else if (onFinishPlaylist != null) {
+                        } else if (currentOnFinishPlaylist != null) {
                             Button(
-                                onClick = onFinishPlaylist,
+                                onClick = currentOnFinishPlaylist!!,
                                 colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                                 shape = RoundedCornerShape(12.dp),
                             ) {
@@ -1420,34 +1449,38 @@ fun OptimizedVideoPlayer(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.5f))
             ) {
-                // In fullscreen, show top exit fullscreen button and video title
-                if (isFullscreen) {
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .statusBarsPadding()
-                            .displayCutoutPadding()
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
-                            .fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
+                // Top header: Back/Exit (fullscreen), Title, and Child Lock button (visible in all modes)
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .then(
+                            if (isFullscreen) Modifier
+                                .statusBarsPadding()
+                                .displayCutoutPadding()
+                            else Modifier
+                        )
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                        .fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (isFullscreen) {
                         IconButton(
-                            onClick = { onAttemptBack?.invoke() ?: onToggleFullscreen() },
+                            onClick = { currentOnAttemptBack?.invoke() ?: currentOnToggleFullscreen() },
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(46.dp)
                                 .clip(CircleShape)
                                 .background(Color.Black.copy(alpha = 0.65f)),
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = if (isFullscreen) "Exit Fullscreen" else "Back",
+                                contentDescription = "Exit Fullscreen",
                                 tint = Color.White,
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(24.dp),
                             )
                         }
                         Spacer(Modifier.width(12.dp))
                         Text(
-                            text = video.title,
+                            text = currentVideoState.title,
                             color = Color.White,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -1455,10 +1488,29 @@ fun OptimizedVideoPlayer(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                    }
+
+                    if (currentOnToggleChildLock != null) {
+                        IconButton(
+                            onClick = currentOnToggleChildLock!!,
+                            modifier = Modifier
+                                .size(46.dp)
+                                .clip(CircleShape)
+                                .background(if (isChildLockActive) BrandPrimary else Color.Black.copy(alpha = 0.65f)),
+                        ) {
+                            Icon(
+                                if (isChildLockActive) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                                contentDescription = if (isChildLockActive) "Unlock Controls" else "Lock Controls",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
                     }
                 }
 
-                // Center Play/Pause button
+                // Center Play/Pause button - Extra large and comfortable for kids (Always responsive even when locked)
                 IconButton(
                     onClick = {
                         youTubePlayerRef?.let { player ->
@@ -1471,15 +1523,15 @@ fun OptimizedVideoPlayer(
                     },
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .size(64.dp)
-                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(32.dp))
+                        .size(76.dp)
+                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(38.dp))
                 ) {
                     Icon(
                         imageVector = if (playerState == PlayerConstants.PlayerState.PLAYING) 
                             Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         contentDescription = "Play/Pause",
                         tint = Color.White,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(40.dp)
                     )
                 }
 
@@ -1494,20 +1546,20 @@ fun OptimizedVideoPlayer(
                                 .navigationBarsPadding()
                             else Modifier
                         )
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
                 ) {
-                    // Full-width scrubbing / progress indicator
+                    // Full-width scrubbing / progress indicator (6dp height for easy visual tracking)
                     LinearProgressIndicator(
                         progress = { if (videoDuration > 0) (currentSecond / videoDuration).coerceIn(0f, 1f) else 0f },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp)),
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
                         color = BrandPrimary,
                         trackColor = Color.White.copy(alpha = 0.3f)
                     )
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1518,186 +1570,65 @@ fun OptimizedVideoPlayer(
                         Text(
                             text = "${formatTime(currentSecond)} / ${formatTime(videoDuration)}",
                             color = Color.White.copy(alpha = 0.9f),
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                         )
 
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Subtitle / Closed Caption (CC) toggle button
+                            // Subtitle / Closed Caption (CC) toggle button (Enlarged to 46dp for kids)
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 color = if (subtitlesEnabled) BrandPrimary.copy(alpha = 0.9f)
                                 else Color.White.copy(alpha = 0.25f),
                                 onClick = {
-                                    onToggleSubtitles()
-                                    toastMessage = if (!subtitlesEnabled) {
-                                        if (parentPrefs.earlyReaderSubtitles) "Early Reader Karaoke CC ON" else "Subtitles ON (English)"
+                                    if (isChildLockActive) {
+                                        toastMessage = "Controls Locked"
                                     } else {
-                                        "Subtitles OFF"
+                                        currentOnToggleSubtitles()
+                                        toastMessage = if (!subtitlesEnabled) {
+                                            if (parentPrefs.earlyReaderSubtitles) "Early Reader Karaoke CC ON" else "Subtitles ON (English)"
+                                        } else {
+                                            "Subtitles OFF"
+                                        }
                                     }
                                 },
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(46.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = if (subtitlesEnabled) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionDisabled,
                                         contentDescription = if (subtitlesEnabled) "Disable Subtitles" else "Enable Subtitles",
                                         tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(22.dp)
                                     )
                                 }
                             }
 
-                            // Video Resolution / Quality button
+                            // Fullscreen toggle button (Enlarged to 46dp for kids)
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (currentQuality != "auto" && currentQuality != "default") BrandPrimary.copy(alpha = 0.9f)
-                                else Color.White.copy(alpha = 0.25f),
-                                onClick = {
-                                    queryAvailableQualities()
-                                    showQualityDialog = true
-                                },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.HighQuality,
-                                        contentDescription = "Video Quality / Resolution",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-
-                            // Fullscreen toggle button
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 color = Color.White.copy(alpha = 0.25f),
-                                onClick = { onToggleFullscreen() },
-                                modifier = Modifier.size(36.dp)
+                                onClick = {
+                                    if (isChildLockActive) {
+                                        toastMessage = "Controls Locked"
+                                    } else {
+                                        currentOnToggleFullscreen()
+                                    }
+                                },
+                                modifier = Modifier.size(46.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
                                         contentDescription = "Toggle Fullscreen",
                                         tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(24.dp)
                                     )
                                 }
                             }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Video Resolution / Quality Dialog
-        if (showQualityDialog) {
-            Dialog(onDismissRequest = { showQualityDialog = false }) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Icon(Icons.Rounded.HighQuality, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(36.dp))
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = "Video Resolution / Quality",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "Choose preferred playback resolution",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(16.dp))
-
-                        val qualityLabelsMap = mapOf(
-                            "highres" to "4K Ultra HD (2160p)",
-                            "hd1440" to "2K Quad HD (1440p)",
-                            "hd1080" to "1080p (Full HD)",
-                            "hd720" to "720p (HD)",
-                            "large" to "480p (Standard)",
-                            "medium" to "360p (Data Saver)",
-                            "small" to "240p",
-                            "tiny" to "144p",
-                        )
-
-                        val qualityOptions = if (availableQualities.isNotEmpty()) {
-                            buildList {
-                                add("default" to "Auto (Recommended)")
-                                availableQualities.forEach { qKey ->
-                                    if (qKey != "auto" && qKey != "default") {
-                                        val label = qualityLabelsMap[qKey] ?: qKey.uppercase()
-                                        add(qKey to label)
-                                    }
-                                }
-                            }
-                        } else {
-                            listOf(
-                                "default" to "Auto (Recommended)",
-                                "hd1080" to "1080p (Full HD)",
-                                "hd720" to "720p (HD)",
-                                "large" to "480p (Standard)",
-                                "medium" to "360p (Data Saver)",
-                            )
-                        }
-
-                        qualityOptions.forEach { (key, label) ->
-                            val isSelected = currentQuality == key
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    if (isSelected) BrandPrimary else Color.Transparent
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { applyVideoQuality(key, label) }
-                                    .padding(vertical = 4.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(
-                                        text = label,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) BrandPrimary else MaterialTheme.colorScheme.onSurface,
-                                    )
-                                    if (isSelected) {
-                                        Icon(
-                                            Icons.Rounded.CheckCircle,
-                                            contentDescription = null,
-                                            tint = BrandPrimary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedButton(
-                            onClick = { showQualityDialog = false },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text("Close")
                         }
                     }
                 }

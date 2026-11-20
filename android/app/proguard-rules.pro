@@ -17,8 +17,14 @@
 -keep class com.google.gson.examples.android.model.** { *; }
 -keep class com.google.gson.* { *; }
 
-# KidCurate Data Models
--keep class com.kidcurate.app.data.** { *; }
+# KidCurate Data Transfer Objects and Serializable Models
+-keep class com.kidcurate.app.data.*Item { *; }
+-keep class com.kidcurate.app.data.*Request { *; }
+-keep class com.kidcurate.app.data.*Response { *; }
+-keep class com.kidcurate.app.data.PlaylistData { *; }
+-keep class com.kidcurate.app.data.VideoItem { *; }
+-keep class com.kidcurate.app.data.ProgressUpdate { *; }
+-keep class com.kidcurate.app.data.GoogleCredentialAccount { *; }
 
 # YouTube Player library & WebView JS bridge
 -keep class com.pierfrancescosoffritti.androidyoutubeplayer.core.** { *; }
@@ -50,4 +56,10 @@
 # Google Sign-In SDK
 -keep class com.google.android.gms.auth.api.signin.** { *; }
 -keep class com.google.android.gms.common.api.** { *; }
+
+# AndroidX Credential Manager & Google Identity
+-keep class androidx.credentials.** { *; }
+-dontwarn androidx.credentials.**
+-keep class com.google.android.libraries.identity.googleid.** { *; }
+-dontwarn com.google.android.libraries.identity.googleid.**
 

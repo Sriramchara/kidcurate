@@ -58,9 +58,23 @@ fun TodaysPlaylistScreen(
     val parentPrefs = remember { ParentPreferences.get(context) }
     var curfewBypassed by remember { mutableStateOf(false) }
     var dailyLimitBypassed by remember { mutableStateOf(false) }
+    var limitCheckTick by remember { mutableLongStateOf(0L) }
 
-    val isCurfewBlocked = !curfewBypassed && parentPrefs.isCurfewActive()
-    val isDailyLimitBlocked = !dailyLimitBypassed && parentPrefs.isDailyLimitReached()
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(30_000L)
+            limitCheckTick++
+        }
+    }
+
+    val isCurfewBlocked = !curfewBypassed && run {
+        val tick = limitCheckTick
+        if (tick >= 0) parentPrefs.isCurfewActive() else false
+    }
+    val isDailyLimitBlocked = !dailyLimitBypassed && run {
+        val tick = limitCheckTick
+        if (tick >= 0) parentPrefs.isDailyLimitReached() else false
+    }
 
     // Defensive cleanup of screen pinning if navigating away or unmounting
     DisposableEffect(Unit) {
@@ -69,8 +83,7 @@ fun TodaysPlaylistScreen(
         }
     }
 
-    // When child lock is active, hardware back button prompts for Parent Password
-    BackHandler {
+    val safeBack: () -> Unit = {
         if (isChildLockActive) {
             pendingUnlockAction = {
                 isChildLockActive = false
@@ -81,6 +94,11 @@ fun TodaysPlaylistScreen(
         } else {
             onBack()
         }
+    }
+
+    // When child lock is active, hardware back button prompts for Parent Password
+    BackHandler {
+        safeBack()
     }
 
     Box(
@@ -95,11 +113,12 @@ fun TodaysPlaylistScreen(
         if (isCurfewBlocked) {
             CurfewRestView(
                 childName = childName,
+                curfewEndHour = parentPrefs.curfewEndHour,
                 onParentUnlock = {
                     pendingUnlockAction = { curfewBypassed = true }
                     showParentPasswordDialog = true
                 },
-                onBack = onBack
+                onBack = safeBack
             )
         } else if (isDailyLimitBlocked) {
             DailyLimitRestView(
@@ -109,7 +128,7 @@ fun TodaysPlaylistScreen(
                     pendingUnlockAction = { dailyLimitBypassed = true }
                     showParentPasswordDialog = true
                 },
-                onBack = onBack
+                onBack = safeBack
             )
         } else if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -131,18 +150,7 @@ fun TodaysPlaylistScreen(
                     }
                     showParentPasswordDialog = true
                 },
-                onBack = {
-                    if (isChildLockActive) {
-                        pendingUnlockAction = {
-                            isChildLockActive = false
-                            try { activity?.stopLockTask() } catch (_: Exception) {}
-                            onBack()
-                        }
-                        showParentPasswordDialog = true
-                    } else {
-                        onBack()
-                    }
-                }
+                onBack = safeBack
             )
         } else {
             FilledPlaylistLightView(
@@ -163,18 +171,7 @@ fun TodaysPlaylistScreen(
                     }
                 },
                 onStartPlaying = onStartPlaying,
-                onBack = {
-                    if (isChildLockActive) {
-                        pendingUnlockAction = {
-                            isChildLockActive = false
-                            try { activity?.stopLockTask() } catch (_: Exception) {}
-                            onBack()
-                        }
-                        showParentPasswordDialog = true
-                    } else {
-                        onBack()
-                    }
-                }
+                onBack = safeBack
             )
         }
 
@@ -808,9 +805,12 @@ fun EmptyPlaylistLightView(
 @Composable
 private fun CurfewRestView(
     childName: String,
+    curfewEndHour: Int = 7,
     onParentUnlock: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val endHourFormatted = if (curfewEndHour == 0) "12:00 AM" else if (curfewEndHour < 12) "$curfewEndHour:00 AM" else if (curfewEndHour == 12) "12:00 PM" else "${curfewEndHour - 12}:00 PM"
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -838,7 +838,7 @@ private fun CurfewRestView(
             }
             Spacer(Modifier.height(24.dp))
             Text(
-                text = "Sweet Dreams, $childName! 🌙",
+                text = "Sweet Dreams, $childName!",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
@@ -846,7 +846,7 @@ private fun CurfewRestView(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "It's bedtime curfew right now. Time to rest your eyes and recharge for tomorrow's learning adventures!",
+                text = "It's bedtime curfew until $endHourFormatted. Time to rest your eyes and recharge for tomorrow's learning adventures!",
                 fontSize = 15.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -911,7 +911,7 @@ private fun DailyLimitRestView(
             }
             Spacer(Modifier.height(24.dp))
             Text(
-                text = "Great Learning Today, $childName! ⏱️",
+                text = "Great Learning Today, $childName!",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,

@@ -50,7 +50,7 @@ fun ChildSelectScreen(
     onUpdateServerUrl: (String) -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val parentPrefs = remember { ParentPreferences(context) }
+    val parentPrefs = remember { ParentPreferences.get(context) }
     var showParentGate by remember { mutableStateOf(false) }
     var showOnboardingTour by remember { mutableStateOf(!parentPrefs.hasSeenOnboardingTour) }
     val view = LocalView.current
@@ -81,10 +81,10 @@ fun ChildSelectScreen(
             ) {
             Spacer(modifier = Modifier.height(if (isLandscape) 4.dp else 12.dp))
 
-            // Brand Tag & Server Settings Row
+            // Brand Tag & Discreet Parent Gate Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ThematicPill(
@@ -93,12 +93,44 @@ fun ChildSelectScreen(
                     tint = BrandPrimary,
                     background = MaterialTheme.colorScheme.primaryContainer,
                 )
+
+                // Discreet, tasteful Parent Gate button at top corner
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable {
+                            SoundHaptics.playTactileClick(view, haptic)
+                            showParentGate = true
+                        },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.Shield,
+                            contentDescription = "Parent Gate",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Text(
+                            text = "Parents",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(if (isLandscape) 6.dp else 16.dp))
 
             Text(
-                text = "Who's ready to explore?",
+                text = "Who's Watching?",
                 color = MaterialTheme.colorScheme.onBackground,
                 fontSize = if (isLandscape) 22.sp else 28.sp,
                 fontWeight = FontWeight.ExtraBold,
@@ -106,11 +138,11 @@ fun ChildSelectScreen(
             )
 
             Text(
-                text = "Pick your profile to jump into today's fun adventure!",
+                text = "Tap your avatar to play!",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = if (isLandscape) 13.sp else 15.sp,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 2.dp, bottom = if (isLandscape) 8.dp else 28.dp),
+                modifier = Modifier.padding(top = 2.dp, bottom = if (isLandscape) 8.dp else 24.dp),
             )
 
             if (isLoading) {
@@ -196,7 +228,7 @@ fun ChildSelectScreen(
                                 }
                             }
                         }
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
                         if (isError) {
                             Button(
                                 onClick = onRetry,
@@ -207,6 +239,45 @@ fun ChildSelectScreen(
                                 Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("Try Again", fontWeight = FontWeight.Bold)
+                            }
+
+                            if (com.kidcurate.app.BuildConfig.DEBUG) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "Target: ${parentPrefs.serverUrl.ifBlank { com.kidcurate.app.BuildConfig.API_BASE_URL }}",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    textAlign = TextAlign.Center,
+                                )
+
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "Quick Server Switch:",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    AssistChip(
+                                        onClick = { onUpdateServerUrl("https://kidcurate-api.onrender.com/") },
+                                        label = { Text("Cloud", fontSize = 11.sp) },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    AssistChip(
+                                        onClick = { onUpdateServerUrl("http://192.168.0.107:8000/") },
+                                        label = { Text("Wi-Fi PC", fontSize = 11.sp) },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    AssistChip(
+                                        onClick = { onUpdateServerUrl("http://localhost:8000/") },
+                                        label = { Text("USB", fontSize = 11.sp) },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
                             }
                         } else {
                             Button(
@@ -376,37 +447,30 @@ fun ChildSelectScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Parent Zone Button (Centered with maximum width constraint for tablet ergonomics)
+            // Subtle Parent Control shortcut at bottom (tasteful & non-distracting for kids)
             Box(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-                OutlinedButton(
+                TextButton(
                     onClick = {
                         SoundHaptics.playTactileClick(view, haptic)
                         showParentGate = true
                     },
-                    shape = RoundedCornerShape(16.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.5.dp, BrandPrimary.copy(alpha = 0.5f)),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = BrandPrimary,
-                    ),
-                    modifier = Modifier
-                        .widthIn(max = 480.dp)
-                        .fillMaxWidth()
-                        .height(if (isLandscape) 44.dp else 52.dp),
+                    modifier = Modifier.padding(bottom = if (isLandscape) 4.dp else 12.dp),
                 ) {
                     Icon(
-                        Icons.Rounded.Lock,
+                        Icons.Rounded.Settings,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.size(16.dp),
                     )
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(6.dp))
                     Text(
-                        text = "Parent Zone (Add Videos & Settings)",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
+                        text = "Parent Controls & Settings",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
                     )
                 }
             }

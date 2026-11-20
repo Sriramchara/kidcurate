@@ -9,6 +9,7 @@ data class ChildProfileItem(
     val id: String,
     val name: String,
     val avatar: String,
+    @SerializedName("has_pin") val hasPin: Boolean = false,
 )
 
 data class ChildVerifyRequest(

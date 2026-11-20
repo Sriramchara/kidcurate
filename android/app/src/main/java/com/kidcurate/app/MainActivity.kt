@@ -2,6 +2,7 @@ package com.kidcurate.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
@@ -22,33 +23,49 @@ import com.kidcurate.app.data.ParentPreferences
 import com.kidcurate.app.ui.screens.*
 import com.kidcurate.app.ui.theme.KidCurateTheme
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER
         enableEdgeToEdge()
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-        }
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val prefs = ParentPreferences.get(this)
         if (com.kidcurate.app.BuildConfig.DEBUG) {
-            if (intent.hasExtra("test_token")) {
-                prefs.parentAuthToken = intent.getStringExtra("test_token") ?: ""
-                prefs.parentEmail = intent.getStringExtra("test_email") ?: ""
-                prefs.hasSeenOnboardingTour = true
-                val testServer = intent.getStringExtra("test_server") ?: "http://127.0.0.1:8000/"
-                prefs.serverUrl = testServer
-                if (intent.hasExtra("test_profiles_json")) {
-                    prefs.cachedProfilesJson = intent.getStringExtra("test_profiles_json") ?: ""
+            val autoWalk = intent.getStringExtra("test_auto_walkthrough")
+            if (autoWalk != null) {
+                val tokenExtra = intent.getStringExtra("test_token")
+                if (!tokenExtra.isNullOrBlank()) {
+                    prefs.parentAuthToken = tokenExtra
                 }
-            }
-            if (intent.hasExtra("test_parent_pin")) {
-                prefs.parentPin = intent.getStringExtra("test_parent_pin") ?: "1234"
-                prefs.parentPinOwnerEmail = prefs.parentEmail
+                val emailExtra = intent.getStringExtra("test_email")
+                if (!emailExtra.isNullOrBlank()) {
+                    prefs.parentEmail = emailExtra
+                }
+                if (prefs.serverUrl.isBlank()) {
+                    prefs.serverUrl = intent.getStringExtra("test_server") ?: com.kidcurate.app.BuildConfig.API_BASE_URL
+                }
+                prefs.hasSeenOnboardingTour = true
+                val pinExtra = intent.getStringExtra("test_parent_pin")
+                if (!pinExtra.isNullOrBlank()) {
+                    prefs.parentPin = pinExtra
+                    prefs.parentPinOwnerEmail = prefs.parentEmail
+                }
+            } else {
+                if (intent.hasExtra("test_token")) {
+                    prefs.parentAuthToken = intent.getStringExtra("test_token") ?: ""
+                    prefs.parentEmail = intent.getStringExtra("test_email") ?: ""
+                    prefs.hasSeenOnboardingTour = true
+                    val testServer = intent.getStringExtra("test_server") ?: "http://127.0.0.1:8000/"
+                    prefs.serverUrl = testServer
+                    if (intent.hasExtra("test_profiles_json")) {
+                        prefs.cachedProfilesJson = intent.getStringExtra("test_profiles_json") ?: ""
+                    }
+                }
+                if (intent.hasExtra("test_parent_pin")) {
+                    prefs.parentPin = intent.getStringExtra("test_parent_pin") ?: "1234"
+                    prefs.parentPinOwnerEmail = prefs.parentEmail
+                }
             }
         }
         if (prefs.serverUrl.isNotBlank()) {
@@ -109,35 +126,82 @@ fun KidApp(
 
     if (com.kidcurate.app.BuildConfig.DEBUG && autoWalkthrough != null) {
         LaunchedEffect(autoWalkthrough) {
-            when (autoWalkthrough) {
-                "poco_rotation_splitscreen" -> {
-                    kotlinx.coroutines.delay(1200)
-                    val maya = state.availableProfiles.find { it.name.contains("Maya", ignoreCase = true) }
-                        ?: state.availableProfiles.firstOrNull()
-                    if (maya != null) {
-                        viewModel.selectProfile(maya)
-                        kotlinx.coroutines.delay(1200)
-                        viewModel.verifyPin(maya.id, "4321")
-                        kotlinx.coroutines.delay(1500)
-                        viewModel.startPlaying(0)
-                        kotlinx.coroutines.delay(4000)
-                        activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                        kotlinx.coroutines.delay(5000)
-                        activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                        kotlinx.coroutines.delay(4000)
-                    }
+            // 1. Wait for available profiles to load
+            for (i in 0 until 50) {
+                if (state.availableProfiles.isNotEmpty()) break
+                kotlinx.coroutines.delay(200)
+            }
+            if (state.availableProfiles.isEmpty()) {
+                val demoProfile = com.kidcurate.app.data.ChildProfileItem(
+                    id = "89b9bed9-4135-4e94-bd95-c05101ebb062",
+                    name = "Maya",
+                    avatar = "rainbow"
+                )
+                val demoItem1 = com.kidcurate.app.data.VideoItem(
+                    itemId = "dd83b682-bfc1-4dfd-b113-7dd95546d4e1",
+                    position = 1,
+                    youtubeId = "M7lc1UVf-VE",
+                    title = "YouTube Developers Live Demo",
+                    channelName = "Google Developers",
+                    thumbnailUrl = "https://img.youtube.com/vi/M7lc1UVf-VE/hqdefault.jpg",
+                    durationSeconds = 100,
+                    subjectTags = listOf("learning", "tech")
+                )
+                val demoItem2 = com.kidcurate.app.data.VideoItem(
+                    itemId = "ecf0f4a6-1fb4-4ab9-8c2e-fb2d26597d98",
+                    position = 2,
+                    youtubeId = "jNQXAC9IVRw",
+                    title = "Me at the zoo",
+                    channelName = "jawed",
+                    thumbnailUrl = "https://img.youtube.com/vi/jNQXAC9IVRw/hqdefault.jpg",
+                    durationSeconds = 19,
+                    subjectTags = listOf("animals")
+                )
+                val demoPlaylist = com.kidcurate.app.data.PlaylistData(
+                    id = "61f78a6b-d857-4776-8132-4d0512756525",
+                    childId = demoProfile.id,
+                    title = "Maya's Curated Stories",
+                    description = null,
+                    scheduledDate = "2026-11-19",
+                    isActive = true,
+                    totalDurationSeconds = 119,
+                    videoCount = 2,
+                    items = listOf(demoItem1, demoItem2)
+                )
+                viewModel.setDemoWalkthroughData(demoProfile, demoPlaylist)
+            }
+            val profile = state.availableProfiles.find { it.name.contains("Maya", ignoreCase = true) }
+                ?: state.availableProfiles.firstOrNull()
+
+            if (profile != null) {
+                // Step 1: Select profile
+                viewModel.selectProfile(profile)
+                kotlinx.coroutines.delay(1200)
+
+                // Step 2: Unlock PIN
+                val verified = viewModel.verifyPin(profile.id, "4321")
+                if (!verified) {
+                    viewModel.unlockChildDirectly(profile.id, profile.name, profile.avatar)
                 }
-                "child_lock_check" -> {
-                    kotlinx.coroutines.delay(1200)
-                    val maya = state.availableProfiles.find { it.name.contains("Maya", ignoreCase = true) }
-                        ?: state.availableProfiles.firstOrNull()
-                    if (maya != null) {
-                        viewModel.selectProfile(maya)
-                        kotlinx.coroutines.delay(1200)
-                        viewModel.verifyPin(maya.id, "4321")
-                        kotlinx.coroutines.delay(1500)
-                        viewModel.startPlaying(0)
-                    }
+
+                // Step 3: Wait for playlist to load
+                for (i in 0 until 50) {
+                    if (state.playlist?.items?.isNotEmpty() == true) break
+                    kotlinx.coroutines.delay(200)
+                }
+                kotlinx.coroutines.delay(1500)
+
+                // Step 4: Open video player
+                viewModel.startPlaying(0)
+
+                if (autoWalkthrough == "poco_rotation_splitscreen") {
+                    kotlinx.coroutines.delay(4000)
+                    // Rotate to Landscape
+                    activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                    kotlinx.coroutines.delay(6000)
+                    // Rotate back to Portrait
+                    activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    kotlinx.coroutines.delay(4000)
                 }
             }
         }
@@ -196,6 +260,7 @@ fun KidApp(
                     onVerifyPin = { id, pin ->
                         viewModel.verifyPin(id, pin)
                     },
+                    onClearError = { viewModel.clearError() },
                     onParentUnlock = {
                         viewModel.unlockChildDirectly(screen.childId, screen.childName, screen.childAvatar)
                     },
@@ -239,8 +304,9 @@ fun KidApp(
                     },
                     onAllCompleted = {
                         val totalMinutes = (state.playlist?.totalDurationSeconds ?: 0) / 60
+                        val actualWatched = if (completedCount > 0) completedCount else (videos.size - screen.startIndex).coerceAtLeast(1)
                         viewModel.showCompletion(
-                            videosWatched = videos.size,
+                            videosWatched = actualWatched,
                             totalMinutes = totalMinutes,
                         )
                     },

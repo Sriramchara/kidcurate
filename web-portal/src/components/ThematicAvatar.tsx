@@ -26,7 +26,7 @@ export function getAvatarConfig(name: string = '', avatarKey: string = '') {
   const normAvatar = (avatarKey || '').trim().toLowerCase();
 
   // 1. Explicit matches for existing children
-  if (normName === 'aarav' || normAvatar.includes('🦁') || normAvatar.includes('compass') || normAvatar.includes('explorer')) {
+  if (normName === 'aarav' || normAvatar.includes('lion') || normAvatar.includes('compass') || normAvatar.includes('explorer')) {
     return {
       label: 'Explorer',
       Icon: Compass,
@@ -37,7 +37,7 @@ export function getAvatarConfig(name: string = '', avatarKey: string = '') {
     };
   }
 
-  if (normName === 'maya' || normAvatar.includes('🦄') || normAvatar.includes('sparkle') || normAvatar.includes('magic')) {
+  if (normName === 'maya' || normAvatar.includes('unicorn') || normAvatar.includes('sparkle') || normAvatar.includes('magic')) {
     return {
       label: 'Sparkle',
       Icon: Sparkles,
@@ -48,7 +48,7 @@ export function getAvatarConfig(name: string = '', avatarKey: string = '') {
     };
   }
 
-  if (normName === 'leo' || normAvatar.includes('🚀') || normAvatar.includes('rocket') || normAvatar.includes('space')) {
+  if (normName === 'leo' || normAvatar.includes('rocket') || normAvatar.includes('space')) {
     return {
       label: 'Rocket',
       Icon: Rocket,
@@ -59,7 +59,7 @@ export function getAvatarConfig(name: string = '', avatarKey: string = '') {
     };
   }
 
-  if (normAvatar.includes('🐬') || normAvatar.includes('waves') || normAvatar.includes('ocean')) {
+  if (normAvatar.includes('dolphin') || normAvatar.includes('waves') || normAvatar.includes('ocean')) {
     return {
       label: 'Ocean',
       Icon: Waves,
@@ -70,7 +70,7 @@ export function getAvatarConfig(name: string = '', avatarKey: string = '') {
     };
   }
 
-  if (normAvatar.includes('🦊') || normAvatar.includes('flame') || normAvatar.includes('blaze')) {
+  if (normAvatar.includes('fox') || normAvatar.includes('flame') || normAvatar.includes('blaze')) {
     return {
       label: 'Blaze',
       Icon: Flame,
@@ -81,7 +81,7 @@ export function getAvatarConfig(name: string = '', avatarKey: string = '') {
     };
   }
 
-  if (normAvatar.includes('🐘') || normAvatar.includes('shield') || normAvatar.includes('guardian')) {
+  if (normAvatar.includes('elephant') || normAvatar.includes('shield') || normAvatar.includes('guardian')) {
     return {
       label: 'Guardian',
       Icon: Shield,
@@ -92,7 +92,7 @@ export function getAvatarConfig(name: string = '', avatarKey: string = '') {
     };
   }
 
-  if (normAvatar.includes('🦋') || normAvatar.includes('palette') || normAvatar.includes('artist')) {
+  if (normAvatar.includes('butterfly') || normAvatar.includes('palette') || normAvatar.includes('artist')) {
     return {
       label: 'Artist',
       Icon: Palette,
@@ -103,7 +103,7 @@ export function getAvatarConfig(name: string = '', avatarKey: string = '') {
     };
   }
 
-  if (normAvatar.includes('🌟') || normAvatar.includes('star')) {
+  if (normAvatar.includes('star')) {
     return {
       label: 'Superstar',
       Icon: Star,

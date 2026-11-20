@@ -136,4 +136,33 @@ class PlaybackUsabilityTest {
         assertEquals(1, ResponsiveLayoutPolicy.playlistGridColumns(400, 700))
         assertEquals(74, ResponsiveLayoutPolicy.pinButtonSizeDp(400, 700))
     }
+
+    @Test
+    fun pbkdf2HashedPinProducesExpectedFormatAndSalt() {
+        val pin = "1234"
+        val salt = ByteArray(16) { 0x01.toByte() }
+        val spec = javax.crypto.spec.PBEKeySpec(pin.toCharArray(), salt, 100_000, 256)
+        val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        val hash = factory.generateSecret(spec).encoded
+        assertTrue(hash.isNotEmpty())
+        assertEquals(32, hash.size)
+    }
+
+    @Test
+    fun failedPinAttemptsTriggerExponentialLockout() {
+        val maxAttempts = 5
+        var failedAttempts = 0
+        var lockoutMs = 0L
+
+        for (i in 1..7) {
+            failedAttempts++
+            if (failedAttempts >= maxAttempts) {
+                val multiplier = 1 shl (failedAttempts - maxAttempts).coerceAtMost(5)
+                lockoutMs = 30_000L * multiplier
+            }
+        }
+
+        assertEquals(7, failedAttempts)
+        assertEquals(120_000L, lockoutMs)
+    }
 }

@@ -3,6 +3,7 @@ package com.kidcurate.app.data
 import android.content.Context
 import android.util.Log
 import com.kidcurate.app.BuildConfig
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -47,7 +48,7 @@ interface KidCurateApi {
     suspend fun removeVideoFromChildPlaylist(
         @Path("child_id") childId: String,
         @Path("item_id") itemId: String,
-    ): Map<String, Any>
+    ): retrofit2.Response<Unit>
 
     @PUT("api/playlists/child/{child_id}/reorder")
     suspend fun reorderChildPlaylist(
@@ -68,10 +69,10 @@ interface KidCurateApi {
     ): ChildManageItem
 
     @DELETE("api/children/manage/{child_id}")
-    suspend fun deleteChild(@Path("child_id") childId: String): Map<String, Any>
+    suspend fun deleteChild(@Path("child_id") childId: String): retrofit2.Response<Unit>
 
     @DELETE("api/auth/account")
-    suspend fun deleteAccount(): Map<String, Any>
+    suspend fun deleteAccount(): retrofit2.Response<Unit>
 
     @GET("api/auth/diagnostic/db-summary")
     suspend fun getDbSummary(): DbSummaryResponse
@@ -133,14 +134,25 @@ private val Response.responseCount: Int
 object ApiClient {
     private val logging = HttpLoggingInterceptor().apply {
         level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
+        redactHeader("Authorization")
     }
 
     @Volatile
     var authToken: String = ""
 
     @Volatile
+    var onSessionExpired: (() -> Unit)? = null
+
+    @Volatile
     private var appContext: Context? = null
     private val refreshLock = Any()
+
+    private val refreshClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+    }
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -160,15 +172,55 @@ object ApiClient {
             } else {
                 orig
             }
-            chain.proceed(newReq)
+            try {
+                chain.proceed(newReq)
+            } catch (e: java.io.IOException) {
+                val currentHost = orig.url.host
+                if (BuildConfig.DEBUG && (currentHost == "localhost" || currentHost == "127.0.0.1" || currentHost == "10.0.2.2")) {
+                    val fallbackUrls = listOf(
+                        "http://192.168.0.107:8000/",
+                        BuildConfig.API_BASE_URL.trimEnd('/') + "/"
+                    )
+                    var lastEx: java.io.IOException = e
+                    for (fallback in fallbackUrls) {
+                        try {
+                            val fallbackUrl = fallback.toHttpUrlOrNull()
+                            if (fallbackUrl != null) {
+                                val newUrl = orig.url.newBuilder()
+                                    .scheme(fallbackUrl.scheme)
+                                    .host(fallbackUrl.host)
+                                    .port(fallbackUrl.port)
+                                    .build()
+                                val retryReq = newReq.newBuilder().url(newUrl).build()
+                                val resp = chain.proceed(retryReq)
+                                if (resp.isSuccessful || resp.code in 400..499) {
+                                    updateBaseUrl(fallback)
+                                    return@addInterceptor resp
+                                }
+                                resp.close()
+                            }
+                        } catch (failEx: java.io.IOException) {
+                            lastEx = failEx
+                        }
+                    }
+                    throw lastEx
+                } else {
+                    throw e
+                }
+            }
         }
         .authenticator { _, response ->
             if (response.responseCount >= 3) return@authenticator null
             val path = response.request.url.encodedPath
-            if (path.contains("api/auth/refresh") || path.contains("api/auth/login") || path.contains("api/auth/google")) {
+            if (path.contains("api/auth/refresh") ||
+                path.contains("api/auth/login") ||
+                path.contains("api/auth/google") ||
+                path.contains("api/auth/register") ||
+                path.contains("api/auth/verify-parent-password")) {
                 return@authenticator null
             }
             val reqToken = response.request.header("Authorization")?.removePrefix("Bearer ")?.trim() ?: ""
+            if (reqToken.isBlank()) return@authenticator null
 
             synchronized(refreshLock) {
                 // If another concurrent thread has already refreshed the token, retry with it
@@ -183,38 +235,42 @@ object ApiClient {
                 val rToken = prefs.parentRefreshToken
                 if (rToken.isBlank()) return@authenticator null
 
-                val refreshUrl = currentBaseUrl + "api/auth/refresh"
-                val jsonMediaType = "application/json; charset=utf-8".toMediaType()
-                val body = "{\"refresh_token\": \"$rToken\"}".toRequestBody(jsonMediaType)
+                val refreshUrl = response.request.url.newBuilder()
+                    .encodedPath("/api/auth/refresh")
+                    .query(null)
+                    .build()
+                val bodyJson = JSONObject().apply {
+                    put("refresh_token", rToken)
+                }.toString()
+                val body = bodyJson.toRequestBody("application/json; charset=utf-8".toMediaType())
                 val refreshRequest = Request.Builder()
                     .url(refreshUrl)
                     .post(body)
                     .build()
 
                 try {
-                    val rawClient = OkHttpClient.Builder()
-                        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                        .build()
-                    val refreshResp = rawClient.newCall(refreshRequest).execute()
-                    if (refreshResp.isSuccessful) {
-                        val respBody = refreshResp.body?.string() ?: ""
-                        val json = JSONObject(respBody)
-                        val newAccess = json.optString("access_token", "")
-                        val newRefresh = json.optString("refresh_token", "")
-                        if (newAccess.isNotBlank()) {
-                            authToken = newAccess
-                            prefs.parentAuthToken = newAccess
-                            if (newRefresh.isNotBlank()) {
-                                prefs.parentRefreshToken = newRefresh
+                    val refreshResp = refreshClient.newCall(refreshRequest).execute()
+                    refreshResp.use { resp ->
+                        if (resp.isSuccessful) {
+                            val respBody = resp.body?.string() ?: ""
+                            val json = JSONObject(respBody)
+                            val newAccess = json.optString("access_token", "")
+                            val newRefresh = json.optString("refresh_token", "")
+                            if (newAccess.isNotBlank()) {
+                                authToken = newAccess
+                                prefs.parentAuthToken = newAccess
+                                if (newRefresh.isNotBlank()) {
+                                    prefs.parentRefreshToken = newRefresh
+                                }
+                                return@authenticator response.request.newBuilder()
+                                    .header("Authorization", "Bearer $newAccess")
+                                    .build()
                             }
-                            return@authenticator response.request.newBuilder()
-                                .header("Authorization", "Bearer $newAccess")
-                                .build()
+                        } else if (resp.code in 400..499) {
+                            prefs.clearParentSession()
+                            authToken = ""
+                            onSessionExpired?.invoke()
                         }
-                    } else if (refreshResp.code == 401 || refreshResp.code == 403) {
-                        prefs.clearParentSession()
-                        authToken = ""
                     }
                 } catch (e: Exception) {
                     Log.e("ApiClient", "Token refresh failed: ${e.message}")
@@ -226,13 +282,13 @@ object ApiClient {
         .build()
 
     private val cloudProbeClient = httpClient.newBuilder()
-        .connectTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(CloudConnectionPolicy.CLOUD_PROBE_TIMEOUT_SECONDS.toLong(), java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(CloudConnectionPolicy.CLOUD_PROBE_TIMEOUT_SECONDS.toLong(), java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
     private val localProbeClient = httpClient.newBuilder()
-        .connectTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(CloudConnectionPolicy.LOCAL_PROBE_TIMEOUT_SECONDS.toLong(), java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(CloudConnectionPolicy.LOCAL_PROBE_TIMEOUT_SECONDS.toLong(), java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
     @Volatile
@@ -269,8 +325,10 @@ object ApiClient {
     fun getBaseUrl(): String = currentBaseUrl
 
     fun updateBaseUrl(newUrl: String) {
-        val sanitized = if (newUrl.endsWith("/")) newUrl else "$newUrl/"
-        currentBaseUrl = sanitized
-        currentApi = buildApi(sanitized)
+        val sanitized = CloudConnectionPolicy.sanitizeBaseUrl(newUrl)
+        if (sanitized.isNotBlank()) {
+            currentBaseUrl = sanitized
+            currentApi = buildApi(sanitized)
+        }
     }
 }

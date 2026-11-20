@@ -101,7 +101,14 @@ fun ParentZoneScreen(
                 val list = ApiClient.api.getManageChildren()
                 if (list.isNotEmpty()) {
                     managedChildren = list
-                    val cachedList = list.map { ChildProfileItem(id = it.id, name = it.name, avatar = it.avatar) }
+                    val cachedList = list.map {
+                        ChildProfileItem(
+                            id = it.id,
+                            name = it.name,
+                            avatar = it.avatar,
+                            hasPin = it.hasPin ?: !it.pin.isNullOrBlank(),
+                        )
+                    }
                     parentPrefs.cachedProfilesJson = com.google.gson.Gson().toJson(cachedList)
                     if (selectedChildId.isEmpty()) {
                         selectedChildId = list.first().id
@@ -317,18 +324,53 @@ fun ParentZoneScreen(
                         }
                     }
 
-                    // Navigation Tabs
-                    TabRow(
-                        selectedTabIndex = selectedTabIndex,
-                        containerColor = BackgroundCard,
-                        contentColor = BrandPrimary,
-                    ) {
-                        tabTitles.forEachIndexed { index, title ->
-                            Tab(
-                                selected = selectedTabIndex == index,
-                                onClick = { selectedTabIndex = index },
-                                icon = if (isLandscape) null else {
-                                    {
+                    // Navigation Tabs (Scrollable on compact phones, TabRow on tablets & landscape)
+                    if (isTablet || isLandscape) {
+                        TabRow(
+                            selectedTabIndex = selectedTabIndex,
+                            containerColor = BackgroundCard,
+                            contentColor = BrandPrimary,
+                        ) {
+                            tabTitles.forEachIndexed { index, title ->
+                                Tab(
+                                    selected = selectedTabIndex == index,
+                                    onClick = { selectedTabIndex = index },
+                                    icon = if (isLandscape) null else {
+                                        {
+                                            val icon = when (index) {
+                                                0 -> Icons.Rounded.PlayCircle
+                                                1 -> Icons.Rounded.Search
+                                                2 -> Icons.Rounded.History
+                                                3 -> Icons.Rounded.Face
+                                                else -> Icons.Rounded.Settings
+                                            }
+                                            Icon(icon, contentDescription = title, modifier = Modifier.size(18.dp))
+                                        }
+                                    },
+                                    text = {
+                                        Text(
+                                            text = title,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Medium,
+                                            maxLines = 1,
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    } else {
+                        ScrollableTabRow(
+                            selectedTabIndex = selectedTabIndex,
+                            containerColor = BackgroundCard,
+                            contentColor = BrandPrimary,
+                            edgePadding = 12.dp,
+                            divider = {},
+                        ) {
+                            tabTitles.forEachIndexed { index, title ->
+                                Tab(
+                                    selected = selectedTabIndex == index,
+                                    onClick = { selectedTabIndex = index },
+                                    icon = {
                                         val icon = when (index) {
                                             0 -> Icons.Rounded.PlayCircle
                                             1 -> Icons.Rounded.Search
@@ -336,18 +378,18 @@ fun ParentZoneScreen(
                                             3 -> Icons.Rounded.Face
                                             else -> Icons.Rounded.Settings
                                         }
-                                        Icon(icon, contentDescription = title, modifier = Modifier.size(18.dp))
-                                    }
-                                },
-                                text = {
-                                    Text(
-                                        text = title,
-                                        fontSize = if (isLandscape) 11.sp else 10.sp,
-                                        fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Medium,
-                                        maxLines = 1,
-                                    )
-                                },
-                            )
+                                        Icon(icon, contentDescription = title, modifier = Modifier.size(20.dp))
+                                    },
+                                    text = {
+                                        Text(
+                                            text = title,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Medium,
+                                            maxLines = 1,
+                                        )
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -475,7 +517,8 @@ fun ParentZoneScreen(
                         }
                         scope.launch {
                             try {
-                                ApiClient.api.removeVideoFromChildPlaylist(selectedChildId, itemId)
+                                val resp = ApiClient.api.removeVideoFromChildPlaylist(selectedChildId, itemId)
+                                if (!resp.isSuccessful) throw retrofit2.HttpException(resp)
                                 statusMessage = "Video removed from playlist."
                             } catch (e: Exception) {
                                 statusMessage = "Error removing video: ${e.message}"
@@ -639,15 +682,8 @@ fun ParentZoneScreen(
         val child = showEditChildDialog!!
         var nameInput by remember { mutableStateOf(child.name) }
         var ageInput by remember { mutableStateOf(child.age.toString()) }
-        val rawPin = child.pin.orEmpty()
-        val localPin = parentPrefs.getChildLocalPin(child.id)
-        val knownPin = when {
-            localPin.isNotBlank() && localPin.all { it.isDigit() } -> localPin
-            rawPin.isNotBlank() && !rawPin.startsWith("$2") && rawPin.all { it.isDigit() } -> rawPin
-            else -> ""
-        }
+        val hasExistingPin = child.hasPin == true || !child.pin.isNullOrBlank()
         var pinInput by remember { mutableStateOf("") }
-        var isCurrentPinVisible by remember { mutableStateOf(false) }
         var isNewPinVisible by remember { mutableStateOf(false) }
         var avatarInput by remember { mutableStateOf(child.avatar) }
         val avatarChoices = listOf("compass", "sparkles", "rocket", "heart", "waves", "flame", "shield", "palette", "star")
@@ -679,41 +715,27 @@ fun ParentZoneScreen(
                         modifier = Modifier.fillMaxWidth(),
                     )
 
-                    if (knownPin.isNotBlank()) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, BrandPrimary.copy(alpha = 0.3f)),
-                            modifier = Modifier.fillMaxWidth(),
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column {
-                                    Text("Current PIN", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
-                                    Text(
-                                        text = if (isCurrentPinVisible) knownPin else "••••",
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = BrandPrimary,
-                                        letterSpacing = 2.sp,
-                                    )
-                                }
-                                IconButton(
-                                    onClick = { isCurrentPinVisible = !isCurrentPinVisible },
-                                    modifier = Modifier.size(32.dp),
-                                ) {
-                                    Icon(
-                                        if (isCurrentPinVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                                        contentDescription = "Toggle PIN",
-                                        tint = BrandPrimary,
-                                        modifier = Modifier.size(18.dp),
-                                    )
-                                }
+                            Column {
+                                Text("PIN Status", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = if (hasExistingPin) "Protected with 4-digit PIN" else "No PIN set",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
                             }
                         }
                     }
@@ -721,8 +743,8 @@ fun ParentZoneScreen(
                     OutlinedTextField(
                         value = pinInput,
                         onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) pinInput = it },
-                        label = { Text(if (knownPin.isNotBlank()) "Set New PIN (Optional)" else "Child 4-digit PIN") },
-                        placeholder = { Text(if (knownPin.isNotBlank()) "Leave blank to keep current PIN" else "Enter 4-digit PIN") },
+                        label = { Text(if (hasExistingPin) "Change PIN (leave blank to keep)" else "Child 4-digit PIN (optional)") },
+                        placeholder = { Text(if (hasExistingPin) "Leave blank to keep current PIN" else "Enter 4-digit PIN") },
                         visualTransformation = if (isNewPinVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(onClick = { isNewPinVisible = !isNewPinVisible }) {
@@ -808,11 +830,15 @@ fun ParentZoneScreen(
                                 )
                                 val updatedList = managedChildren.map { if (it.id == child.id) updatedChild else it }
                                 managedChildren = updatedList
-                                val cachedList = updatedList.map { ChildProfileItem(id = it.id, name = it.name, avatar = it.avatar) }
-                                parentPrefs.cachedProfilesJson = com.google.gson.Gson().toJson(cachedList)
-                                if (updatedPin != null) {
-                                    parentPrefs.setChildLocalPin(child.id, updatedPin)
+                                val cachedList = updatedList.map {
+                                    ChildProfileItem(
+                                        id = it.id,
+                                        name = it.name,
+                                        avatar = it.avatar,
+                                        hasPin = it.hasPin ?: !it.pin.isNullOrBlank(),
+                                    )
                                 }
+                                parentPrefs.cachedProfilesJson = com.google.gson.Gson().toJson(cachedList)
                                 statusMessage = "Updated profile for ${nameInput.trim()}!"
                                 refreshManagedChildren()
                             } catch (e: Exception) {
@@ -965,9 +991,15 @@ fun ParentZoneScreen(
                                 )
                                 val updated = managedChildren + created
                                 managedChildren = updated
-                                val cachedList = updated.map { ChildProfileItem(id = it.id, name = it.name, avatar = it.avatar) }
+                                val cachedList = updated.map {
+                                    ChildProfileItem(
+                                        id = it.id,
+                                        name = it.name,
+                                        avatar = it.avatar,
+                                        hasPin = it.hasPin ?: !it.pin.isNullOrBlank(),
+                                    )
+                                }
                                 parentPrefs.cachedProfilesJson = com.google.gson.Gson().toJson(cachedList)
-                                parentPrefs.setChildLocalPin(created.id, pinInput.trim())
                                 statusMessage = "Created profile for ${nameInput.trim()}!"
                                 refreshManagedChildren()
                             } catch (e: Exception) {
@@ -1010,10 +1042,18 @@ fun ParentZoneScreen(
                     onClick = {
                         scope.launch {
                             try {
-                                ApiClient.api.deleteChild(child.id)
+                                val resp = ApiClient.api.deleteChild(child.id)
+                                if (!resp.isSuccessful) throw retrofit2.HttpException(resp)
                                 val updated = managedChildren.filter { it.id != child.id }
                                 managedChildren = updated
-                                val cachedList = updated.map { ChildProfileItem(id = it.id, name = it.name, avatar = it.avatar) }
+                                val cachedList = updated.map {
+                                    ChildProfileItem(
+                                        id = it.id,
+                                        name = it.name,
+                                        avatar = it.avatar,
+                                        hasPin = it.hasPin ?: !it.pin.isNullOrBlank(),
+                                    )
+                                }
                                 parentPrefs.cachedProfilesJson = com.google.gson.Gson().toJson(cachedList)
                                 statusMessage = "${child.name}'s profile was deleted."
                                 refreshManagedChildren()

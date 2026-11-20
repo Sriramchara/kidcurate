@@ -5,7 +5,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-layout.buildDirectory.set(file("C:/tmp/kidcurate-build/app"))
+// Optional custom build directory override (e.g. for Windows path length limits)
+(project.findProperty("CUSTOM_BUILD_DIR") as? String)?.let {
+    layout.buildDirectory.set(file(it))
+}
 
 val localSigningProperties = Properties().apply {
     val propertiesFile = rootProject.file("keystore.properties")
@@ -38,28 +41,36 @@ android {
         buildConfigField("String", "GOOGLE_CLIENT_ID", "\"$googleClientId\"")
     }
 
+    val hasReleaseKeystore = releaseStorePassword != null && file("keystore/kidcurate-release.jks").exists()
+
     signingConfigs {
-        create("release") {
-            storeFile = file("keystore/kidcurate-release.jks")
-            storePassword = requireNotNull(releaseStorePassword) {
-                "Set KIDCURATE_STORE_PASSWORD or android/keystore.properties before building a release."
-            }
-            keyAlias = "kidcurate"
-            keyPassword = requireNotNull(releaseKeyPassword) {
-                "Set KIDCURATE_KEY_PASSWORD or android/keystore.properties before building a release."
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = file("keystore/kidcurate-release.jks")
+                storePassword = releaseStorePassword
+                keyAlias = "kidcurate"
+                keyPassword = releaseKeyPassword
             }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
-            isShrinkResources = false
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            // Must use project keystore matching the SHA-1 registered in Google Cloud Console for Google Sign-In
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     
@@ -108,6 +119,9 @@ dependencies {
 
     // Encrypted SharedPreferences backed by Android Keystore
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // Biometric & Device Credential Authentication for Parent Gate
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
 
     // Google Sign-In through Android Credential Manager
     implementation("androidx.credentials:credentials:1.6.0")

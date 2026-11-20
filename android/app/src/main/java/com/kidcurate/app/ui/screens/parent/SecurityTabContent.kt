@@ -1,5 +1,6 @@
 package com.kidcurate.app.ui.screens.parent
 
+import android.app.Activity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -27,6 +28,8 @@ import com.kidcurate.app.data.DbSummaryResponse
 import com.kidcurate.app.data.GoogleCredentialAuth
 import com.kidcurate.app.data.ParentSessionPolicy
 import com.kidcurate.app.data.ParentPreferences
+import com.kidcurate.app.data.ParentBiometricAuth
+import androidx.fragment.app.FragmentActivity
 import com.kidcurate.app.ui.components.OnboardingTourDialog
 import com.kidcurate.app.ui.theme.*
 import kotlinx.coroutines.launch
@@ -501,6 +504,129 @@ fun SecurityTab(
             }
         }
 
+        // Child Playback & Profile Access Card
+        var requireChildPinState by remember { mutableStateOf(parentPrefs.requireChildPin) }
+        var selectedVideoQuality by remember { mutableStateOf(parentPrefs.videoQuality) }
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = BackgroundCard,
+            border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceCardBorder),
+            shadowElevation = 1.dp,
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(Icons.Rounded.SmartDisplay, contentDescription = null, tint = BrandPrimary)
+                    Text("Child Access & Video Quality", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    text = "Configure instant profile access for toddlers and default streaming resolution.",
+                    fontSize = 13.sp,
+                    color = TextSecondary,
+                )
+
+                Spacer(Modifier.height(14.dp))
+
+                // Instant Tap-to-Play vs Child PIN Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Require Child Profile PIN",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary,
+                        )
+                        Text(
+                            text = if (requireChildPinState)
+                                "Children must enter their 4-digit PIN to open their playlist."
+                            else
+                                "Instant Play: Children tap their avatar to start watching immediately (recommended for ages 3–6).",
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Switch(
+                        checked = requireChildPinState,
+                        onCheckedChange = {
+                            requireChildPinState = it
+                            parentPrefs.requireChildPin = it
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = BrandPrimary,
+                        ),
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = SurfaceCardBorder)
+                Spacer(Modifier.height(12.dp))
+
+                // Video Streaming Quality
+                Text(
+                    text = "Streaming Video Quality",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary,
+                )
+                Text(
+                    text = "Controls resolution without exposing technical settings inside the child player.",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                )
+                Spacer(Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    listOf(
+                        "auto" to "Auto",
+                        "hd1080" to "1080p",
+                        "hd720" to "720p",
+                        "large" to "480p",
+                        "medium" to "360p",
+                    ).forEach { (qualityKey, label) ->
+                        val isSelected = selectedVideoQuality == qualityKey
+                        OutlinedButton(
+                            onClick = {
+                                selectedVideoQuality = qualityKey
+                                parentPrefs.videoQuality = qualityKey
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (isSelected) BrandPrimary.copy(alpha = 0.15f) else Color.Transparent,
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.5.dp,
+                                if (isSelected) BrandPrimary else SurfaceCardBorder,
+                            ),
+                            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp),
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) BrandPrimary else TextSecondary,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // Parent Cloud Account Card (Google Sign-In)
         val scope = rememberCoroutineScope()
         var accountStatusMessage by remember { mutableStateOf<String?>(null) }
@@ -512,12 +638,15 @@ fun SecurityTab(
         var showChangeParentPinDialog by remember { mutableStateOf(false) }
 
         fun connectGoogleAccount() {
+            val activity = appContext as? Activity
+                ?: (appContext as? android.content.ContextWrapper)?.baseContext as? Activity
+                ?: return
             scope.launch {
                 isAccountLoading = true
                 accountStatusMessage = null
                 try {
                     val account = GoogleCredentialAuth.signIn(
-                        context = appContext,
+                        activity = activity,
                         serverClientId = parentPrefs.googleClientId.trim(),
                     )
                     val email = account.email
@@ -746,7 +875,10 @@ fun SecurityTab(
                             scope.launch {
                                 isDeletingAccount = true
                                 try {
-                                    ApiClient.api.deleteAccount()
+                                    val resp = ApiClient.api.deleteAccount()
+                                    if (!resp.isSuccessful && resp.code() !in listOf(401, 404)) {
+                                        throw HttpException(resp)
+                                    }
                                     runCatching { GoogleCredentialAuth.signOut(appContext) }
                                     parentPrefs.clearAccountData()
                                     currentToken = ""
@@ -919,8 +1051,10 @@ fun SecurityTab(
         }
 
         // Parent Security & PIN Control Card
+        var currentPinInput by remember { mutableStateOf("") }
         var newPinInput by remember { mutableStateOf("") }
         var confirmPinInput by remember { mutableStateOf("") }
+        var isBiometricVerified by remember { mutableStateOf(false) }
         var pinErrorMessage by remember { mutableStateOf<String?>(null) }
         var pinSuccessMessage by remember { mutableStateOf<String?>(null) }
 
@@ -1002,8 +1136,10 @@ fun SecurityTab(
                         }
                         OutlinedButton(
                             onClick = {
+                                currentPinInput = ""
                                 newPinInput = ""
                                 confirmPinInput = ""
+                                isBiometricVerified = false
                                 pinErrorMessage = null
                                 pinSuccessMessage = null
                                 showChangeParentPinDialog = true
@@ -1127,6 +1263,62 @@ fun SecurityTab(
                         )
                         Spacer(Modifier.height(14.dp))
 
+                        if (parentPrefs.hasParentPin && !isBiometricVerified) {
+                            OutlinedTextField(
+                                value = currentPinInput,
+                                onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) currentPinInput = it },
+                                label = { Text("Current 4-digit PIN") },
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            if (ParentBiometricAuth.isBiometricOrDeviceLockAvailable(appContext)) {
+                                Spacer(Modifier.height(8.dp))
+                                FilledTonalButton(
+                                    onClick = {
+                                        pinErrorMessage = null
+                                        val fragmentActivity = appContext as? androidx.fragment.app.FragmentActivity
+                                        if (fragmentActivity != null) {
+                                            ParentBiometricAuth.authenticate(
+                                                activity = fragmentActivity,
+                                                title = "Verify Parent Identity",
+                                                subtitle = "Confirm fingerprint or phone lock to authorize PIN change.",
+                                                onSuccess = {
+                                                    isBiometricVerified = true
+                                                    pinErrorMessage = null
+                                                },
+                                                onError = { err -> pinErrorMessage = err },
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                ) {
+                                    Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Verify with Fingerprint / Phone Lock", fontSize = 12.sp)
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                        } else if (isBiometricVerified) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = BrandSuccess.copy(alpha = 0.12f),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = BrandSuccess, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Identity verified via device security.", fontSize = 12.sp, color = BrandSuccess, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+
                         OutlinedTextField(
                             value = newPinInput,
                             onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) newPinInput = it },
@@ -1166,6 +1358,12 @@ fun SecurityTab(
                             }
                             Button(
                                 onClick = {
+                                    if (parentPrefs.hasParentPin && !isBiometricVerified) {
+                                        if (!parentPrefs.verifyParentPin(currentPinInput)) {
+                                            pinErrorMessage = "Current PIN is incorrect."
+                                            return@Button
+                                        }
+                                    }
                                     if (newPinInput.length != 4) {
                                         pinErrorMessage = "PIN must be exactly 4 digits."
                                         return@Button
