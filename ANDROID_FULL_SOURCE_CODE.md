@@ -4274,11 +4274,14 @@ fun PlayerScreen(
     // Tablets in landscape get two-pane layout, NOT forced fullscreen
     val effectiveFullscreen = isFullscreen || (isWindowLandscape && !isTablet)
 
+    val currentIsChildLockActive by rememberUpdatedState(isChildLockActive)
+    val currentEffectiveFullscreen by rememberUpdatedState(effectiveFullscreen)
+
     fun attemptBack() {
-        if (isChildLockActive) {
+        if (currentIsChildLockActive) {
             isExitingPlayer = true
             showParentPasswordDialog = true
-        } else if (effectiveFullscreen) {
+        } else if (currentEffectiveFullscreen) {
             isFullscreen = false
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         } else {
@@ -4638,7 +4641,7 @@ fun PlayerScreen(
                                         if (subtitlesEnabled) BrandPrimary.copy(alpha = 0.15f)
                                         else MaterialTheme.colorScheme.surfaceVariant
                                     )
-                                    .clickable(enabled = !isChildLockActive) {
+                                    .clickable {
                                         val newState = !subtitlesEnabled
                                         subtitlesEnabled = newState
                                         parentPrefs.subtitlesEnabled = newState
@@ -5196,6 +5199,7 @@ fun OptimizedVideoPlayer(
     onToggleChildLock: (() -> Unit)? = null,
 ) {
     val currentVideoState by rememberUpdatedState(video)
+    val currentIsChildLockActive by rememberUpdatedState(isChildLockActive)
     val currentOnVideoEnded by rememberUpdatedState(onVideoEnded)
     val currentOnProgressUpdate by rememberUpdatedState(onProgressUpdate)
     val currentOnPlaybackError by rememberUpdatedState(onPlaybackError)
@@ -5589,7 +5593,13 @@ fun OptimizedVideoPlayer(
                 ) {
                     if (isFullscreen) {
                         IconButton(
-                            onClick = { currentOnAttemptBack?.invoke() ?: currentOnToggleFullscreen() },
+                            onClick = {
+                                if (currentIsChildLockActive) {
+                                    currentOnAttemptBack?.invoke()
+                                } else {
+                                    currentOnAttemptBack?.invoke() ?: currentOnToggleFullscreen()
+                                }
+                            },
                             modifier = Modifier
                                 .size(46.dp)
                                 .clip(CircleShape)
@@ -5708,15 +5718,11 @@ fun OptimizedVideoPlayer(
                                 color = if (subtitlesEnabled) BrandPrimary.copy(alpha = 0.9f)
                                 else Color.White.copy(alpha = 0.25f),
                                 onClick = {
-                                    if (isChildLockActive) {
-                                        toastMessage = "Controls Locked"
+                                    currentOnToggleSubtitles()
+                                    toastMessage = if (!subtitlesEnabled) {
+                                        if (parentPrefs.earlyReaderSubtitles) "Early Reader Karaoke CC ON" else "Subtitles ON (English)"
                                     } else {
-                                        currentOnToggleSubtitles()
-                                        toastMessage = if (!subtitlesEnabled) {
-                                            if (parentPrefs.earlyReaderSubtitles) "Early Reader Karaoke CC ON" else "Subtitles ON (English)"
-                                        } else {
-                                            "Subtitles OFF"
-                                        }
+                                        "Subtitles OFF"
                                     }
                                 },
                                 modifier = Modifier.size(46.dp)
@@ -5736,11 +5742,7 @@ fun OptimizedVideoPlayer(
                                 shape = RoundedCornerShape(12.dp),
                                 color = Color.White.copy(alpha = 0.25f),
                                 onClick = {
-                                    if (isChildLockActive) {
-                                        toastMessage = "Controls Locked"
-                                    } else {
-                                        currentOnToggleFullscreen()
-                                    }
+                                    currentOnToggleFullscreen()
                                 },
                                 modifier = Modifier.size(46.dp)
                             ) {
