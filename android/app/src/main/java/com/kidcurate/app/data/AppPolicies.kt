@@ -269,4 +269,10 @@ object EmailOtpPolicy {
             else -> "${local.first()}${"*".repeat((local.length - 2).coerceAtMost(4))}${local.last()}$domain"
         }
     }
+
+    fun requiresGoogleFirstTimeOtp(response: Map<String, Any?>): Boolean {
+        val flag = response["requires_otp"] as? Boolean ?: false
+        val token = (response["access_token"] as? String).orEmpty()
+        return flag && token.isBlank()
+    }
 }

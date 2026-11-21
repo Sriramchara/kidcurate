@@ -209,5 +209,16 @@ class AppPoliciesTest {
 
         assertEquals("p****e@gmail.com", EmailOtpPolicy.maskEmail("parent.name@gmail.com"))
         assertEquals("a*c@gmail.com", EmailOtpPolicy.maskEmail("abc@gmail.com"))
+
+        assertTrue(
+            EmailOtpPolicy.requiresGoogleFirstTimeOtp(
+                mapOf("requires_otp" to true, "access_token" to "", "is_new_user" to true)
+            )
+        )
+        assertFalse(
+            EmailOtpPolicy.requiresGoogleFirstTimeOtp(
+                mapOf("requires_otp" to false, "access_token" to "jwt-token-123", "is_new_user" to false)
+            )
+        )
     }
 }

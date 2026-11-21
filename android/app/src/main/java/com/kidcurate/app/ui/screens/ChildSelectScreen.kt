@@ -481,7 +481,7 @@ fun ChildSelectScreen(
     if (showParentGate) {
         ParentPasswordDialog(
             title = if (parentPrefs.isParentLoggedIn) "Parent Verification" else "Parent Account Sign In",
-            subtitle = if (parentPrefs.isParentLoggedIn) "Enter 4-digit Parent PIN" else "Sign in with Google to set up child profiles",
+            subtitle = if (parentPrefs.isParentLoggedIn) "Enter 4-digit Parent PIN" else "Sign in with Google or Gmail OTP to set up child profiles",
             forceGoogleOnly = !parentPrefs.isParentLoggedIn,
             onSuccess = {
                 showParentGate = false

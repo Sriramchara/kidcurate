@@ -21,6 +21,7 @@ from app.auth import (
 from app.services.email import (
     send_password_reset_email,
     send_otp_verification_email,
+    send_welcome_email,
     is_smtp_configured,
 )
 
@@ -73,6 +74,9 @@ class TokenResponse(BaseModel):
     user_id: str
     name: str
     email: str
+    requires_otp: bool = False
+    is_new_user: bool = False
+    message: Optional[str] = None
 
 
 class RefreshTokenRequest(BaseModel):
@@ -165,6 +169,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
 async def register(
     data: RegisterRequest,
     response: Response,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     # Check if email already exists
@@ -181,6 +186,8 @@ async def register(
     await db.commit()
     await db.refresh(user)
 
+    background_tasks.add_task(send_welcome_email, to_email=user.email, parent_name=user.name)
+
     access_token = create_access_token({"sub": str(user.id)})
     refresh_token = create_refresh_token({"sub": str(user.id)})
     set_auth_cookies(response, access_token, refresh_token)
@@ -191,6 +198,7 @@ async def register(
         user_id=str(user.id),
         name=user.name,
         email=user.email,
+        is_new_user=True,
     )
 
 
@@ -337,9 +345,10 @@ class GoogleLoginRequest(BaseModel):
 async def google_login(
     data: GoogleLoginRequest,
     response: Response,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    """Authenticate or register a parent account using Google Sign-In."""
+    """Authenticate or initiate OTP-verified first-time setup for a parent using Google Sign-In."""
     import logging
     logger = logging.getLogger("uvicorn.error")
 
@@ -381,6 +390,49 @@ async def google_login(
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
     if not user:
+        # First-time user signing in by Google account: require 6-digit Gmail OTP verification
+        if is_smtp_configured():
+            otp_req_key = f"otp_req_{email}"
+            check_auth_rate_limit(otp_req_key, max_attempts=5, lock_minutes=5)
+            record_auth_failure(otp_req_key, max_attempts=6, lock_minutes=5)
+
+            code = f"{secrets.randbelow(900000) + 100000}"
+            expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+            await db.execute(delete(PasswordResetToken).where(PasswordResetToken.email == email))
+            otp_entry = PasswordResetToken(
+                email=email,
+                code_hash=hash_password(code),
+                expires_at=expires_at,
+                attempts=0,
+            )
+            db.add(otp_entry)
+            await db.commit()
+
+            delivered = await send_otp_verification_email(
+                to_email=email,
+                code=code,
+                purpose="google_signup",
+                parent_name=name,
+            )
+            if not delivered:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Could not deliver verification email. Please verify your Gmail address and try again.",
+                )
+
+            return TokenResponse(
+                access_token="",
+                refresh_token=None,
+                user_id="",
+                name=name,
+                email=email,
+                requires_otp=True,
+                is_new_user=True,
+                message="A 6-digit verification code has been sent to your Gmail to complete first-time setup.",
+            )
+
+        # Fallback only if SMTP is unconfigured on server
         user = User(
             name=name,
             email=email,
@@ -389,10 +441,14 @@ async def google_login(
         db.add(user)
         await db.commit()
         await db.refresh(user)
-    elif name and name != "Parent" and (not user.name or user.name == "Parent" or user.name == email.split("@")[0]):
-        user.name = name
-        await db.commit()
-        await db.refresh(user)
+        background_tasks.add_task(send_welcome_email, to_email=user.email, parent_name=user.name)
+        is_new_user = True
+    else:
+        is_new_user = False
+        if name and name != "Parent" and (not user.name or user.name == "Parent" or user.name == email.split("@")[0]):
+            user.name = name
+            await db.commit()
+            await db.refresh(user)
 
     access_token = create_access_token({"sub": str(user.id)})
     refresh_token = create_refresh_token({"sub": str(user.id)})
@@ -404,6 +460,8 @@ async def google_login(
         user_id=str(user.id),
         name=user.name,
         email=user.email,
+        requires_otp=False,
+        is_new_user=is_new_user,
     )
 
 
@@ -412,11 +470,11 @@ async def request_email_otp(
     data: OtpRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Send a 6-digit single-use Gmail/email OTP for parent sign-in or Parent Lock reset.
+    """Send a 6-digit single-use Gmail/email OTP for parent sign-in, first-time Google setup, or Parent Lock reset.
     Reuses PasswordResetToken storage (zero schema changes) with bcrypt hashing and 10-minute expiry.
     """
     clean_email = data.email.lower().strip()
-    purpose = "reset_lock" if data.purpose == "reset_lock" else "login"
+    purpose = data.purpose if data.purpose in ("reset_lock", "google_signup", "login") else "login"
 
     # Rate limit OTP dispatch per email (max 5 requests per 5 minutes)
     otp_req_key = f"otp_req_{clean_email}"
@@ -481,12 +539,13 @@ async def request_email_otp(
 async def verify_email_otp(
     data: OtpVerifyRequest,
     response: Response,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    """Verify a 6-digit email OTP and issue authenticated parent JWT tokens."""
+    """Verify a 6-digit email OTP, issue authenticated parent JWT tokens, and send a Welcome Note to first-time users."""
     clean_email = data.email.lower().strip()
     clean_code = data.code.strip()
-    purpose = "reset_lock" if data.purpose == "reset_lock" else "login"
+    purpose = data.purpose if data.purpose in ("reset_lock", "google_signup", "login") else "login"
 
     if len(clean_code) != 6 or not clean_code.isdigit():
         raise HTTPException(
@@ -538,6 +597,7 @@ async def verify_email_otp(
 
     user_res = await db.execute(select(User).where(User.email == clean_email))
     user = user_res.scalar_one_or_none()
+    is_new_user = False
 
     if not user:
         if purpose == "reset_lock":
@@ -552,6 +612,8 @@ async def verify_email_otp(
         db.add(user)
         await db.commit()
         await db.refresh(user)
+        is_new_user = True
+        background_tasks.add_task(send_welcome_email, to_email=user.email, parent_name=user.name)
     else:
         await db.commit()
 
@@ -565,6 +627,8 @@ async def verify_email_otp(
         user_id=str(user.id),
         name=user.name,
         email=user.email,
+        requires_otp=False,
+        is_new_user=is_new_user,
     )
 
 

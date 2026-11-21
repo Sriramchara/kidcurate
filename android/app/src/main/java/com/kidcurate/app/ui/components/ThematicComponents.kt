@@ -315,6 +315,11 @@ fun ParentPasswordDialog(
     allowGoogleSignIn: Boolean = true,
     forceGoogleOnly: Boolean = false,
     initialStartMode: ParentGateMode? = null,
+    initialOtpEmail: String = "",
+    initialOtpName: String = "",
+    initialOtpSent: Boolean = false,
+    initialOtpMessage: String? = null,
+    initialOtpPurpose: String = "login",
     onSuccess: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -373,11 +378,13 @@ fun ParentPasswordDialog(
     var draftPattern by remember { mutableStateOf<List<Int>?>(null) }
     var patternError by remember { mutableStateOf(false) }
     var patternResetKey by remember { mutableIntStateOf(0) }
-    var otpEmailInput by remember { mutableStateOf(parentPrefs.parentEmail) }
+    var otpEmailInput by remember { mutableStateOf(initialOtpEmail.ifBlank { parentPrefs.parentEmail }) }
+    var pendingOtpName by remember { mutableStateOf(initialOtpName) }
+    var otpPurpose by remember { mutableStateOf(initialOtpPurpose) }
     var otpCodeInput by remember { mutableStateOf("") }
-    var otpSent by remember { mutableStateOf(false) }
-    var otpResendCooldown by remember { mutableIntStateOf(0) }
-    var otpStatusMessage by remember { mutableStateOf<String?>(null) }
+    var otpSent by remember { mutableStateOf(initialOtpSent) }
+    var otpResendCooldown by remember { mutableIntStateOf(if (initialOtpSent) EmailOtpPolicy.RESEND_COOLDOWN_SECONDS else 0) }
+    var otpStatusMessage by remember { mutableStateOf(initialOtpMessage) }
     var showSecretText by remember { mutableStateOf(false) }
     var isVerifying by remember { mutableStateOf(false) }
     var isResettingCredential by remember { mutableStateOf(false) }
@@ -421,7 +428,7 @@ fun ParentPasswordDialog(
             errorMessage = null
             otpStatusMessage = null
             try {
-                val purpose = if (isResettingCredential) "reset_lock" else "login"
+                val purpose = if (isResettingCredential) "reset_lock" else otpPurpose
                 val resp = ApiClient.api.requestEmailOtp(
                     mapOf(
                         "email" to cleanEmail,
@@ -460,14 +467,16 @@ fun ParentPasswordDialog(
             isVerifying = true
             errorMessage = null
             try {
-                val purpose = if (isResettingCredential) "reset_lock" else "login"
-                val resp = ApiClient.api.verifyEmailOtp(
-                    mapOf(
-                        "email" to cleanEmail,
-                        "code" to cleanCode,
-                        "purpose" to purpose,
-                    )
+                val purpose = if (isResettingCredential) "reset_lock" else otpPurpose
+                val payload = mutableMapOf(
+                    "email" to cleanEmail,
+                    "code" to cleanCode,
+                    "purpose" to purpose,
                 )
+                if (pendingOtpName.isNotBlank()) {
+                    payload["name"] = pendingOtpName.trim()
+                }
+                val resp = ApiClient.api.verifyEmailOtp(payload)
                 val token = resp["access_token"] as? String ?: ""
                 val refreshToken = resp["refresh_token"] as? String ?: ""
                 val serverName = (resp["name"] as? String)?.trim().orEmpty()
@@ -580,11 +589,25 @@ fun ParentPasswordDialog(
                         "name" to account.name,
                     )
                 )
+                val serverName = (resp["name"] as? String)?.trim() ?: ""
+                val resolvedName = if (serverName.isNotBlank() && serverName != "Parent") serverName else account.name
+
+                if (EmailOtpPolicy.requiresGoogleFirstTimeOtp(resp)) {
+                    otpEmailInput = email
+                    pendingOtpName = resolvedName
+                    otpPurpose = "google_signup"
+                    otpSent = true
+                    otpCodeInput = ""
+                    otpResendCooldown = EmailOtpPolicy.RESEND_COOLDOWN_SECONDS
+                    otpStatusMessage = "Welcome, $resolvedName! Enter the 6-digit code sent to ${EmailOtpPolicy.maskEmail(email)}."
+                    currentMode = ParentGateMode.EMAIL_OTP
+                    return@launch
+                }
+
                 val token = resp["access_token"] as? String ?: ""
                 val refreshToken = resp["refresh_token"] as? String ?: ""
-                val serverName = (resp["name"] as? String)?.trim() ?: ""
-                if (serverName.isNotBlank() && serverName != "Parent") {
-                    parentPrefs.parentName = serverName
+                if (resolvedName.isNotBlank() && resolvedName != "Parent") {
+                    parentPrefs.parentName = resolvedName
                 }
                 if (token.isBlank()) {
                     errorMessage = "Server did not issue a session token."
@@ -1199,43 +1222,42 @@ fun ParentPasswordDialog(
                             }
                         }
 
-                        if (!forceGoogleOnly) {
-                            Spacer(Modifier.height(10.dp))
-                            OutlinedButton(
-                                onClick = {
-                                    errorMessage = null
-                                    otpStatusMessage = null
-                                    otpSent = false
-                                    otpCodeInput = ""
-                                    if (otpEmailInput.isBlank()) {
-                                        otpEmailInput = parentPrefs.parentEmail
-                                    }
-                                    currentMode = ParentGateMode.EMAIL_OTP
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(48.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = BrandPrimary.copy(alpha = 0.08f),
-                                ),
-                                border = BorderStroke(1.dp, BrandPrimary.copy(alpha = 0.35f)),
-                                enabled = !isVerifying,
-                            ) {
-                                Icon(
-                                    Icons.Rounded.MarkEmailRead,
-                                    contentDescription = null,
-                                    tint = BrandPrimary,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = "Verify with Gmail OTP",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = BrandPrimary,
-                                )
-                            }
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = {
+                                errorMessage = null
+                                otpStatusMessage = null
+                                otpPurpose = "login"
+                                otpSent = false
+                                otpCodeInput = ""
+                                if (otpEmailInput.isBlank()) {
+                                    otpEmailInput = parentPrefs.parentEmail
+                                }
+                                currentMode = ParentGateMode.EMAIL_OTP
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = BrandPrimary.copy(alpha = 0.08f),
+                            ),
+                            border = BorderStroke(1.dp, BrandPrimary.copy(alpha = 0.35f)),
+                            enabled = !isVerifying,
+                        ) {
+                            Icon(
+                                Icons.Rounded.MarkEmailRead,
+                                contentDescription = null,
+                                tint = BrandPrimary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Verify with Gmail OTP",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = BrandPrimary,
+                            )
                         }
 
                         if (isResettingCredential) {

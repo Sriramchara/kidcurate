@@ -1014,6 +1014,108 @@ async def test_gmail_otp_login_and_lock_reset_flow():
             assert r_locked.status_code == 429
 
 
+@pytest.mark.asyncio
+async def test_first_time_google_user_requires_otp_and_sends_welcome_note():
+    """Verify first-time Google sign-in requires Gmail OTP and dispatches Welcome Note once."""
+    captured_otps = []
+    captured_welcomes = []
+
+    async def fake_send_otp(to_email: str, code: str, purpose: str = "login", parent_name: str = "") -> bool:
+        captured_otps.append((to_email, code, purpose, parent_name))
+        return True
+
+    async def fake_send_welcome(to_email: str, parent_name: str = "") -> bool:
+        captured_welcomes.append((to_email, parent_name))
+        return True
+
+    fake_google_payload = {
+        "iss": "https://accounts.google.com",
+        "email": "firsttime_google@gmail.com",
+        "email_verified": True,
+        "name": "Sriram Parent",
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        with patch("google.oauth2.id_token.verify_oauth2_token", return_value=fake_google_payload), \
+             patch("app.routes.auth.is_smtp_configured", return_value=True), \
+             patch("app.routes.auth.send_otp_verification_email", side_effect=fake_send_otp), \
+             patch("app.routes.auth.send_welcome_email", side_effect=fake_send_welcome):
+
+            # 1. First-time Google sign-in must require OTP and NOT issue tokens yet
+            r1 = await ac.post("/api/auth/google", json={"id_token": "valid-google-token"})
+            assert r1.status_code == 200
+            d1 = r1.json()
+            assert d1["requires_otp"] is True
+            assert d1["is_new_user"] is True
+            assert d1["access_token"] == ""
+            assert d1["email"] == "firsttime_google@gmail.com"
+            assert d1["name"] == "Sriram Parent"
+            assert len(captured_otps) == 1
+            assert captured_otps[0][0] == "firsttime_google@gmail.com"
+            assert captured_otps[0][2] == "google_signup"
+            assert captured_otps[0][3] == "Sriram Parent"
+            assert len(captured_welcomes) == 0
+
+            otp_code = captured_otps[0][1]
+
+            # 2. Verify OTP -> creates user, issues JWT tokens, and triggers Welcome Note
+            r2 = await ac.post("/api/auth/otp/verify", json={
+                "email": "firsttime_google@gmail.com",
+                "code": otp_code,
+                "name": "Sriram Parent",
+                "purpose": "google_signup",
+            })
+            assert r2.status_code == 200
+            d2 = r2.json()
+            assert d2["requires_otp"] is False
+            assert d2["is_new_user"] is True
+            assert d2["access_token"]
+            assert d2["refresh_token"]
+            assert d2["name"] == "Sriram Parent"
+            assert len(captured_welcomes) == 1
+            assert captured_welcomes[0] == ("firsttime_google@gmail.com", "Sriram Parent")
+
+            # 3. Returning Google sign-in -> immediate tokens, no new OTP, no duplicate Welcome Note
+            r3 = await ac.post("/api/auth/google", json={"id_token": "valid-google-token"})
+            assert r3.status_code == 200
+            d3 = r3.json()
+            assert d3["requires_otp"] is False
+            assert d3["is_new_user"] is False
+            assert d3["access_token"]
+            assert len(captured_otps) == 1
+            assert len(captured_welcomes) == 1
+
+
+def test_welcome_and_otp_email_templates_app_design_and_zero_emojis():
+    """Verify welcome and OTP email templates match KidCurate design tokens, escape HTML, and contain zero emojis."""
+    from app.services.email import build_welcome_email_content, build_otp_email_content
+
+    w_subject, w_plain, w_html = build_welcome_email_content("Aarav <Parent>")
+    assert "Welcome to KidCurate" in w_subject
+    assert "Aarav &lt;Parent&gt;" in w_html
+    assert "<Parent>" not in w_html
+    assert "#4F46E5" in w_html
+    assert "#F59E0B" in w_html
+    assert "#10B981" in w_html
+    assert "Create a Child Profile" in w_html
+    assert "Curate Their Safe Playlist" in w_html
+    assert "Hand Over with Complete Confidence" in w_html
+    assert "Warm regards" in w_plain
+
+    o_subject, o_plain, o_html = build_otp_email_content("482910", purpose="google_signup", parent_name="Sriram")
+    assert "Verification Code" in o_subject
+    assert "482910" in o_html
+    assert "482910" in o_plain
+    assert "#4F46E5" in o_html
+    assert "Sriram" in o_html
+
+    # Strictly zero emojis across subjects, plain text, and HTML
+    combined = w_subject + w_plain + w_html + o_subject + o_plain + o_html
+    for ch in combined:
+        assert ord(ch) < 0x1F000, f"Unexpected emoji/pictograph codepoint U+{ord(ch):X}"
+
+
+
 
 
 

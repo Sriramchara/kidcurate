@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.kidcurate.app.data.ApiClient
 import com.kidcurate.app.data.DbSummaryResponse
+import com.kidcurate.app.data.EmailOtpPolicy
 import com.kidcurate.app.data.GoogleCredentialAuth
 import com.kidcurate.app.data.ParentLockPolicy
 import com.kidcurate.app.data.ParentLockType
@@ -642,6 +643,11 @@ fun SecurityTab(
         var isDeletingAccount by remember { mutableStateOf(false) }
         var showChangeParentPinDialog by remember { mutableStateOf(false) }
         var showGmailOtpLoginDialog by remember { mutableStateOf(false) }
+        var pendingGoogleOtpEmail by remember { mutableStateOf("") }
+        var pendingGoogleOtpName by remember { mutableStateOf("") }
+        var pendingGoogleOtpSent by remember { mutableStateOf(false) }
+        var pendingGoogleOtpMessage by remember { mutableStateOf<String?>(null) }
+        var pendingGoogleOtpPurpose by remember { mutableStateOf("login") }
 
         fun connectGoogleAccount() {
             val activity = appContext as? Activity
@@ -672,11 +678,23 @@ fun SecurityTab(
                             "name" to account.name,
                         )
                     )
+                    val serverName = (resp["name"] as? String)?.trim() ?: ""
+                    val resolvedName = if (serverName.isNotBlank() && serverName != "Parent") serverName else account.name
+
+                    if (EmailOtpPolicy.requiresGoogleFirstTimeOtp(resp)) {
+                        pendingGoogleOtpEmail = email
+                        pendingGoogleOtpName = resolvedName
+                        pendingGoogleOtpSent = true
+                        pendingGoogleOtpPurpose = "google_signup"
+                        pendingGoogleOtpMessage = "Welcome, $resolvedName! Enter the 6-digit code sent to ${EmailOtpPolicy.maskEmail(email)}."
+                        showGmailOtpLoginDialog = true
+                        return@launch
+                    }
+
                     val token = resp["access_token"] as? String ?: ""
                     val refreshToken = resp["refresh_token"] as? String ?: ""
-                    val serverName = (resp["name"] as? String)?.trim() ?: ""
-                    if (serverName.isNotBlank() && serverName != "Parent") {
-                        parentPrefs.parentName = serverName
+                    if (resolvedName.isNotBlank() && resolvedName != "Parent") {
+                        parentPrefs.parentName = resolvedName
                     }
                     if (token.isBlank()) {
                         accountStatusMessage = "Server did not issue an access token."
@@ -845,7 +863,14 @@ fun SecurityTab(
                     Spacer(Modifier.height(8.dp))
 
                     OutlinedButton(
-                        onClick = { showGmailOtpLoginDialog = true },
+                        onClick = {
+                            pendingGoogleOtpEmail = parentPrefs.parentEmail
+                            pendingGoogleOtpName = ""
+                            pendingGoogleOtpSent = false
+                            pendingGoogleOtpMessage = null
+                            pendingGoogleOtpPurpose = "login"
+                            showGmailOtpLoginDialog = true
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(48.dp),
@@ -883,13 +908,24 @@ fun SecurityTab(
                         subtitle = "Verify your Gmail address with a 6-digit code",
                         allowGoogleSignIn = true,
                         initialStartMode = ParentGateMode.EMAIL_OTP,
+                        initialOtpEmail = pendingGoogleOtpEmail,
+                        initialOtpName = pendingGoogleOtpName,
+                        initialOtpSent = pendingGoogleOtpSent,
+                        initialOtpMessage = pendingGoogleOtpMessage,
+                        initialOtpPurpose = pendingGoogleOtpPurpose,
                         onSuccess = {
                             showGmailOtpLoginDialog = false
+                            pendingGoogleOtpSent = false
+                            pendingGoogleOtpMessage = null
                             currentToken = parentPrefs.parentAuthToken
                             accountStatusMessage = "Verified via Gmail OTP: ${parentPrefs.parentEmail}"
                             onPinUpdated()
                         },
-                        onDismiss = { showGmailOtpLoginDialog = false },
+                        onDismiss = {
+                            showGmailOtpLoginDialog = false
+                            pendingGoogleOtpSent = false
+                            pendingGoogleOtpMessage = null
+                        },
                     )
                 }
 
