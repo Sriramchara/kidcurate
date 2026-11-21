@@ -4454,20 +4454,27 @@ fun PlayerScreen(
     // Tablets in landscape get two-pane layout, NOT forced fullscreen
     val effectiveFullscreen = isFullscreen || (isWindowLandscape && !isTablet)
 
+    val currentIsChildLockActive by rememberUpdatedState(isChildLockActive)
+    val currentEffectiveFullscreen by rememberUpdatedState(effectiveFullscreen)
+    val currentOnToggleChildLock by rememberUpdatedState(onToggleChildLock)
+    val currentOnBack by rememberUpdatedState(onBack)
+
     fun attemptBack() {
-        if (isChildLockActive) {
+        if (currentIsChildLockActive) {
             isExitingPlayer = true
             showParentPasswordDialog = true
-        } else if (effectiveFullscreen) {
+        } else if (currentEffectiveFullscreen) {
             isFullscreen = false
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         } else {
-            onBack()
+            currentOnBack()
         }
     }
 
+    val latestAttemptBack by rememberUpdatedState(::attemptBack)
+
     BackHandler {
-        attemptBack()
+        latestAttemptBack()
     }
 
     if (com.kidcurate.app.BuildConfig.DEBUG) {
@@ -4540,7 +4547,7 @@ fun PlayerScreen(
                         parentPrefs.subtitlesEnabled = newState
                     },
                     onToggleFullscreen = {
-                        if (effectiveFullscreen) {
+                        if (isFs) {
                             isFullscreen = false
                             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                         } else {
@@ -4549,11 +4556,11 @@ fun PlayerScreen(
                         }
                     },
                     onToggleChildLock = {
-                        if (isChildLockActive) {
+                        if (isLocked) {
                             isExitingPlayer = false
                             showParentPasswordDialog = true
                         } else {
-                            onToggleChildLock(true)
+                            currentOnToggleChildLock(true)
                         }
                     },
                     onVideoEnded = { _ ->
@@ -4618,7 +4625,7 @@ fun PlayerScreen(
                             lastRecordedSecond = 0
                         }
                     },
-                    onAttemptBack = { attemptBack() },
+                    onAttemptBack = { latestAttemptBack() },
                 )
             }
         }
@@ -5376,6 +5383,7 @@ fun OptimizedVideoPlayer(
     onToggleChildLock: (() -> Unit)? = null,
 ) {
     val currentVideoState by rememberUpdatedState(video)
+    val currentIsChildLockActive by rememberUpdatedState(isChildLockActive)
     val currentOnVideoEnded by rememberUpdatedState(onVideoEnded)
     val currentOnProgressUpdate by rememberUpdatedState(onProgressUpdate)
     val currentOnPlaybackError by rememberUpdatedState(onPlaybackError)
@@ -5816,7 +5824,13 @@ fun OptimizedVideoPlayer(
                 ) {
                     if (isFullscreen) {
                         IconButton(
-                            onClick = { currentOnAttemptBack?.invoke() ?: currentOnToggleFullscreen() },
+                            onClick = {
+                                if (currentIsChildLockActive) {
+                                    currentOnAttemptBack?.invoke()
+                                } else {
+                                    currentOnAttemptBack?.invoke() ?: currentOnToggleFullscreen()
+                                }
+                            },
                             modifier = Modifier
                                 .size(46.dp)
                                 .clip(CircleShape)
