@@ -339,6 +339,7 @@ class GoogleLoginRequest(BaseModel):
     id_token: str
     email: Optional[EmailStr] = None
     name: Optional[str] = None
+    require_otp: bool = False
 
 
 @router.post("/google", response_model=TokenResponse)
@@ -389,49 +390,52 @@ async def google_login(
 
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
+    is_first_time_account = user is None
+
+    # Require 6-digit Gmail OTP for first-time Google accounts OR when device requests OTP for lock setup
+    if (is_first_time_account or data.require_otp) and is_smtp_configured():
+        otp_req_key = f"otp_req_{email}"
+        check_auth_rate_limit(otp_req_key, max_attempts=5, lock_minutes=5)
+        record_auth_failure(otp_req_key, max_attempts=6, lock_minutes=5)
+
+        code = f"{secrets.randbelow(900000) + 100000}"
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+        await db.execute(delete(PasswordResetToken).where(PasswordResetToken.email == email))
+        otp_entry = PasswordResetToken(
+            email=email,
+            code_hash=hash_password(code),
+            expires_at=expires_at,
+            attempts=0,
+        )
+        db.add(otp_entry)
+        await db.commit()
+
+        otp_purpose = "google_signup" if is_first_time_account else "login"
+        delivered = await send_otp_verification_email(
+            to_email=email,
+            code=code,
+            purpose=otp_purpose,
+            parent_name=name,
+        )
+        if not delivered:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Could not deliver verification email. Please verify your Gmail address and try again.",
+            )
+
+        return TokenResponse(
+            access_token="",
+            refresh_token=None,
+            user_id="",
+            name=name,
+            email=email,
+            requires_otp=True,
+            is_new_user=is_first_time_account,
+            message="A 6-digit verification code has been sent to your Gmail to complete verification.",
+        )
+
     if not user:
-        # First-time user signing in by Google account: require 6-digit Gmail OTP verification
-        if is_smtp_configured():
-            otp_req_key = f"otp_req_{email}"
-            check_auth_rate_limit(otp_req_key, max_attempts=5, lock_minutes=5)
-            record_auth_failure(otp_req_key, max_attempts=6, lock_minutes=5)
-
-            code = f"{secrets.randbelow(900000) + 100000}"
-            expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
-
-            await db.execute(delete(PasswordResetToken).where(PasswordResetToken.email == email))
-            otp_entry = PasswordResetToken(
-                email=email,
-                code_hash=hash_password(code),
-                expires_at=expires_at,
-                attempts=0,
-            )
-            db.add(otp_entry)
-            await db.commit()
-
-            delivered = await send_otp_verification_email(
-                to_email=email,
-                code=code,
-                purpose="google_signup",
-                parent_name=name,
-            )
-            if not delivered:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="Could not deliver verification email. Please verify your Gmail address and try again.",
-                )
-
-            return TokenResponse(
-                access_token="",
-                refresh_token=None,
-                user_id="",
-                name=name,
-                email=email,
-                requires_otp=True,
-                is_new_user=True,
-                message="A 6-digit verification code has been sent to your Gmail to complete first-time setup.",
-            )
-
         # Fallback only if SMTP is unconfigured on server
         user = User(
             name=name,

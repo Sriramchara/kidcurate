@@ -22,11 +22,16 @@ async def lifespan(app: FastAPI):
     # Shutdown: nothing special needed
 
 
+_enable_docs = settings.DEBUG or settings.ENVIRONMENT.lower() in ("development", "dev", "test")
+
 app = FastAPI(
     title="KidCurate API",
     description="Parent-controlled YouTube learning platform backend",
-    version="1.0.0",
+    version="1.0.3",
     lifespan=lifespan,
+    docs_url="/docs" if _enable_docs else None,
+    redoc_url="/redoc" if _enable_docs else None,
+    openapi_url="/openapi.json" if _enable_docs else None,
 )
 
 # CORS — allow Next.js portal, configured domains, and mobile clients

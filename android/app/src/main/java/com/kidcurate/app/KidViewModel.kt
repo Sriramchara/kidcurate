@@ -111,7 +111,6 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 add(com.kidcurate.app.BuildConfig.API_BASE_URL)
                 if (com.kidcurate.app.BuildConfig.DEBUG) {
-                    add("http://192.168.0.107:8000/")
                     add("http://localhost:8000/")
                 }
             }.filter { it.isNotBlank() }
@@ -526,18 +525,5 @@ class KidViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openParentZone() {
         _state.value = _state.value.copy(screen = AppScreen.ParentZone)
-    }
-
-    fun setDemoWalkthroughData(profile: ChildProfileItem, playlist: PlaylistData) {
-        if (!com.kidcurate.app.BuildConfig.DEBUG) return
-        _state.value = _state.value.copy(
-            availableProfiles = listOf(profile),
-            childId = profile.id,
-            childName = profile.name,
-            childAvatar = profile.avatar,
-            playlist = playlist,
-            isLoading = false,
-            error = null,
-        )
     }
 }

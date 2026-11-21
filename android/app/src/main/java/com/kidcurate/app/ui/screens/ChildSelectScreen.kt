@@ -240,45 +240,6 @@ fun ChildSelectScreen(
                                 Spacer(Modifier.width(6.dp))
                                 Text("Try Again", fontWeight = FontWeight.Bold)
                             }
-
-                            if (com.kidcurate.app.BuildConfig.DEBUG) {
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = "Target: ${parentPrefs.serverUrl.ifBlank { com.kidcurate.app.BuildConfig.API_BASE_URL }}",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    textAlign = TextAlign.Center,
-                                )
-
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text(
-                                    text = "Quick Server Switch:",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    AssistChip(
-                                        onClick = { onUpdateServerUrl("https://kidcurate-api.onrender.com/") },
-                                        label = { Text("Cloud", fontSize = 11.sp) },
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    AssistChip(
-                                        onClick = { onUpdateServerUrl("http://192.168.0.107:8000/") },
-                                        label = { Text("Wi-Fi PC", fontSize = 11.sp) },
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    AssistChip(
-                                        onClick = { onUpdateServerUrl("http://localhost:8000/") },
-                                        label = { Text("USB", fontSize = 11.sp) },
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                }
-                            }
                         } else {
                             Button(
                                 onClick = { showParentGate = true },
@@ -481,7 +442,7 @@ fun ChildSelectScreen(
     if (showParentGate) {
         ParentPasswordDialog(
             title = if (parentPrefs.isParentLoggedIn) "Parent Verification" else "Parent Account Sign In",
-            subtitle = if (parentPrefs.isParentLoggedIn) "Enter 4-digit Parent PIN" else "Sign in with Google or Gmail OTP to set up child profiles",
+            subtitle = if (parentPrefs.isParentLoggedIn) "Enter your Parent Password, Pattern, or PIN" else "Sign in with Google and Gmail OTP to set up child profiles",
             forceGoogleOnly = !parentPrefs.isParentLoggedIn,
             onSuccess = {
                 showParentGate = false

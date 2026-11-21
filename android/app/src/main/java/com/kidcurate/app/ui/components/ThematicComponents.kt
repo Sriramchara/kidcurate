@@ -311,7 +311,7 @@ enum class ParentGateMode {
 @Composable
 fun ParentPasswordDialog(
     title: String = "Parent Verification",
-    subtitle: String = "Enter 4-digit Parent PIN",
+    subtitle: String = "Enter your Parent Password, Pattern, or PIN",
     allowGoogleSignIn: Boolean = true,
     forceGoogleOnly: Boolean = false,
     initialStartMode: ParentGateMode? = null,
@@ -334,11 +334,14 @@ fun ParentPasswordDialog(
     val effectiveUnlockSubtitle = remember(subtitle, activeLockType) {
         when (activeLockType) {
             ParentLockType.PIN -> subtitle
+                .replace("Enter your Parent Password, Pattern, or PIN", "Enter 4-digit Parent PIN", ignoreCase = true)
             ParentLockType.PATTERN -> subtitle
+                .replace("Enter your Parent Password, Pattern, or PIN", "Draw your Parent Pattern", ignoreCase = true)
                 .replace("Enter 4-digit Parent PIN", "Draw your Parent Pattern", ignoreCase = true)
                 .replace("4-digit Parent PIN", "Parent Pattern", ignoreCase = true)
                 .replace("Parent PIN", "Parent Pattern", ignoreCase = true)
             ParentLockType.PASSWORD -> subtitle
+                .replace("Enter your Parent Password, Pattern, or PIN", "Enter your Parent Password", ignoreCase = true)
                 .replace("Enter 4-digit Parent PIN", "Enter your Parent Password", ignoreCase = true)
                 .replace("4-digit Parent PIN", "Parent Password", ignoreCase = true)
                 .replace("Parent PIN", "Parent Password", ignoreCase = true)
@@ -370,7 +373,11 @@ fun ParentPasswordDialog(
     var currentMode by remember { mutableStateOf(initialMode) }
     var pinInput by remember { mutableStateOf("") }
     var passwordInput by remember { mutableStateOf("") }
-    var selectedSetupType by remember { mutableStateOf(parentPrefs.parentLockType) }
+    var selectedSetupType by remember {
+        mutableStateOf(
+            if (parentPrefs.hasParentPin) parentPrefs.parentLockType else ParentLockType.PASSWORD
+        )
+    }
     var newPinInput by remember { mutableStateOf("") }
     var confirmPinInput by remember { mutableStateOf("") }
     var newPasswordInput by remember { mutableStateOf("") }
@@ -543,23 +550,6 @@ fun ParentPasswordDialog(
         }
     }
 
-    val hostActivity = appContext as? android.app.Activity
-    if (com.kidcurate.app.BuildConfig.DEBUG) {
-        val autoWalkthrough = hostActivity?.intent?.getStringExtra("test_auto_walkthrough")
-        if (autoWalkthrough == "child_lock_check" && currentMode == ParentGateMode.CREDENTIAL_UNLOCK) {
-            LaunchedEffect(Unit) {
-                kotlinx.coroutines.delay(1200)
-                pinInput = "9999"
-                errorMessage = "Incorrect 4-digit PIN."
-                kotlinx.coroutines.delay(2200)
-                pinInput = "1234"
-                errorMessage = null
-                kotlinx.coroutines.delay(800)
-                onSuccess()
-            }
-        }
-    }
-
     fun triggerGoogleSignIn() {
         val activity = appContext as? Activity
             ?: (appContext as? android.content.ContextWrapper)?.baseContext as? Activity
@@ -579,6 +569,7 @@ fun ParentPasswordDialog(
                     currentAccountEmail = parentPrefs.parentEmail,
                     signingInEmail = email,
                 )
+                val needsOtpForSetup = isResettingCredential || !savedPinMatchesAccount
                 parentPrefs.parentName = account.name
                 parentPrefs.parentEmail = email
 
@@ -587,6 +578,7 @@ fun ParentPasswordDialog(
                         "id_token" to account.idToken,
                         "email" to email,
                         "name" to account.name,
+                        "require_otp" to needsOtpForSetup.toString(),
                     )
                 )
                 val serverName = (resp["name"] as? String)?.trim() ?: ""
@@ -967,12 +959,17 @@ fun ParentPasswordDialog(
                     }
 
                     ParentGateMode.SET_CREDENTIAL -> {
-                        // Lock Style Selector Row: PIN | Pattern | Password
+                        // Lock Style Selector Row: Password | Pattern | 4-Digit PIN
+                        val lockOptions = listOf(
+                            ParentLockType.PASSWORD,
+                            ParentLockType.PATTERN,
+                            ParentLockType.PIN,
+                        )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            ParentLockType.entries.forEach { lockType ->
+                            lockOptions.forEach { lockType ->
                                 val isSelected = selectedSetupType == lockType
                                 OutlinedButton(
                                     onClick = {
@@ -995,9 +992,9 @@ fun ParentPasswordDialog(
                                 ) {
                                     Text(
                                         text = when (lockType) {
-                                            ParentLockType.PIN -> "PIN"
-                                            ParentLockType.PATTERN -> "Pattern"
                                             ParentLockType.PASSWORD -> "Password"
+                                            ParentLockType.PATTERN -> "Pattern"
+                                            ParentLockType.PIN -> "4-Digit PIN"
                                         },
                                         fontSize = 12.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
@@ -1273,28 +1270,6 @@ fun ParentPasswordDialog(
                                     text = "Back to ${activeLockType.displayName}",
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-
-                        if (com.kidcurate.app.BuildConfig.DEBUG) {
-                            Spacer(Modifier.height(6.dp))
-                            TextButton(
-                                onClick = {
-                                    parentPrefs.parentName = "Test Parent"
-                                    parentPrefs.parentEmail = "cleanparent@test.com"
-                                    parentPrefs.parentAuthToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2OGVlMDMyNi00Yzg2LTQwNmUtYmRmNi0wNjYxM2EwYmEyYmUiLCJlbWFpbCI6ImNsZWFucGFyZW50QHRlc3QuY29tIiwidHlwZSI6ImFjY2VzcyIsImV4cCI6MTc5NTY5NTA4N30.gsRcdYIUtjfDVQtUWdKQo3PWGIeb_GqmRvuV3KNwQss"
-                                    parentPrefs.setParentCredential(ParentLockType.PIN, "1234")
-                                    parentPrefs.parentPinOwnerEmail = "cleanparent@test.com"
-                                    com.kidcurate.app.data.ApiClient.authToken = parentPrefs.parentAuthToken
-                                    onSuccess()
-                                }
-                            ) {
-                                Text(
-                                    text = "Debug: Quick Sign-In (Test Parent)",
-                                    fontSize = 12.sp,
-                                    color = BrandPrimary,
-                                    fontWeight = FontWeight.Bold,
                                 )
                             }
                         }
@@ -1581,4 +1556,205 @@ fun ParentPasswordDialog(
         }
     }
 }
+
+/**
+ * YouTube-style choreographed startup splash animation overlay.
+ * Phase 1: Emblem spring-scale & radial aura pulse.
+ * Phase 2: Brand wordmark reveal & sweeping tri-color progress track.
+ * Phase 3: Smooth zoom-through dissolve into the home screen.
+ */
+@Composable
+fun StartupSplashOverlay(
+    onFinished: () -> Unit,
+) {
+    val emblemScale = remember { androidx.compose.animation.core.Animatable(0.45f) }
+    val emblemAlpha = remember { androidx.compose.animation.core.Animatable(0f) }
+    val wordmarkAlpha = remember { androidx.compose.animation.core.Animatable(0f) }
+    val progressFraction = remember { androidx.compose.animation.core.Animatable(0f) }
+    val overlayAlpha = remember { androidx.compose.animation.core.Animatable(1f) }
+
+    LaunchedEffect(Unit) {
+        // Phase 1: Spring emblem scale-in
+        kotlinx.coroutines.coroutineScope {
+            launch {
+                emblemAlpha.animateTo(
+                    targetValue = 1f,
+                    animationSpec = androidx.compose.animation.core.tween(
+                        durationMillis = 280,
+                        easing = androidx.compose.animation.core.FastOutSlowInEasing,
+                    ),
+                )
+            }
+            launch {
+                emblemScale.animateTo(
+                    targetValue = 1.0f,
+                    animationSpec = androidx.compose.animation.core.spring(
+                        dampingRatio = 0.58f,
+                        stiffness = 380f,
+                    ),
+                )
+            }
+        }
+
+        // Phase 2: Wordmark & sweeping YouTube-style progress bar
+        kotlinx.coroutines.coroutineScope {
+            launch {
+                wordmarkAlpha.animateTo(
+                    targetValue = 1f,
+                    animationSpec = androidx.compose.animation.core.tween(
+                        durationMillis = 320,
+                        easing = androidx.compose.animation.core.FastOutSlowInEasing,
+                    ),
+                )
+            }
+            launch {
+                progressFraction.animateTo(
+                    targetValue = 1f,
+                    animationSpec = androidx.compose.animation.core.tween(
+                        durationMillis = 680,
+                        easing = androidx.compose.animation.core.FastOutSlowInEasing,
+                    ),
+                )
+            }
+        }
+
+        // Phase 3: Zoom-through dissolve into loaded screen
+        kotlinx.coroutines.coroutineScope {
+            launch {
+                emblemScale.animateTo(
+                    targetValue = 1.18f,
+                    animationSpec = androidx.compose.animation.core.tween(
+                        durationMillis = 320,
+                        easing = androidx.compose.animation.core.FastOutSlowInEasing,
+                    ),
+                )
+            }
+            launch {
+                overlayAlpha.animateTo(
+                    targetValue = 0f,
+                    animationSpec = androidx.compose.animation.core.tween(
+                        durationMillis = 320,
+                        easing = androidx.compose.animation.core.FastOutSlowInEasing,
+                    ),
+                )
+            }
+        }
+        onFinished()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background.copy(alpha = overlayAlpha.value)),
+        contentAlignment = Alignment.Center,
+    ) {
+        GlassBackgroundAura(
+            modifier = Modifier.fillMaxSize()
+        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(24.dp),
+        ) {
+            // Animated KidCurate Play-Shield Emblem
+            Box(
+                modifier = Modifier
+                    .size((96 * emblemScale.value).dp)
+                    .shadow(
+                        elevation = (16 * emblemAlpha.value).dp,
+                        shape = RoundedCornerShape(28.dp),
+                        spotColor = BrandPrimary,
+                    )
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                BrandPrimaryDark,
+                                BrandPrimary,
+                                BrandPrimaryLight,
+                            )
+                        )
+                    )
+                    .border(
+                        width = 2.dp,
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.65f),
+                                BrandAccent.copy(alpha = 0.85f),
+                            )
+                        ),
+                        shape = RoundedCornerShape(28.dp),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size((52 * emblemScale.value).dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.16f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = "KidCurate",
+                        tint = Color.White,
+                        modifier = Modifier.size((38 * emblemScale.value).dp),
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Brand Wordmark & Safe Pill
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "KidCurate",
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = wordmarkAlpha.value * overlayAlpha.value),
+                    letterSpacing = (-0.5).sp,
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "SAFE & DISTRACTION-FREE",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = BrandPrimary.copy(alpha = wordmarkAlpha.value * overlayAlpha.value),
+                    letterSpacing = 1.6.sp,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Sweeping YouTube-style tri-color progress bar
+            Box(
+                modifier = Modifier
+                    .width(148.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = wordmarkAlpha.value * overlayAlpha.value)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(progressFraction.value.coerceIn(0f, 1f))
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    BrandPrimary,
+                                    BrandViolet,
+                                    BrandAccent,
+                                    BrandSuccess,
+                                )
+                            )
+                        ),
+                )
+            }
+        }
+    }
+}
+
 

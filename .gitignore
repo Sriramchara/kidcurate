@@ -45,6 +45,7 @@ yarn-error.log*
 
 # Android & Gradle
 .gradle/
+.gradle-audit/
 .kotlin/
 build/
 android/build/
@@ -57,6 +58,13 @@ android/keystore.properties
 captures/
 .externalNativeBuild/
 .cxx/
+
+# Local Backups & Scratch Dumps
+backup_*/
+*.zip
+ANDROID_FULL_SOURCE_CODE.md
+PROJECT_COMPLETE_AUDIT_AND_EXECUTION_REPORT.md
+android-review.png
 
 # Android Keystores & Credentials (safety)
 *.jks

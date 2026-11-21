@@ -184,7 +184,6 @@ object ApiClient {
                 val currentHost = orig.url.host
                 if (BuildConfig.DEBUG && (currentHost == "localhost" || currentHost == "127.0.0.1" || currentHost == "10.0.2.2")) {
                     val fallbackUrls = listOf(
-                        "http://192.168.0.107:8000/",
                         BuildConfig.API_BASE_URL.trimEnd('/') + "/"
                     )
                     var lastEx: java.io.IOException = e

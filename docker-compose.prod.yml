@@ -33,7 +33,13 @@ services:
       - ACCESS_TOKEN_EXPIRE_MINUTES=15
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-179684236627-d7j0s15cvkj6li430jku6easqma5q81l.apps.googleusercontent.com}
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-kidcurateservices@gmail.com}
       - 'CORS_ORIGINS=["https://app.kidcurate.com","http://localhost:3000"]'
+      - ENVIRONMENT=production
       - DEBUG=false
     ports:
       - "8000:8000"

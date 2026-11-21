@@ -40,7 +40,7 @@ class ParentPreferences(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_REQUIRE_CHILD_PIN, value).apply()
 
     var parentLockType: ParentLockType
-        get() = ParentLockType.fromStorageKey(prefs.getString(KEY_PARENT_LOCK_TYPE, ParentLockType.PIN.storageKey))
+        get() = ParentLockType.fromStorageKey(prefs.getString(KEY_PARENT_LOCK_TYPE, ParentLockType.PASSWORD.storageKey))
         set(value) = prefs.edit().putString(KEY_PARENT_LOCK_TYPE, value.storageKey).apply()
 
     var parentBiometricEnabled: Boolean
@@ -200,8 +200,7 @@ class ParentPreferences(context: Context) {
         val editor = prefs.edit()
         prefs.all.keys
             .filter {
-                it.startsWith(KEY_CHILD_PIN_PREFIX) ||
-                    it.startsWith(KEY_CACHED_PLAYLIST_PREFIX) ||
+                it.startsWith(KEY_CACHED_PLAYLIST_PREFIX) ||
                     it.startsWith("video_pos_") ||
                     it.startsWith("today_watched_seconds_")
             }
@@ -329,14 +328,6 @@ class ParentPreferences(context: Context) {
         get() = prefs.getString(KEY_CACHED_PROFILES, "") ?: ""
         set(value) = prefs.edit().putString(KEY_CACHED_PROFILES, value).apply()
 
-    fun getChildLocalPin(childId: String): String {
-        return ""
-    }
-
-    fun setChildLocalPin(childId: String, pin: String) {
-        // Plaintext PIN storage removed for security. Child PINs are verified securely via ApiClient.
-    }
-
     fun getCachedPlaylist(childId: String): String {
         return prefs.getString(KEY_CACHED_PLAYLIST_PREFIX + childId, "") ?: ""
     }
@@ -442,7 +433,6 @@ class ParentPreferences(context: Context) {
         private const val KEY_TODAY_WATCHED_SECONDS = "today_watched_seconds"
         private const val KEY_CACHED_PROFILES = "cached_profiles_json"
         private const val KEY_CACHED_PLAYLIST_PREFIX = "cached_playlist_json_"
-        private const val KEY_CHILD_PIN_PREFIX = "child_local_pin_"
         private const val KEY_HAS_SEEN_ONBOARDING = "has_seen_onboarding_tour"
 
         @Volatile

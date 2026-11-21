@@ -102,7 +102,7 @@ fun SecurityTab(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("1.", fontWeight = FontWeight.Bold, color = BrandPrimary, fontSize = 13.sp)
                             Text(
-                                "Child Profiles: Go to 'Profiles' tab to add or edit children, change their character avatar, and view or change their 4-digit PIN.",
+                                "Google + Gmail OTP Setup: Connect your Google account and verify the 6-digit code sent to your Gmail. First-time parents receive a Welcome Note and choose an independent Parent Lock (Password, 3x3 Pattern, or 4-Digit PIN).",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -110,7 +110,7 @@ fun SecurityTab(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("2.", fontWeight = FontWeight.Bold, color = BrandPrimary, fontSize = 13.sp)
                             Text(
-                                "Add YouTube Videos: Go to 'Search' tab to find safe educational videos or paste ANY YouTube link to add it directly.",
+                                "Child Profiles & Instant Play: Go to 'Profiles' tab to add children, choose their character avatar, and set an optional 4-digit Child PIN (or leave Instant Play enabled for toddlers).",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -118,7 +118,7 @@ fun SecurityTab(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("3.", fontWeight = FontWeight.Bold, color = BrandPrimary, fontSize = 13.sp)
                             Text(
-                                "Manage Playlist: Go to 'Videos' tab to reorder videos with Up/Down buttons or delete unwanted videos.",
+                                "Search & Direct Links: Go to 'Search' tab to search safe educational YouTube videos or paste ANY YouTube link/ID directly into a child's playlist.",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -126,7 +126,15 @@ fun SecurityTab(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("4.", fontWeight = FontWeight.Bold, color = BrandPrimary, fontSize = 13.sp)
                             Text(
-                                "Independent Parent Lock: Choose a 3x3 Pattern, 4-digit PIN, or Password separate from your phone's lockscreen to protect Parent Zone and Child Lock.",
+                                "Playlists, Packs & History: Use 'Videos' tab to apply 1-tap Activity Packs, reorder videos with Up/Down arrows, or delete videos, and 'History' tab to inspect watch logs.",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("5.", fontWeight = FontWeight.Bold, color = BrandPrimary, fontSize = 13.sp)
+                            Text(
+                                "Fullscreen Child Lock & Boundaries: Lock player controls in portrait or landscape fullscreen (even the left back arrow requires your Parent Lock), and configure Daily Screen Time & Bedtime Curfew below.",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -643,6 +651,7 @@ fun SecurityTab(
         var isDeletingAccount by remember { mutableStateOf(false) }
         var showChangeParentPinDialog by remember { mutableStateOf(false) }
         var showGmailOtpLoginDialog by remember { mutableStateOf(false) }
+        var activeParentLockType by remember { mutableStateOf(parentPrefs.parentLockType) }
         var pendingGoogleOtpEmail by remember { mutableStateOf("") }
         var pendingGoogleOtpName by remember { mutableStateOf("") }
         var pendingGoogleOtpSent by remember { mutableStateOf(false) }
@@ -676,6 +685,7 @@ fun SecurityTab(
                             "id_token" to account.idToken,
                             "email" to email,
                             "name" to account.name,
+                            "require_otp" to (!savedPinMatchesAccount).toString(),
                         )
                     )
                     val serverName = (resp["name"] as? String)?.trim() ?: ""
@@ -918,6 +928,7 @@ fun SecurityTab(
                             pendingGoogleOtpSent = false
                             pendingGoogleOtpMessage = null
                             currentToken = parentPrefs.parentAuthToken
+                            activeParentLockType = parentPrefs.parentLockType
                             accountStatusMessage = "Verified via Gmail OTP: ${parentPrefs.parentEmail}"
                             onPinUpdated()
                         },
@@ -1143,7 +1154,6 @@ fun SecurityTab(
         }
 
         // Independent Parent Lock & Security Control Card
-        var activeParentLockType by remember { mutableStateOf(parentPrefs.parentLockType) }
         var biometricEnabledState by remember { mutableStateOf(parentPrefs.parentBiometricEnabled) }
         val isHardwareBiometricAvailable = remember {
             ParentBiometricAuth.isHardwareBiometricAvailable(appContext)
@@ -1271,12 +1281,17 @@ fun SecurityTab(
 
                         Spacer(Modifier.height(10.dp))
 
-                        // Segmented Lock Style Selector: PIN | Pattern | Password
+                        // Segmented Lock Style Selector: Password | Pattern | 4-Digit PIN
+                        val orderedLockTypes = listOf(
+                            ParentLockType.PASSWORD,
+                            ParentLockType.PATTERN,
+                            ParentLockType.PIN,
+                        )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            ParentLockType.entries.forEach { lockType ->
+                            orderedLockTypes.forEach { lockType ->
                                 val isSelected = activeParentLockType == lockType
                                 OutlinedButton(
                                     onClick = { openLockSetupDialog(lockType) },
@@ -1293,9 +1308,9 @@ fun SecurityTab(
                                 ) {
                                     Text(
                                         text = when (lockType) {
-                                            ParentLockType.PIN -> "4-Digit PIN"
-                                            ParentLockType.PATTERN -> "Pattern"
                                             ParentLockType.PASSWORD -> "Password"
+                                            ParentLockType.PATTERN -> "Pattern"
+                                            ParentLockType.PIN -> "4-Digit PIN"
                                         },
                                         fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
@@ -1633,12 +1648,17 @@ fun SecurityTab(
                                 }
                             }
 
-                            // Style Selector Row
+                            // Style Selector Row: Password | Pattern | 4-Digit PIN
+                            val setupLockTypes = listOf(
+                                ParentLockType.PASSWORD,
+                                ParentLockType.PATTERN,
+                                ParentLockType.PIN,
+                            )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
-                                ParentLockType.entries.forEach { lockType ->
+                                setupLockTypes.forEach { lockType ->
                                     val isSelected = targetLockTypeForSetup == lockType
                                     OutlinedButton(
                                         onClick = {
@@ -1661,9 +1681,9 @@ fun SecurityTab(
                                     ) {
                                         Text(
                                             text = when (lockType) {
-                                                ParentLockType.PIN -> "PIN"
-                                                ParentLockType.PATTERN -> "Pattern"
                                                 ParentLockType.PASSWORD -> "Password"
+                                                ParentLockType.PATTERN -> "Pattern"
+                                                ParentLockType.PIN -> "4-Digit PIN"
                                             },
                                             fontSize = 11.sp,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,

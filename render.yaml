@@ -10,6 +10,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.2
+      - key: ENVIRONMENT
+        value: production
       - key: DEBUG
         value: "false"
       - key: CORS_ORIGINS
@@ -20,8 +22,20 @@ services:
           property: connectionString
       - key: SECRET_KEY
         generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        value: "179684236627-d7j0s15cvkj6li430jku6easqma5q81l.apps.googleusercontent.com"
       - key: YOUTUBE_API_KEY
         sync: false
+      - key: SMTP_HOST
+        value: "smtp.gmail.com"
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        value: "kidcurateservices@gmail.com"
 
 databases:
   - name: kidcurate-db
@@ -29,4 +43,3 @@ databases:
     databaseName: kidcurate
     user: kidcurate
     ipAllowList: []
-

@@ -4,6 +4,7 @@ from typing import List
 from pathlib import Path
 import json
 import os
+import secrets
 
 ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 
@@ -43,13 +44,22 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_secrets(self):
         is_prod = self.ENVIRONMENT.lower() in ("production", "prod") or bool(os.environ.get("RENDER"))
+        is_placeholder_secret = (
+            not self.SECRET_KEY
+            or "change-this-in-production" in self.SECRET_KEY
+            or "replace-with-" in self.SECRET_KEY
+            or len(self.SECRET_KEY) < 32
+        )
         if is_prod:
-            if "change-this-in-production" in self.SECRET_KEY or len(self.SECRET_KEY) < 32:
+            if is_placeholder_secret:
                 raise ValueError("FATAL: In production, SECRET_KEY must be a cryptographically secure random string of at least 32 characters.")
             if self.DATABASE_URL.strip().lower().startswith("sqlite"):
                 raise ValueError("FATAL: Production must use persistent PostgreSQL storage, not local SQLite.")
             if not self.GOOGLE_CLIENT_ID.endswith(".apps.googleusercontent.com"):
                 raise ValueError("FATAL: GOOGLE_CLIENT_ID must be a valid Google OAuth web client ID.")
+        elif is_placeholder_secret:
+            # Never leave a static known placeholder signing key active in development/test
+            self.SECRET_KEY = secrets.token_urlsafe(48)
         return self
 
     @property

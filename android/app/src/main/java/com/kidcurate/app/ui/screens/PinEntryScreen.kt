@@ -429,7 +429,7 @@ fun PinEntryScreen(
         if (showParentGate) {
             ParentPasswordDialog(
                 title = "Parent Unlock",
-                subtitle = "Enter 4-digit Parent PIN to unlock ${if (childName.isNotBlank()) "$childName's" else "this"} playlist",
+                subtitle = "Enter your Parent Password, Pattern, or PIN to unlock ${if (childName.isNotBlank()) "$childName's" else "this"} playlist",
                 allowGoogleSignIn = false,
                 onSuccess = {
                     showParentGate = false

@@ -50,107 +50,146 @@ data class TourStep(
 val TOUR_STEPS = listOf(
     TourStep(
         stepNumber = 1,
-        badge = "SCREEN 1: CHILD LOGIN & PIN PAD",
-        title = "Who's Ready to Explore?",
-        description = "Children tap their profile avatar and enter their secret 4-digit PIN to open their daily playlist.",
-        icon = Icons.Rounded.Lock,
+        badge = "STEP 1: PARENT SIGN-IN & INDEPENDENT LOCK",
+        title = "Google + Gmail OTP & Parent Lock",
+        description = "First-time setup verifies your Gmail with a 6-digit OTP, sends a Welcome Note, and lets you choose your own Parent Lock.",
+        icon = Icons.Rounded.VerifiedUser,
         buttonGuides = listOf(
             ButtonGuideItem(
-                buttonName = "Child Avatar Card",
-                icon = Icons.Rounded.Face,
-                actionDescription = "Tap to open PIN pad and begin watching approved videos."
+                buttonName = "Parents Shield & Create First Profile",
+                icon = Icons.Rounded.Shield,
+                actionDescription = "Tap 'Parents' (top right) or 'Create First Profile' to open the Parent Gate."
             ),
             ButtonGuideItem(
-                buttonName = "Eye Toggle Icon",
-                icon = Icons.Rounded.Visibility,
-                actionDescription = "Reveals or hides entered PIN digits so typos can be verified."
+                buttonName = "Continue with Google -> 6-Digit Gmail OTP",
+                icon = Icons.Rounded.MarkEmailRead,
+                actionDescription = "Select your Google account and enter the 6-digit verification code sent to your Gmail inbox."
             ),
             ButtonGuideItem(
-                buttonName = "Parent Shield (Top Right)",
-                icon = Icons.Rounded.AdminPanelSettings,
-                actionDescription = "Opens Parent Zone using your 4-digit Parent PIN."
+                buttonName = "Choose Password, Pattern, or 4-Digit PIN",
+                icon = Icons.Rounded.Pattern,
+                actionDescription = "Set an independent Parent Password, 3x3 Pattern, or PIN separate from your phone lockscreen."
             ),
             ButtonGuideItem(
-                buttonName = "Backspace",
-                icon = Icons.AutoMirrored.Rounded.Backspace,
-                actionDescription = "Deletes digits one by one so mistakes can be easily fixed."
+                buttonName = "Forgot Lock? Reset with Gmail OTP",
+                icon = Icons.Rounded.LockReset,
+                actionDescription = "Recover and reset your Parent Lock at any time using a 6-digit code sent to your Gmail."
             ),
         ),
     ),
     TourStep(
         stepNumber = 2,
-        badge = "SCREEN 2: TODAY'S PLAYLIST",
-        title = "Today's Curated Queue",
-        description = "Distraction-free daily queue assigned by parents. Zero ads, no algorithmic autoplay, and no comments.",
-        icon = Icons.Rounded.VideoLibrary,
+        badge = "STEP 2: WHO'S WATCHING & CHILD PIN PAD",
+        title = "Instant Play or Child PIN",
+        description = "Children tap their avatar to start watching immediately, or enter an optional 4-digit Child PIN if enabled in Security.",
+        icon = Icons.Rounded.Face,
         buttonGuides = listOf(
             ButtonGuideItem(
-                buttonName = "Play All Button",
+                buttonName = "Child Avatar Card (Play Button)",
                 icon = Icons.Rounded.PlayArrow,
-                actionDescription = "Starts today's assigned videos in sequence from video 1."
+                actionDescription = "Opens the child's curated playlist immediately (or opens the 4-digit Child PIN pad when required)."
             ),
             ButtonGuideItem(
-                buttonName = "Child Lock (Lock/Unlock)",
-                icon = Icons.Rounded.Lock,
-                actionDescription = "Locks touch controls to prevent kids from skipping or exiting."
+                buttonName = "Show PIN / Hide PIN Pill",
+                icon = Icons.Rounded.Visibility,
+                actionDescription = "Reveals or hides entered digits on the Child PIN pad so typos are easy to spot."
             ),
             ButtonGuideItem(
-                buttonName = "Switch Profile",
-                icon = Icons.AutoMirrored.Filled.Logout,
-                actionDescription = "Quickly switch between brother and sister profiles without reloading."
+                buttonName = "Backspace Button",
+                icon = Icons.AutoMirrored.Rounded.Backspace,
+                actionDescription = "Deletes PIN digits one by one without clearing the entire entry."
+            ),
+            ButtonGuideItem(
+                buttonName = "Forgot PIN? (Parent Unlock)",
+                icon = Icons.Rounded.LockOpen,
+                actionDescription = "Lets a parent unlock the child's playlist directly using the Parent Password, Pattern, or PIN."
             ),
         ),
     ),
     TourStep(
         stepNumber = 3,
-        badge = "SCREEN 3: VIDEO PLAYER",
-        title = "Safe Playback & Phonics",
-        description = "Pure fullscreen entertainment locked strictly to parent-approved playlists.",
-        icon = Icons.Rounded.SmartDisplay,
+        badge = "STEP 3: TODAY'S CURATED PLAYLIST",
+        title = "Distraction-Free Daily Queue",
+        description = "Only the videos you approved appear here — zero algorithmic recommendations, zero comments, and zero external links.",
+        icon = Icons.Rounded.VideoLibrary,
         buttonGuides = listOf(
             ButtonGuideItem(
-                buttonName = "CC Subtitles Button",
-                icon = Icons.Rounded.ClosedCaption,
-                actionDescription = "Toggles phonics karaoke subtitles with golden word highlight."
+                buttonName = "Play All Button",
+                icon = Icons.Rounded.PlayArrow,
+                actionDescription = "Starts today's approved videos in sequence from the first video."
             ),
             ButtonGuideItem(
-                buttonName = "Lock Controls Button",
+                buttonName = "Lock / Unlock (Child Lock)",
                 icon = Icons.Rounded.Lock,
-                actionDescription = "Unlock controls using your 4-digit Parent PIN (stays right on video)."
+                actionDescription = "Pins the screen and locks navigation so children cannot exit or switch profiles without your Parent Lock."
             ),
             ButtonGuideItem(
-                buttonName = "Next Video Button",
-                icon = Icons.Rounded.SkipNext,
-                actionDescription = "Advances to next video with 4-second star celebration overlay."
+                buttonName = "Video Cards & Progress Badges",
+                icon = Icons.Rounded.SmartDisplay,
+                actionDescription = "Tap any card in the queue to play that video and view its duration and completion badge."
+            ),
+            ButtonGuideItem(
+                buttonName = "Back / Switch Profile",
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                actionDescription = "Returns to 'Who's Watching?' to switch between sibling profiles (protected when Child Lock is active)."
             ),
         ),
     ),
     TourStep(
         stepNumber = 4,
-        badge = "SCREEN 4: PARENT ZONE",
-        title = "Curation, Limits & History",
-        description = "Complete parent control: search YouTube, enforce screen-time limits, and review history.",
+        badge = "STEP 4: SAFE VIDEO PLAYER & FULLSCREEN LOCK",
+        title = "Locked Playback & Karaoke Phonics",
+        description = "Works in both portrait and edge-to-edge landscape fullscreen with strict Parent Lock protection.",
+        icon = Icons.Rounded.SmartDisplay,
+        buttonGuides = listOf(
+            ButtonGuideItem(
+                buttonName = "Padlock Button (Portrait & Landscape)",
+                icon = Icons.Rounded.Lock,
+                actionDescription = "Locks all player controls and timeline scrubbing. Unlocking requires your Parent Password, Pattern, or PIN."
+            ),
+            ButtonGuideItem(
+                buttonName = "Left Back Arrow (While Locked)",
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                actionDescription = "Even in landscape fullscreen, tapping the back arrow while locked prompts for your Parent Lock before exiting."
+            ),
+            ButtonGuideItem(
+                buttonName = "CC ON / OFF (Karaoke Phonics)",
+                icon = Icons.Rounded.ClosedCaption,
+                actionDescription = "Toggles Early Reader subtitles with large bold text and synchronized golden word highlights."
+            ),
+            ButtonGuideItem(
+                buttonName = "Fullscreen & Next Video Buttons",
+                icon = Icons.Rounded.SkipNext,
+                actionDescription = "Rotates between portrait and landscape fullscreen or advances to the next approved video."
+            ),
+        ),
+    ),
+    TourStep(
+        stepNumber = 5,
+        badge = "STEP 5: PARENT ZONE (ALL 5 TABS)",
+        title = "Complete Curation & Safety Controls",
+        description = "Manage child profiles, curate YouTube videos, set screen-time limits, and customize your security preferences.",
         icon = Icons.Rounded.Settings,
         buttonGuides = listOf(
             ButtonGuideItem(
-                buttonName = "Search Tab",
+                buttonName = "Profiles & Search Tabs",
                 icon = Icons.Rounded.Search,
-                actionDescription = "Safe YouTube search with 1-tap duplicate check before adding."
+                actionDescription = "Create child profiles with avatars, search safe educational videos, or paste any YouTube URL directly."
             ),
             ButtonGuideItem(
-                buttonName = "History Tab",
+                buttonName = "Videos & History Tabs",
                 icon = Icons.Rounded.History,
-                actionDescription = "Real-time audit log of videos added, watched, and searched."
+                actionDescription = "Apply 1-tap Activity Packs, reorder videos with Up/Down arrows, and review Watch & Curation History."
             ),
             ButtonGuideItem(
-                buttonName = "Profiles Tab",
-                icon = Icons.Rounded.Group,
-                actionDescription = "Create or edit children's names, avatars, and 4-digit PINs."
+                buttonName = "Security Tab: Lock, Limits & Curfew",
+                icon = Icons.Rounded.Timer,
+                actionDescription = "Switch between Password, Pattern, or PIN, toggle Fingerprint unlock, and set Daily Screen Time & Bedtime Curfew."
             ),
             ButtonGuideItem(
-                buttonName = "Kids Mode Button",
+                buttonName = "Kids Mode Button (Top Right)",
                 icon = Icons.Rounded.ChildCare,
-                actionDescription = "Instant 1-tap return back to child player."
+                actionDescription = "Exits Parent Zone in 1 tap and returns safely to the child profile screen."
             ),
         ),
     ),
