@@ -196,4 +196,18 @@ class AppPoliciesTest {
         assertFalse(PlaybackResumePolicy.shouldPersistProgress(350f, 375f, isEnded = false))
         assertTrue(PlaybackResumePolicy.shouldPersistProgress(120f, 375f, isEnded = false))
     }
+
+    @Test
+    fun emailOtpPolicyValidatesAndMasksGmailAddresses() {
+        assertTrue(EmailOtpPolicy.isValidEmail("parent.name@gmail.com"))
+        assertFalse(EmailOtpPolicy.isValidEmail("invalid-email"))
+        assertFalse(EmailOtpPolicy.isValidEmail("user@"))
+
+        assertTrue(EmailOtpPolicy.isValidOtpCode("482910"))
+        assertFalse(EmailOtpPolicy.isValidOtpCode("48291"))
+        assertFalse(EmailOtpPolicy.isValidOtpCode("48a910"))
+
+        assertEquals("p****e@gmail.com", EmailOtpPolicy.maskEmail("parent.name@gmail.com"))
+        assertEquals("a*c@gmail.com", EmailOtpPolicy.maskEmail("abc@gmail.com"))
+    }
 }

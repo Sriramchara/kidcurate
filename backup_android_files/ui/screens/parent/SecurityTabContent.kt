@@ -33,6 +33,8 @@ import com.kidcurate.app.data.ParentPreferences
 import com.kidcurate.app.data.ParentBiometricAuth
 import androidx.fragment.app.FragmentActivity
 import com.kidcurate.app.ui.components.OnboardingTourDialog
+import com.kidcurate.app.ui.components.ParentGateMode
+import com.kidcurate.app.ui.components.ParentPasswordDialog
 import com.kidcurate.app.ui.components.PatternLockView
 import com.kidcurate.app.ui.theme.*
 import kotlinx.coroutines.launch
@@ -639,6 +641,7 @@ fun SecurityTab(
         var showDeleteAccountDialog by remember { mutableStateOf(false) }
         var isDeletingAccount by remember { mutableStateOf(false) }
         var showChangeParentPinDialog by remember { mutableStateOf(false) }
+        var showGmailOtpLoginDialog by remember { mutableStateOf(false) }
 
         fun connectGoogleAccount() {
             val activity = appContext as? Activity
@@ -838,6 +841,56 @@ fun SecurityTab(
                             )
                         }
                     }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = { showGmailOtpLoginDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, BrandPrimary.copy(alpha = 0.35f)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = BrandPrimary.copy(alpha = 0.08f),
+                        ),
+                        enabled = !isAccountLoading,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(
+                                Icons.Rounded.MarkEmailRead,
+                                contentDescription = null,
+                                tint = BrandPrimary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Verify with Gmail OTP",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = BrandPrimary,
+                            )
+                        }
+                    }
+                }
+
+                if (showGmailOtpLoginDialog) {
+                    ParentPasswordDialog(
+                        title = "Gmail OTP Verification",
+                        subtitle = "Verify your Gmail address with a 6-digit code",
+                        allowGoogleSignIn = true,
+                        initialStartMode = ParentGateMode.EMAIL_OTP,
+                        onSuccess = {
+                            showGmailOtpLoginDialog = false
+                            currentToken = parentPrefs.parentAuthToken
+                            accountStatusMessage = "Verified via Gmail OTP: ${parentPrefs.parentEmail}"
+                            onPinUpdated()
+                        },
+                        onDismiss = { showGmailOtpLoginDialog = false },
+                    )
                 }
 
                 if (accountStatusMessage != null) {

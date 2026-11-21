@@ -116,6 +116,12 @@ interface KidCurateApi {
     @POST("api/auth/google")
     suspend fun googleLogin(@Body request: Map<String, String>): Map<String, Any>
 
+    @POST("api/auth/otp/request")
+    suspend fun requestEmailOtp(@Body request: Map<String, String>): Map<String, Any>
+
+    @POST("api/auth/otp/verify")
+    suspend fun verifyEmailOtp(@Body request: Map<String, String>): Map<String, Any>
+
     @POST("api/auth/refresh")
     suspend fun refreshToken(@Body request: Map<String, String>): Map<String, Any>
 }
@@ -215,6 +221,7 @@ object ApiClient {
             if (path.contains("api/auth/refresh") ||
                 path.contains("api/auth/login") ||
                 path.contains("api/auth/google") ||
+                path.contains("api/auth/otp/") ||
                 path.contains("api/auth/register") ||
                 path.contains("api/auth/verify-parent-password")) {
                 return@authenticator null

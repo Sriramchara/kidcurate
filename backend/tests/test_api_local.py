@@ -920,6 +920,101 @@ async def test_security_jwt_token_type_confusion_negative():
         assert r_wrong_secret.status_code == 401
 
 
+@pytest.mark.asyncio
+async def test_gmail_otp_login_and_lock_reset_flow():
+    """Verify 6-digit Gmail OTP login, single-use invalidation, brute-force lockout, and lock reset."""
+    captured_codes = []
+
+    async def fake_send_otp(to_email: str, code: str, purpose: str = "login") -> bool:
+        captured_codes.append((to_email, code, purpose))
+        return True
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        with patch("app.routes.auth.send_otp_verification_email", side_effect=fake_send_otp):
+            # 1. Request OTP for a new Gmail account
+            req1 = await ac.post("/api/auth/otp/request", json={
+                "email": "otp_parent@gmail.com",
+                "purpose": "login",
+            })
+            assert req1.status_code == 200
+            assert req1.json()["email_sent"] is True
+            assert len(captured_codes) == 1
+            sent_email, sent_code, sent_purpose = captured_codes[-1]
+            assert sent_email == "otp_parent@gmail.com"
+            assert len(sent_code) == 6 and sent_code.isdigit()
+            assert sent_purpose == "login"
+
+            # 2. Wrong OTP fails with remaining attempt count
+            wrong = await ac.post("/api/auth/otp/verify", json={
+                "email": "otp_parent@gmail.com",
+                "code": "000000" if sent_code != "000000" else "111111",
+                "purpose": "login",
+            })
+            assert wrong.status_code == 400
+            assert "attempt(s) remaining" in wrong.json()["detail"]
+
+            # 3. Correct OTP succeeds and creates account + issues tokens
+            ok = await ac.post("/api/auth/otp/verify", json={
+                "email": "otp_parent@gmail.com",
+                "code": sent_code,
+                "name": "OTP Parent",
+                "purpose": "login",
+            })
+            assert ok.status_code == 200
+            tokens = ok.json()
+            assert tokens["email"] == "otp_parent@gmail.com"
+            assert tokens["name"] == "OTP Parent"
+            assert tokens["access_token"]
+            assert tokens["refresh_token"]
+
+            # 4. Reusing same OTP must fail (single-use)
+            reuse = await ac.post("/api/auth/otp/verify", json={
+                "email": "otp_parent@gmail.com",
+                "code": sent_code,
+                "purpose": "login",
+            })
+            assert reuse.status_code == 400
+
+            # 5. Lock reset OTP flow for registered parent
+            req_reset = await ac.post("/api/auth/otp/request", json={
+                "email": "otp_parent@gmail.com",
+                "purpose": "reset_lock",
+            })
+            assert req_reset.status_code == 200
+            reset_code = captured_codes[-1][1]
+            assert captured_codes[-1][2] == "reset_lock"
+
+            ok_reset = await ac.post("/api/auth/otp/verify", json={
+                "email": "otp_parent@gmail.com",
+                "code": reset_code,
+                "purpose": "reset_lock",
+            })
+            assert ok_reset.status_code == 200
+            assert ok_reset.json()["access_token"]
+
+            # 6. Brute-force lockout after > 5 wrong OTP guesses invalidates token
+            await ac.post("/api/auth/otp/request", json={
+                "email": "otp_parent@gmail.com",
+                "purpose": "reset_lock",
+            })
+            brute_code = captured_codes[-1][1]
+            bad_code = "999999" if brute_code != "999999" else "888888"
+            for _ in range(5):
+                r_bad = await ac.post("/api/auth/otp/verify", json={
+                    "email": "otp_parent@gmail.com",
+                    "code": bad_code,
+                    "purpose": "reset_lock",
+                })
+                assert r_bad.status_code == 400
+            r_locked = await ac.post("/api/auth/otp/verify", json={
+                "email": "otp_parent@gmail.com",
+                "code": bad_code,
+                "purpose": "reset_lock",
+            })
+            assert r_locked.status_code == 429
+
+
+
 
 
 

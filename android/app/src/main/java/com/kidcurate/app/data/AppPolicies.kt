@@ -242,3 +242,31 @@ object PlaybackResumePolicy {
         return true
     }
 }
+
+object EmailOtpPolicy {
+    const val OTP_LENGTH = 6
+    const val RESEND_COOLDOWN_SECONDS = 60
+
+    private val EMAIL_REGEX = Regex("""^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$""")
+
+    fun isValidEmail(email: String): Boolean {
+        return EMAIL_REGEX.matches(email.trim())
+    }
+
+    fun isValidOtpCode(code: String): Boolean {
+        val trimmed = code.trim()
+        return trimmed.length == OTP_LENGTH && trimmed.all { it.isDigit() }
+    }
+
+    fun maskEmail(email: String): String {
+        val trimmed = email.trim().lowercase()
+        val atIdx = trimmed.indexOf('@')
+        if (atIdx <= 1) return trimmed
+        val local = trimmed.substring(0, atIdx)
+        val domain = trimmed.substring(atIdx)
+        return when {
+            local.length <= 2 -> "${local.first()}*$domain"
+            else -> "${local.first()}${"*".repeat((local.length - 2).coerceAtMost(4))}${local.last()}$domain"
+        }
+    }
+}

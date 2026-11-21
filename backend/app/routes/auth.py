@@ -18,7 +18,11 @@ from app.auth import (
     get_current_user,
     get_optional_current_user,
 )
-from app.services.email import send_password_reset_email
+from app.services.email import (
+    send_password_reset_email,
+    send_otp_verification_email,
+    is_smtp_configured,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -116,6 +120,25 @@ class ResetPasswordRequest(BaseModel):
 class VerifyParentPasswordRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class OtpRequest(BaseModel):
+    email: EmailStr
+    purpose: str = Field(default="login", description="Either 'login' or 'reset_lock'")
+
+
+class OtpRequestResponse(BaseModel):
+    message: str
+    email: str
+    expires_in_seconds: int = 600
+    email_sent: bool = True
+
+
+class OtpVerifyRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
+    name: Optional[str] = None
+    purpose: str = Field(default="login", description="Either 'login' or 'reset_lock'")
 
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
@@ -370,6 +393,167 @@ async def google_login(
         user.name = name
         await db.commit()
         await db.refresh(user)
+
+    access_token = create_access_token({"sub": str(user.id)})
+    refresh_token = create_refresh_token({"sub": str(user.id)})
+    set_auth_cookies(response, access_token, refresh_token)
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user_id=str(user.id),
+        name=user.name,
+        email=user.email,
+    )
+
+
+@router.post("/otp/request", response_model=OtpRequestResponse)
+async def request_email_otp(
+    data: OtpRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a 6-digit single-use Gmail/email OTP for parent sign-in or Parent Lock reset.
+    Reuses PasswordResetToken storage (zero schema changes) with bcrypt hashing and 10-minute expiry.
+    """
+    clean_email = data.email.lower().strip()
+    purpose = "reset_lock" if data.purpose == "reset_lock" else "login"
+
+    # Rate limit OTP dispatch per email (max 5 requests per 5 minutes)
+    otp_req_key = f"otp_req_{clean_email}"
+    check_auth_rate_limit(otp_req_key, max_attempts=5, lock_minutes=5)
+    record_auth_failure(otp_req_key, max_attempts=6, lock_minutes=5)
+
+    if purpose == "reset_lock":
+        result = await db.execute(select(User).where(User.email == clean_email))
+        user = result.scalar_one_or_none()
+        if not user:
+            return OtpRequestResponse(
+                message="If this email is registered, a 6-digit verification code has been sent.",
+                email=clean_email,
+                expires_in_seconds=600,
+                email_sent=is_smtp_configured(),
+            )
+
+    code = f"{secrets.randbelow(900000) + 100000}"
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+    await db.execute(delete(PasswordResetToken).where(PasswordResetToken.email == clean_email))
+
+    otp_entry = PasswordResetToken(
+        email=clean_email,
+        code_hash=hash_password(code),
+        expires_at=expires_at,
+        attempts=0,
+    )
+    db.add(otp_entry)
+    await db.commit()
+
+    delivered = await send_otp_verification_email(to_email=clean_email, code=code, purpose=purpose)
+
+    if not delivered:
+        is_prod = settings.ENVIRONMENT.lower() in ("production", "prod")
+        if is_prod and not is_smtp_configured():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Gmail OTP email delivery is not configured on the server. Please use Google Sign-In or contact support.",
+            )
+        if not is_smtp_configured():
+            return OtpRequestResponse(
+                message="Gmail SMTP is not configured yet on the server (set SMTP_HOST, SMTP_USER, and SMTP_PASSWORD in backend/.env).",
+                email=clean_email,
+                expires_in_seconds=600,
+                email_sent=False,
+            )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not deliver verification email. Please verify your email address and try again.",
+        )
+
+    return OtpRequestResponse(
+        message="A 6-digit verification code has been sent to your email.",
+        email=clean_email,
+        expires_in_seconds=600,
+        email_sent=True,
+    )
+
+
+@router.post("/otp/verify", response_model=TokenResponse)
+async def verify_email_otp(
+    data: OtpVerifyRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify a 6-digit email OTP and issue authenticated parent JWT tokens."""
+    clean_email = data.email.lower().strip()
+    clean_code = data.code.strip()
+    purpose = "reset_lock" if data.purpose == "reset_lock" else "login"
+
+    if len(clean_code) != 6 or not clean_code.isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification code must be exactly 6 digits.",
+        )
+
+    result = await db.execute(
+        select(PasswordResetToken)
+        .where(PasswordResetToken.email == clean_email)
+        .order_by(PasswordResetToken.created_at.desc())
+    )
+    entry = result.scalar_one_or_none()
+
+    if not entry:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active verification code found. Please request a new OTP.",
+        )
+
+    entry_expires = entry.expires_at if entry.expires_at.tzinfo else entry.expires_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > entry_expires:
+        await db.delete(entry)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification code has expired. Please request a new OTP.",
+        )
+
+    entry.attempts += 1
+    if entry.attempts > 5:
+        await db.delete(entry)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many incorrect OTP attempts. This code has been invalidated. Please request a new one.",
+        )
+
+    if not verify_password(clean_code, entry.code_hash):
+        await db.commit()
+        remaining = 5 - entry.attempts
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid verification code. {remaining} attempt(s) remaining.",
+        )
+
+    await db.delete(entry)
+    clear_auth_failures(f"otp_req_{clean_email}")
+
+    user_res = await db.execute(select(User).where(User.email == clean_email))
+    user = user_res.scalar_one_or_none()
+
+    if not user:
+        if purpose == "reset_lock":
+            await db.commit()
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent account not found.")
+        display_name = (data.name or "").strip() or clean_email.split("@")[0].capitalize()
+        user = User(
+            name=display_name,
+            email=clean_email,
+            password_hash=hash_password(secrets.token_urlsafe(32)),
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    else:
+        await db.commit()
 
     access_token = create_access_token({"sub": str(user.id)})
     refresh_token = create_refresh_token({"sub": str(user.id)})

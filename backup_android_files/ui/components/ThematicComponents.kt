@@ -41,6 +41,7 @@ import retrofit2.HttpException
 import com.kidcurate.app.data.ApiClient
 import com.kidcurate.app.data.ParentBiometricAuth
 import androidx.fragment.app.FragmentActivity
+import com.kidcurate.app.data.EmailOtpPolicy
 import com.kidcurate.app.data.GoogleCredentialAuth
 import com.kidcurate.app.data.ParentLockPolicy
 import com.kidcurate.app.data.ParentLockType
@@ -296,14 +297,16 @@ fun GlassCard(
 enum class ParentGateMode {
     CREDENTIAL_UNLOCK,
     GOOGLE_LOGIN,
+    EMAIL_OTP,
     BIOMETRIC_VERIFY,
     SET_CREDENTIAL,
 }
 
 /**
- * Parent Verification Dialog (Google-First Identity & Independent Parent Lock Gate)
- * Uses Google Sign-In and optional hardware-only biometrics (never device lockscreen PIN)
- * for parent identity verification, and parent-chosen PIN / Pattern / Password for daily gates.
+ * Parent Verification Dialog (Google / Gmail OTP Identity & Independent Parent Lock Gate)
+ * Uses Google Sign-In or 6-digit Gmail OTP for parent identity and recovery,
+ * optional strong fingerprint unlock (never phone lockscreen PIN), and parent-chosen
+ * 3x3 Pattern, 4-digit PIN, or Password for daily gates.
  */
 @Composable
 fun ParentPasswordDialog(
@@ -311,6 +314,7 @@ fun ParentPasswordDialog(
     subtitle: String = "Enter 4-digit Parent PIN",
     allowGoogleSignIn: Boolean = true,
     forceGoogleOnly: Boolean = false,
+    initialStartMode: ParentGateMode? = null,
     onSuccess: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -337,24 +341,24 @@ fun ParentPasswordDialog(
     }
 
     val initialMode = remember {
-        val effectiveAllowGoogle = allowGoogleSignIn || !parentPrefs.hasParentPin
-        if (forceGoogleOnly || (!parentPrefs.isParentLoggedIn && effectiveAllowGoogle)) {
-            ParentGateMode.GOOGLE_LOGIN
-        } else if (ParentSessionPolicy.canReusePin(
-                hasPin = parentPrefs.hasParentPin,
-                pinOwnerEmail = parentPrefs.parentPinOwnerEmail,
-                currentAccountEmail = parentPrefs.parentEmail,
-                signingInEmail = parentPrefs.parentEmail,
-            )) {
-            ParentGateMode.CREDENTIAL_UNLOCK
-        } else if (isHardwareBiometricAvailable) {
-            // Never let unauthenticated children see SET_CREDENTIAL directly.
-            // Require hardware-only biometric (fingerprint/face) or Google sign-in first.
-            ParentGateMode.BIOMETRIC_VERIFY
-        } else if (effectiveAllowGoogle) {
-            ParentGateMode.GOOGLE_LOGIN
+        if (initialStartMode != null) {
+            initialStartMode
         } else {
-            ParentGateMode.SET_CREDENTIAL
+            val effectiveAllowGoogle = allowGoogleSignIn || !parentPrefs.hasParentPin
+            if (forceGoogleOnly || (!parentPrefs.isParentLoggedIn && effectiveAllowGoogle)) {
+                ParentGateMode.GOOGLE_LOGIN
+            } else if (ParentSessionPolicy.canReusePin(
+                    hasPin = parentPrefs.hasParentPin,
+                    pinOwnerEmail = parentPrefs.parentPinOwnerEmail,
+                    currentAccountEmail = parentPrefs.parentEmail,
+                    signingInEmail = parentPrefs.parentEmail,
+                )) {
+                ParentGateMode.CREDENTIAL_UNLOCK
+            } else if (effectiveAllowGoogle) {
+                ParentGateMode.GOOGLE_LOGIN
+            } else {
+                ParentGateMode.SET_CREDENTIAL
+            }
         }
     }
 
@@ -369,6 +373,11 @@ fun ParentPasswordDialog(
     var draftPattern by remember { mutableStateOf<List<Int>?>(null) }
     var patternError by remember { mutableStateOf(false) }
     var patternResetKey by remember { mutableIntStateOf(0) }
+    var otpEmailInput by remember { mutableStateOf(parentPrefs.parentEmail) }
+    var otpCodeInput by remember { mutableStateOf("") }
+    var otpSent by remember { mutableStateOf(false) }
+    var otpResendCooldown by remember { mutableIntStateOf(0) }
+    var otpStatusMessage by remember { mutableStateOf<String?>(null) }
     var showSecretText by remember { mutableStateOf(false) }
     var isVerifying by remember { mutableStateOf(false) }
     var isResettingCredential by remember { mutableStateOf(false) }
@@ -381,6 +390,134 @@ fun ParentPasswordDialog(
             lockoutRemainingSeconds--
             if (lockoutRemainingSeconds == 0 && errorMessage?.contains("Locked for") == true) {
                 errorMessage = null
+            }
+        }
+    }
+
+    LaunchedEffect(otpResendCooldown) {
+        if (otpResendCooldown > 0) {
+            kotlinx.coroutines.delay(1000)
+            otpResendCooldown--
+        }
+    }
+
+    fun extractHttpErrorDetail(e: HttpException): String {
+        return try {
+            val raw = e.response()?.errorBody()?.string().orEmpty()
+            org.json.JSONObject(raw).optString("detail").ifBlank { "Request failed (${e.code()})." }
+        } catch (_: Exception) {
+            "Request failed (${e.code()})."
+        }
+    }
+
+    fun requestOtpCode() {
+        val cleanEmail = otpEmailInput.trim().lowercase()
+        if (!EmailOtpPolicy.isValidEmail(cleanEmail)) {
+            errorMessage = "Please enter a valid Gmail or email address."
+            return
+        }
+        coroutineScope.launch {
+            isVerifying = true
+            errorMessage = null
+            otpStatusMessage = null
+            try {
+                val purpose = if (isResettingCredential) "reset_lock" else "login"
+                val resp = ApiClient.api.requestEmailOtp(
+                    mapOf(
+                        "email" to cleanEmail,
+                        "purpose" to purpose,
+                    )
+                )
+                val emailSent = resp["email_sent"] as? Boolean ?: true
+                val msg = resp["message"] as? String
+                    ?: "A 6-digit verification code was sent to ${EmailOtpPolicy.maskEmail(cleanEmail)}."
+                if (emailSent) {
+                    otpSent = true
+                    otpCodeInput = ""
+                    otpResendCooldown = EmailOtpPolicy.RESEND_COOLDOWN_SECONDS
+                    otpStatusMessage = "Code sent to ${EmailOtpPolicy.maskEmail(cleanEmail)}. Check your inbox."
+                } else {
+                    errorMessage = msg
+                }
+            } catch (e: HttpException) {
+                errorMessage = extractHttpErrorDetail(e)
+            } catch (_: Exception) {
+                errorMessage = "Could not contact the server. Check your internet connection."
+            } finally {
+                isVerifying = false
+            }
+        }
+    }
+
+    fun verifyOtpCode() {
+        val cleanEmail = otpEmailInput.trim().lowercase()
+        val cleanCode = otpCodeInput.trim()
+        if (!EmailOtpPolicy.isValidOtpCode(cleanCode)) {
+            errorMessage = "Enter the 6-digit verification code from your Gmail."
+            return
+        }
+        coroutineScope.launch {
+            isVerifying = true
+            errorMessage = null
+            try {
+                val purpose = if (isResettingCredential) "reset_lock" else "login"
+                val resp = ApiClient.api.verifyEmailOtp(
+                    mapOf(
+                        "email" to cleanEmail,
+                        "code" to cleanCode,
+                        "purpose" to purpose,
+                    )
+                )
+                val token = resp["access_token"] as? String ?: ""
+                val refreshToken = resp["refresh_token"] as? String ?: ""
+                val serverName = (resp["name"] as? String)?.trim().orEmpty()
+                if (token.isBlank()) {
+                    errorMessage = "Server did not issue a session token."
+                    return@launch
+                }
+
+                val savedPinMatchesAccount = ParentSessionPolicy.canReusePin(
+                    hasPin = parentPrefs.hasParentPin,
+                    pinOwnerEmail = parentPrefs.parentPinOwnerEmail,
+                    currentAccountEmail = parentPrefs.parentEmail,
+                    signingInEmail = cleanEmail,
+                )
+
+                parentPrefs.parentEmail = cleanEmail
+                if (serverName.isNotBlank()) {
+                    parentPrefs.parentName = serverName
+                } else if (parentPrefs.parentName.isBlank()) {
+                    parentPrefs.parentName = cleanEmail.substringBefore("@").replaceFirstChar { it.uppercase() }
+                }
+                parentPrefs.parentAuthToken = token
+                parentPrefs.parentRefreshToken = refreshToken
+                ApiClient.authToken = token
+
+                if (isResettingCredential || !savedPinMatchesAccount) {
+                    parentPrefs.parentPin = ""
+                    parentPrefs.parentPinOwnerEmail = ""
+                    newPinInput = ""
+                    confirmPinInput = ""
+                    newPasswordInput = ""
+                    confirmPasswordInput = ""
+                    draftPattern = null
+                    patternError = false
+                    patternResetKey++
+                    isResettingCredential = false
+                    otpSent = false
+                    otpCodeInput = ""
+                    otpStatusMessage = null
+                    currentMode = ParentGateMode.SET_CREDENTIAL
+                } else {
+                    parentPrefs.parentPinOwnerEmail = cleanEmail
+                    onSuccess()
+                }
+            } catch (e: HttpException) {
+                errorMessage = extractHttpErrorDetail(e)
+            } catch (_: Exception) {
+                errorMessage = "Verification failed. Please check your connection and try again."
+            } finally {
+                isVerifying = false
             }
         }
     }
@@ -525,6 +662,7 @@ fun ParentPasswordDialog(
                             ParentGateMode.SET_CREDENTIAL -> Icons.Rounded.LockReset
                             ParentGateMode.BIOMETRIC_VERIFY -> Icons.Rounded.Fingerprint
                             ParentGateMode.GOOGLE_LOGIN -> Icons.Rounded.AccountCircle
+                            ParentGateMode.EMAIL_OTP -> Icons.Rounded.MarkEmailRead
                         },
                         contentDescription = "Parent Gate",
                         tint = BrandPrimary,
@@ -539,8 +677,9 @@ fun ParentPasswordDialog(
                     text = when (currentMode) {
                         ParentGateMode.CREDENTIAL_UNLOCK -> title
                         ParentGateMode.SET_CREDENTIAL -> "Create Independent Parent Lock"
-                        ParentGateMode.BIOMETRIC_VERIFY -> "Parent Biometric Verification"
+                        ParentGateMode.BIOMETRIC_VERIFY -> "Parent Fingerprint Verification"
                         ParentGateMode.GOOGLE_LOGIN -> if (isResettingCredential) "Reset Parent Lock" else "Parent Account Sign In"
+                        ParentGateMode.EMAIL_OTP -> if (isResettingCredential) "Reset via Gmail OTP" else "Gmail OTP Verification"
                     },
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
@@ -552,11 +691,18 @@ fun ParentPasswordDialog(
                     text = when (currentMode) {
                         ParentGateMode.CREDENTIAL_UNLOCK -> effectiveUnlockSubtitle
                         ParentGateMode.SET_CREDENTIAL -> "Choose a Pattern, PIN, or Password separate from your phone's lockscreen."
-                        ParentGateMode.BIOMETRIC_VERIFY -> "Confirm your fingerprint or face ID to verify you are the parent."
+                        ParentGateMode.BIOMETRIC_VERIFY -> "Confirm your fingerprint to verify you are the parent."
                         ParentGateMode.GOOGLE_LOGIN -> if (isResettingCredential) {
-                            "Sign in with your Google account to verify your identity and reset your Parent Lock."
+                            "Sign in with your Google account or Gmail OTP to reset your Parent Lock."
                         } else {
-                            "Sign in with your Google account to set up child profiles and safe playlists."
+                            "Sign in with your Google account or verify with a 6-digit Gmail OTP."
+                        }
+                        ParentGateMode.EMAIL_OTP -> if (otpSent) {
+                            "Enter the 6-digit verification code sent to your Gmail."
+                        } else if (isResettingCredential) {
+                            "We will send a 6-digit verification code to your registered Gmail to reset your Parent Lock."
+                        } else {
+                            "Enter your Gmail address to receive a 6-digit one-time verification code."
                         }
                     },
                     fontSize = 13.sp,
@@ -718,7 +864,7 @@ fun ParentPasswordDialog(
                             }
                         }
 
-                        // Single clean parent-only recovery path via Google Account
+                        // Single clean parent-only recovery path via Gmail OTP (with Google option inside)
                         if (allowGoogleSignIn) {
                             val lockLabel = when (activeLockType) {
                                 ParentLockType.PIN -> "PIN"
@@ -730,13 +876,17 @@ fun ParentPasswordDialog(
                             TextButton(
                                 onClick = {
                                     errorMessage = null
+                                    otpStatusMessage = null
+                                    otpSent = false
+                                    otpCodeInput = ""
+                                    otpEmailInput = parentPrefs.parentEmail
                                     isResettingCredential = true
-                                    currentMode = ParentGateMode.GOOGLE_LOGIN
+                                    currentMode = ParentGateMode.EMAIL_OTP
                                 },
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                             ) {
                                 Text(
-                                    text = "Forgot $lockLabel? Reset with Google",
+                                    text = "Forgot $lockLabel? Reset with Gmail OTP",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1049,6 +1199,45 @@ fun ParentPasswordDialog(
                             }
                         }
 
+                        if (!forceGoogleOnly) {
+                            Spacer(Modifier.height(10.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    errorMessage = null
+                                    otpStatusMessage = null
+                                    otpSent = false
+                                    otpCodeInput = ""
+                                    if (otpEmailInput.isBlank()) {
+                                        otpEmailInput = parentPrefs.parentEmail
+                                    }
+                                    currentMode = ParentGateMode.EMAIL_OTP
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = BrandPrimary.copy(alpha = 0.08f),
+                                ),
+                                border = BorderStroke(1.dp, BrandPrimary.copy(alpha = 0.35f)),
+                                enabled = !isVerifying,
+                            ) {
+                                Icon(
+                                    Icons.Rounded.MarkEmailRead,
+                                    contentDescription = null,
+                                    tint = BrandPrimary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "Verify with Gmail OTP",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = BrandPrimary,
+                                )
+                            }
+                        }
+
                         if (isResettingCredential) {
                             Spacer(Modifier.height(8.dp))
                             TextButton(
@@ -1084,6 +1273,141 @@ fun ParentPasswordDialog(
                                     fontSize = 12.sp,
                                     color = BrandPrimary,
                                     fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+
+                    ParentGateMode.EMAIL_OTP -> {
+                        OutlinedTextField(
+                            value = otpEmailInput,
+                            onValueChange = {
+                                otpEmailInput = it
+                                errorMessage = null
+                            },
+                            enabled = !isVerifying && (!otpSent || !isResettingCredential),
+                            label = { Text("Parent Gmail Address") },
+                            placeholder = { Text("parent@gmail.com") },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Rounded.Email,
+                                    contentDescription = null,
+                                    tint = BrandPrimary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                        )
+
+                        if (otpSent) {
+                            Spacer(Modifier.height(10.dp))
+                            OutlinedTextField(
+                                value = otpCodeInput,
+                                onValueChange = {
+                                    if (it.length <= EmailOtpPolicy.OTP_LENGTH && it.all { ch -> ch.isDigit() }) {
+                                        otpCodeInput = it
+                                        errorMessage = null
+                                    }
+                                },
+                                enabled = !isVerifying,
+                                label = { Text("6-Digit OTP Code") },
+                                placeholder = { Text("000000") },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Rounded.Password,
+                                        contentDescription = null,
+                                        tint = BrandPrimary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                            )
+
+                            if (otpStatusMessage != null) {
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = otpStatusMessage!!,
+                                    color = BrandSuccess,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                TextButton(
+                                    onClick = {
+                                        otpSent = false
+                                        otpCodeInput = ""
+                                        otpStatusMessage = null
+                                        errorMessage = null
+                                    },
+                                    enabled = !isVerifying,
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                ) {
+                                    Text("Change Email", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+
+                                TextButton(
+                                    onClick = { requestOtpCode() },
+                                    enabled = !isVerifying && otpResendCooldown == 0,
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                ) {
+                                    Text(
+                                        text = if (otpResendCooldown > 0) "Resend in ${otpResendCooldown}s" else "Resend OTP",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (otpResendCooldown > 0) MaterialTheme.colorScheme.onSurfaceVariant else BrandPrimary,
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(6.dp))
+                        TextButton(
+                            onClick = {
+                                errorMessage = null
+                                otpStatusMessage = null
+                                currentMode = ParentGateMode.GOOGLE_LOGIN
+                            },
+                            enabled = !isVerifying,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        ) {
+                            Text(
+                                text = "Or verify with Google Sign-In",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
+                        if (isResettingCredential) {
+                            TextButton(
+                                onClick = {
+                                    isResettingCredential = false
+                                    otpSent = false
+                                    otpCodeInput = ""
+                                    otpStatusMessage = null
+                                    errorMessage = null
+                                    currentMode = ParentGateMode.CREDENTIAL_UNLOCK
+                                },
+                                enabled = !isVerifying,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            ) {
+                                Text(
+                                    text = "Back to ${activeLockType.displayName}",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
@@ -1199,6 +1523,28 @@ fun ParentPasswordDialog(
                                     colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                                 ) {
                                     Text("Save Password")
+                                }
+                            }
+                        }
+
+                        ParentGateMode.EMAIL_OTP -> {
+                            Button(
+                                onClick = {
+                                    if (!otpSent) requestOtpCode() else verifyOtpCode()
+                                },
+                                enabled = !isVerifying && (if (!otpSent) EmailOtpPolicy.isValidEmail(otpEmailInput) else EmailOtpPolicy.isValidOtpCode(otpCodeInput)),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                            ) {
+                                if (isVerifying) {
+                                    CircularProgressIndicator(
+                                        color = Color.White,
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
+                                    Text(if (!otpSent) "Send OTP" else "Verify OTP")
                                 }
                             }
                         }
