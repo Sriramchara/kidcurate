@@ -7,10 +7,10 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 
 /**
- * Hardware-only Biometric Authenticator for Parent Gate.
- * Strictly permits hardware biometrics (fingerprint or face recognition) and
- * explicitly excludes DEVICE_CREDENTIAL so the phone's lockscreen PIN/pattern/password
- * can never be used to bypass KidCurate's independent Parent Lock.
+ * Strong Hardware Biometric Authenticator for Parent Gate.
+ * Strictly permits Class 3 strong hardware biometrics (BIOMETRIC_STRONG, e.g. fingerprint)
+ * and excludes weak 2D camera face unlock and DEVICE_CREDENTIAL so the phone's lockscreen
+ * PIN/pattern/password can never be used to bypass KidCurate's independent Parent Lock.
  */
 object ParentBiometricAuth {
 
@@ -21,8 +21,7 @@ object ParentBiometricAuth {
     }
 
     private const val HARDWARE_BIOMETRIC_AUTHENTICATORS =
-        BiometricManager.Authenticators.BIOMETRIC_STRONG or
-        BiometricManager.Authenticators.BIOMETRIC_WEAK
+        BiometricManager.Authenticators.BIOMETRIC_STRONG
 
     fun getStatus(context: Context): BiometricStatus {
         val manager = BiometricManager.from(context)
@@ -39,8 +38,8 @@ object ParentBiometricAuth {
 
     fun authenticate(
         activity: FragmentActivity,
-        title: String = "Parent Biometric Verification",
-        subtitle: String = "Confirm your fingerprint or face ID. Phone lockscreen password is not accepted.",
+        title: String = "Parent Fingerprint Verification",
+        subtitle: String = "Confirm your fingerprint. Phone screen lock password is not accepted.",
         negativeButtonText: String = "Use Parent Lock",
         onSuccess: () -> Unit,
         onError: (String) -> Unit,

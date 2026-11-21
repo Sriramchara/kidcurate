@@ -1239,12 +1239,12 @@ fun SecurityTab(
                         ) {
                             Icon(Icons.Rounded.Fingerprint, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(24.dp))
                             Column {
-                                Text("Use Fingerprint / Face ID", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("Unlock with Fingerprint", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                 Text(
                                     text = if (isHardwareBiometricAvailable) {
-                                        "Allow quick hardware biometric unlock. Your phone's screen lock PIN is never accepted."
+                                        "Optional quick unlock using strong fingerprint sensor. Phone screen lock PIN is never accepted."
                                     } else {
-                                        "No fingerprint or face ID enrolled on this device."
+                                        "No strong fingerprint sensor enrolled on this device."
                                     },
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1453,9 +1453,9 @@ fun SecurityTab(
                                 }
                             }
 
-                            if (isHardwareBiometricAvailable) {
+                            if (biometricEnabledState && isHardwareBiometricAvailable) {
                                 Spacer(Modifier.height(10.dp))
-                                FilledTonalButton(
+                                OutlinedButton(
                                     onClick = {
                                         pinErrorMessage = null
                                         val fragmentActivity = appContext as? FragmentActivity
@@ -1463,7 +1463,7 @@ fun SecurityTab(
                                             ParentBiometricAuth.authenticate(
                                                 activity = fragmentActivity,
                                                 title = "Verify Parent Identity",
-                                                subtitle = "Confirm fingerprint or face ID to authorize Parent Lock change.",
+                                                subtitle = "Confirm your fingerprint to authorize Parent Lock change.",
                                                 negativeButtonText = "Cancel",
                                                 onSuccess = {
                                                     isCurrentVerified = true
@@ -1477,10 +1477,14 @@ fun SecurityTab(
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = BrandPrimary.copy(alpha = 0.08f),
+                                    ),
+                                    border = BorderStroke(1.dp, BrandPrimary.copy(alpha = 0.35f)),
                                 ) {
-                                    Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Rounded.Fingerprint, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text("Verify with Fingerprint / Face ID", fontSize = 12.sp)
+                                    Text("Verify with Fingerprint", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = BrandPrimary)
                                 }
                             }
 

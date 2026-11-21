@@ -492,8 +492,11 @@ fun ParentPasswordDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        GlassCard(
+        Surface(
             shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 12.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
             modifier = Modifier
                 .fillMaxWidth(if (isLandscape) 0.56f else 0.92f)
                 .widthIn(max = 520.dp)
@@ -578,7 +581,7 @@ fun ParentPasswordDialog(
                                     helperText = if (lockoutRemainingSeconds > 0) {
                                         "Locked for ${lockoutRemainingSeconds}s"
                                     } else {
-                                        "Draw your Parent Pattern to unlock"
+                                        ""
                                     },
                                     onPatternStart = {
                                         patternError = false
@@ -673,10 +676,10 @@ fun ParentPasswordDialog(
                             }
                         }
 
-                        // Optional direct hardware biometric unlock (never phone lockscreen PIN)
+                        // Optional direct strong fingerprint unlock (opt-in only, never phone screen lock PIN)
                         if (parentPrefs.parentBiometricEnabled && isHardwareBiometricAvailable && lockoutRemainingSeconds == 0) {
-                            Spacer(Modifier.height(10.dp))
-                            FilledTonalButton(
+                            Spacer(Modifier.height(14.dp))
+                            OutlinedButton(
                                 onClick = {
                                     errorMessage = null
                                     val fragmentActivity = appContext as? FragmentActivity
@@ -684,7 +687,7 @@ fun ParentPasswordDialog(
                                         ParentBiometricAuth.authenticate(
                                             activity = fragmentActivity,
                                             title = title,
-                                            subtitle = "Confirm fingerprint or face ID to unlock.",
+                                            subtitle = "Confirm your fingerprint to unlock.",
                                             negativeButtonText = "Use ${activeLockType.displayName}",
                                             onSuccess = { onSuccess() },
                                             onError = { err -> errorMessage = err },
@@ -694,6 +697,10 @@ fun ParentPasswordDialog(
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = BrandPrimary.copy(alpha = 0.08f),
+                                ),
+                                border = BorderStroke(1.dp, BrandPrimary.copy(alpha = 0.35f)),
                             ) {
                                 Icon(
                                     Icons.Rounded.Fingerprint,
@@ -703,120 +710,37 @@ fun ParentPasswordDialog(
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 Text(
-                                    text = "Unlock with Fingerprint / Face ID",
-                                    fontSize = 12.sp,
+                                    text = "Unlock with Fingerprint",
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = BrandPrimary,
                                 )
                             }
                         }
 
-                        // Collapsed single "Forgot ...?" recovery trigger to keep unlock screen uncluttered
-                        if (isHardwareBiometricAvailable || allowGoogleSignIn) {
-                            var showForgotOptions by remember { mutableStateOf(false) }
+                        // Single clean parent-only recovery path via Google Account
+                        if (allowGoogleSignIn) {
                             val lockLabel = when (activeLockType) {
                                 ParentLockType.PIN -> "PIN"
                                 ParentLockType.PATTERN -> "Pattern"
                                 ParentLockType.PASSWORD -> "Password"
                             }
 
-                            Spacer(Modifier.height(4.dp))
+                            Spacer(Modifier.height(6.dp))
                             TextButton(
-                                onClick = { showForgotOptions = !showForgotOptions },
+                                onClick = {
+                                    errorMessage = null
+                                    isResettingCredential = true
+                                    currentMode = ParentGateMode.GOOGLE_LOGIN
+                                },
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                             ) {
                                 Text(
-                                    text = if (showForgotOptions) "Hide reset options" else "Forgot $lockLabel?",
+                                    text = "Forgot $lockLabel? Reset with Google",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                            }
-
-                            if (showForgotOptions) {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                    ) {
-                                        if (isHardwareBiometricAvailable) {
-                                            TextButton(
-                                                onClick = {
-                                                    errorMessage = null
-                                                    val fragmentActivity = appContext as? FragmentActivity
-                                                    if (fragmentActivity != null) {
-                                                        ParentBiometricAuth.authenticate(
-                                                            activity = fragmentActivity,
-                                                            title = "Verify Parent Identity",
-                                                            subtitle = "Confirm fingerprint or face ID to reset your Parent Lock.",
-                                                            negativeButtonText = "Cancel",
-                                                            onSuccess = {
-                                                                isResettingCredential = true
-                                                                newPinInput = ""
-                                                                confirmPinInput = ""
-                                                                newPasswordInput = ""
-                                                                confirmPasswordInput = ""
-                                                                draftPattern = null
-                                                                patternError = false
-                                                                patternResetKey++
-                                                                errorMessage = null
-                                                                currentMode = ParentGateMode.SET_CREDENTIAL
-                                                            },
-                                                            onError = { err -> errorMessage = err },
-                                                            onCancel = { errorMessage = null },
-                                                        )
-                                                    } else {
-                                                        errorMessage = "Biometric authentication not supported."
-                                                    }
-                                                },
-                                                modifier = Modifier.fillMaxWidth(),
-                                            ) {
-                                                Icon(
-                                                    Icons.Rounded.Fingerprint,
-                                                    contentDescription = null,
-                                                    tint = BrandPrimary,
-                                                    modifier = Modifier.size(16.dp),
-                                                )
-                                                Spacer(Modifier.width(6.dp))
-                                                Text(
-                                                    text = "Reset with Fingerprint / Face ID",
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = BrandPrimary,
-                                                )
-                                            }
-                                        }
-
-                                        if (allowGoogleSignIn) {
-                                            TextButton(
-                                                onClick = {
-                                                    errorMessage = null
-                                                    isResettingCredential = true
-                                                    currentMode = ParentGateMode.GOOGLE_LOGIN
-                                                },
-                                                modifier = Modifier.fillMaxWidth(),
-                                            ) {
-                                                Icon(
-                                                    Icons.Rounded.AccountCircle,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    modifier = Modifier.size(16.dp),
-                                                )
-                                                Spacer(Modifier.width(6.dp))
-                                                Text(
-                                                    text = "Reset with Google Account",
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
