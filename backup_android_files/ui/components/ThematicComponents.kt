@@ -711,76 +711,112 @@ fun ParentPasswordDialog(
                             }
                         }
 
-                        // Forgot Parent Lock recovery (Hardware Biometric or Google Account)
-                        if (isHardwareBiometricAvailable) {
-                            Spacer(Modifier.height(6.dp))
-                            TextButton(
-                                onClick = {
-                                    errorMessage = null
-                                    val fragmentActivity = appContext as? FragmentActivity
-                                    if (fragmentActivity != null) {
-                                        ParentBiometricAuth.authenticate(
-                                            activity = fragmentActivity,
-                                            title = "Verify Parent Identity",
-                                            subtitle = "Confirm fingerprint or face ID to reset your Parent Lock.",
-                                            negativeButtonText = "Cancel",
-                                            onSuccess = {
-                                                isResettingCredential = true
-                                                newPinInput = ""
-                                                confirmPinInput = ""
-                                                newPasswordInput = ""
-                                                confirmPasswordInput = ""
-                                                draftPattern = null
-                                                patternError = false
-                                                patternResetKey++
-                                                errorMessage = null
-                                                currentMode = ParentGateMode.SET_CREDENTIAL
-                                            },
-                                            onError = { err -> errorMessage = err },
-                                            onCancel = { errorMessage = null },
-                                        )
-                                    } else {
-                                        errorMessage = "Biometric authentication not supported."
-                                    }
-                                },
-                            ) {
-                                Icon(
-                                    Icons.Rounded.Fingerprint,
-                                    contentDescription = null,
-                                    tint = BrandPrimary,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = "Forgot? Reset with Fingerprint / Face ID",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = BrandPrimary,
-                                )
+                        // Collapsed single "Forgot ...?" recovery trigger to keep unlock screen uncluttered
+                        if (isHardwareBiometricAvailable || allowGoogleSignIn) {
+                            var showForgotOptions by remember { mutableStateOf(false) }
+                            val lockLabel = when (activeLockType) {
+                                ParentLockType.PIN -> "PIN"
+                                ParentLockType.PATTERN -> "Pattern"
+                                ParentLockType.PASSWORD -> "Password"
                             }
-                        }
 
-                        if (allowGoogleSignIn) {
+                            Spacer(Modifier.height(4.dp))
                             TextButton(
-                                onClick = {
-                                    errorMessage = null
-                                    isResettingCredential = true
-                                    currentMode = ParentGateMode.GOOGLE_LOGIN
-                                },
+                                onClick = { showForgotOptions = !showForgotOptions },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                             ) {
-                                Icon(
-                                    Icons.Rounded.AccountCircle,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                                Spacer(Modifier.width(6.dp))
                                 Text(
-                                    text = if (isHardwareBiometricAvailable) "Or reset with Google Account" else "Forgot? Reset with Google Account",
+                                    text = if (showForgotOptions) "Hide reset options" else "Forgot $lockLabel?",
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.Normal,
+                                    fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+                            }
+
+                            if (showForgotOptions) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        if (isHardwareBiometricAvailable) {
+                                            TextButton(
+                                                onClick = {
+                                                    errorMessage = null
+                                                    val fragmentActivity = appContext as? FragmentActivity
+                                                    if (fragmentActivity != null) {
+                                                        ParentBiometricAuth.authenticate(
+                                                            activity = fragmentActivity,
+                                                            title = "Verify Parent Identity",
+                                                            subtitle = "Confirm fingerprint or face ID to reset your Parent Lock.",
+                                                            negativeButtonText = "Cancel",
+                                                            onSuccess = {
+                                                                isResettingCredential = true
+                                                                newPinInput = ""
+                                                                confirmPinInput = ""
+                                                                newPasswordInput = ""
+                                                                confirmPasswordInput = ""
+                                                                draftPattern = null
+                                                                patternError = false
+                                                                patternResetKey++
+                                                                errorMessage = null
+                                                                currentMode = ParentGateMode.SET_CREDENTIAL
+                                                            },
+                                                            onError = { err -> errorMessage = err },
+                                                            onCancel = { errorMessage = null },
+                                                        )
+                                                    } else {
+                                                        errorMessage = "Biometric authentication not supported."
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxWidth(),
+                                            ) {
+                                                Icon(
+                                                    Icons.Rounded.Fingerprint,
+                                                    contentDescription = null,
+                                                    tint = BrandPrimary,
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                                Spacer(Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Reset with Fingerprint / Face ID",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = BrandPrimary,
+                                                )
+                                            }
+                                        }
+
+                                        if (allowGoogleSignIn) {
+                                            TextButton(
+                                                onClick = {
+                                                    errorMessage = null
+                                                    isResettingCredential = true
+                                                    currentMode = ParentGateMode.GOOGLE_LOGIN
+                                                },
+                                                modifier = Modifier.fillMaxWidth(),
+                                            ) {
+                                                Icon(
+                                                    Icons.Rounded.AccountCircle,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                                Spacer(Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Reset with Google Account",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

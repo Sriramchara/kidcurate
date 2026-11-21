@@ -181,4 +181,19 @@ class AppPoliciesTest {
         assertTrue(ParentLockPolicy.verifySecretPbkdf2("KidCurate#99", pwHash))
         assertFalse(ParentLockPolicy.verifySecretPbkdf2("kidcurate#99", pwHash))
     }
+
+    @Test
+    fun playbackResumePolicyPreventsResumingAtEndOfVideo() {
+        // Video is 375s (06:15). Saved progress at 375s or 340s (>= 85%) must reset to 0f.
+        assertEquals(0f, PlaybackResumePolicy.safeResumeSeconds(375f, 375), 0.01f)
+        assertEquals(0f, PlaybackResumePolicy.safeResumeSeconds(340f, 375), 0.01f)
+        // Mid-video progress (120s of 375s) resumes cleanly.
+        assertEquals(120f, PlaybackResumePolicy.safeResumeSeconds(120f, 375), 0.01f)
+        // Near-start progress (< 1s) starts cleanly at 0f.
+        assertEquals(0f, PlaybackResumePolicy.safeResumeSeconds(0.5f, 375), 0.01f)
+
+        assertFalse(PlaybackResumePolicy.shouldPersistProgress(375f, 375f, isEnded = true))
+        assertFalse(PlaybackResumePolicy.shouldPersistProgress(350f, 375f, isEnded = false))
+        assertTrue(PlaybackResumePolicy.shouldPersistProgress(120f, 375f, isEnded = false))
+    }
 }

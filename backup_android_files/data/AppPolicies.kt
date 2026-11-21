@@ -212,3 +212,33 @@ object CloudConnectionPolicy {
         return if (trimmed.endsWith("/")) trimmed else "$trimmed/"
     }
 }
+
+object PlaybackResumePolicy {
+    /**
+     * Computes a safe resume timestamp for YouTube playback.
+     * Prevents resuming at or near the end of a completed video (which causes
+     * YouTube's IFrame Player to stall on a black frame with 00:00 duration).
+     */
+    fun safeResumeSeconds(savedSeconds: Float, knownDurationSeconds: Int): Float {
+        if (savedSeconds <= 1f || savedSeconds.isNaN() || savedSeconds.isInfinite()) return 0f
+        if (knownDurationSeconds > 0) {
+            val dur = knownDurationSeconds.toFloat()
+            val maxResume = minOf(dur - 10f, dur * 0.85f).coerceAtLeast(0f)
+            if (savedSeconds >= maxResume) return 0f
+        }
+        return savedSeconds
+    }
+
+    /**
+     * Returns true only when progress is worth persisting for later resume
+     * (past 1s and comfortably before the end/completion threshold).
+     */
+    fun shouldPersistProgress(currentSeconds: Float, knownDurationSeconds: Float, isEnded: Boolean): Boolean {
+        if (isEnded || currentSeconds <= 1f || currentSeconds.isNaN()) return false
+        if (knownDurationSeconds > 0f) {
+            val maxPersist = minOf(knownDurationSeconds - 10f, knownDurationSeconds * 0.85f).coerceAtLeast(0f)
+            if (currentSeconds >= maxPersist) return false
+        }
+        return true
+    }
+}

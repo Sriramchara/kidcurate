@@ -151,14 +151,11 @@ fun PlayerScreen(
     // Tablets in landscape get two-pane layout, NOT forced fullscreen
     val effectiveFullscreen = isFullscreen || (isWindowLandscape && !isTablet)
 
-    val currentIsChildLockActive by rememberUpdatedState(isChildLockActive)
-    val currentEffectiveFullscreen by rememberUpdatedState(effectiveFullscreen)
-
     fun attemptBack() {
-        if (currentIsChildLockActive) {
+        if (isChildLockActive) {
             isExitingPlayer = true
             showParentPasswordDialog = true
-        } else if (currentEffectiveFullscreen) {
+        } else if (effectiveFullscreen) {
             isFullscreen = false
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         } else {
@@ -1076,7 +1073,6 @@ fun OptimizedVideoPlayer(
     onToggleChildLock: (() -> Unit)? = null,
 ) {
     val currentVideoState by rememberUpdatedState(video)
-    val currentIsChildLockActive by rememberUpdatedState(isChildLockActive)
     val currentOnVideoEnded by rememberUpdatedState(onVideoEnded)
     val currentOnProgressUpdate by rememberUpdatedState(onProgressUpdate)
     val currentOnPlaybackError by rememberUpdatedState(onPlaybackError)
@@ -1093,8 +1089,19 @@ fun OptimizedVideoPlayer(
     var playerViewRef by remember { mutableStateOf<YouTubePlayerView?>(null) }
     var youTubePlayerRef by remember { mutableStateOf<YouTubePlayer?>(null) }
     var webViewRef by remember { mutableStateOf<android.webkit.WebView?>(null) }
-    var currentSecond by rememberSaveable(video.youtubeId) { mutableFloatStateOf(parentPrefs.getVideoProgress(video.youtubeId)) }
-    var videoDuration by rememberSaveable(video.youtubeId) { mutableFloatStateOf(0f) }
+    var loadedVideoId by remember { mutableStateOf<String?>(null) }
+    var currentSecond by rememberSaveable(video.youtubeId) {
+        mutableFloatStateOf(
+            com.kidcurate.app.data.PlaybackResumePolicy.safeResumeSeconds(
+                parentPrefs.getVideoProgress(video.youtubeId),
+                video.durationSeconds ?: 0,
+            )
+        )
+    }
+    var videoDuration by rememberSaveable(video.youtubeId) {
+        mutableFloatStateOf((video.durationSeconds ?: 0).toFloat().coerceAtLeast(0f))
+    }
+    var isVideoEnded by remember(video.youtubeId) { mutableStateOf(false) }
     var lastSavedProgressSecond by remember(video.youtubeId) { mutableFloatStateOf(0f) }
     var playerState by remember { mutableStateOf(PlayerConstants.PlayerState.UNKNOWN) }
     var showControls by remember { mutableStateOf(true) }
@@ -1167,15 +1174,21 @@ fun OptimizedVideoPlayer(
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE || event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
-                if (currentSecond > 1f) {
+                val effectiveDur = if (videoDuration > 0f) videoDuration else (currentVideoState.durationSeconds ?: 0).toFloat()
+                if (com.kidcurate.app.data.PlaybackResumePolicy.shouldPersistProgress(currentSecond, effectiveDur, isVideoEnded)) {
                     parentPrefs.setVideoProgress(currentVideoState.youtubeId, currentSecond)
+                } else if (isVideoEnded) {
+                    parentPrefs.clearVideoProgress(currentVideoState.youtubeId)
                 }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-            if (currentSecond > 1f) {
+            val effectiveDur = if (videoDuration > 0f) videoDuration else (currentVideoState.durationSeconds ?: 0).toFloat()
+            if (com.kidcurate.app.data.PlaybackResumePolicy.shouldPersistProgress(currentSecond, effectiveDur, isVideoEnded)) {
                 parentPrefs.setVideoProgress(currentVideoState.youtubeId, currentSecond)
+            } else if (isVideoEnded) {
+                parentPrefs.clearVideoProgress(currentVideoState.youtubeId)
             }
             lifecycleOwner.lifecycle.removeObserver(observer)
             playerViewRef?.let { pv ->
@@ -1192,10 +1205,19 @@ fun OptimizedVideoPlayer(
 
     LaunchedEffect(video.youtubeId) {
         playbackError = null
-        val savedProgress = parentPrefs.getVideoProgress(video.youtubeId)
-        currentSecond = savedProgress
-        videoDuration = 0f
-        youTubePlayerRef?.loadVideo(video.youtubeId, savedProgress)
+        isVideoEnded = false
+        val rawSaved = parentPrefs.getVideoProgress(video.youtubeId)
+        val knownDur = video.durationSeconds ?: 0
+        val safeResume = com.kidcurate.app.data.PlaybackResumePolicy.safeResumeSeconds(rawSaved, knownDur)
+        if (safeResume == 0f && rawSaved > 0f) {
+            parentPrefs.clearVideoProgress(video.youtubeId)
+        }
+        currentSecond = safeResume
+        videoDuration = knownDur.toFloat().coerceAtLeast(0f)
+        if (youTubePlayerRef != null && loadedVideoId != video.youtubeId) {
+            loadedVideoId = video.youtubeId
+            youTubePlayerRef?.loadVideo(video.youtubeId, safeResume)
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -1222,10 +1244,18 @@ fun OptimizedVideoPlayer(
                         override fun onReady(youTubePlayer: YouTubePlayer) {
                             youTubePlayerRef = youTubePlayer
                             playbackError = null
-                            val savedProgress = parentPrefs.getVideoProgress(currentVideoState.youtubeId)
-                            val resumeSeconds = if (currentSecond > 1f) currentSecond else if (savedProgress > 1f) savedProgress else 0f
+                            isVideoEnded = false
+                            val rawSaved = parentPrefs.getVideoProgress(currentVideoState.youtubeId)
+                            val candidate = if (currentSecond > 1f) currentSecond else rawSaved
+                            val resumeSeconds = com.kidcurate.app.data.PlaybackResumePolicy.safeResumeSeconds(
+                                candidate,
+                                currentVideoState.durationSeconds ?: 0,
+                            )
+                            if (resumeSeconds == 0f && rawSaved > 0f) {
+                                parentPrefs.clearVideoProgress(currentVideoState.youtubeId)
+                            }
                             currentSecond = resumeSeconds
-                            youTubePlayer.loadVideo(currentVideoState.youtubeId, resumeSeconds)
+                            loadedVideoId = currentVideoState.youtubeId
                             val wv = findWebView(this@apply)
                             wv?.settings?.apply {
                                 domStorageEnabled = true
@@ -1238,24 +1268,32 @@ fun OptimizedVideoPlayer(
                             try {
                                 val cm = android.webkit.CookieManager.getInstance()
                                 cm.setAcceptCookie(true)
-                                cm.setAcceptThirdPartyCookies(wv, false)
+                                cm.setAcceptThirdPartyCookies(wv, true)
                             } catch (_: Exception) {}
                             webViewRef = wv
+                            youTubePlayer.loadVideo(currentVideoState.youtubeId, resumeSeconds)
                             applySubtitles(subtitlesEnabled)
                         }
 
                         override fun onCurrentSecond(youTubePlayer: YouTubePlayer, second: Float) {
                             currentSecond = second
-                            currentOnProgressUpdate(second, videoDuration)
-                            if (second > 1f && (second - lastSavedProgressSecond >= 4f || second < lastSavedProgressSecond)) {
-                                lastSavedProgressSecond = second
-                                parentPrefs.setVideoProgress(currentVideoState.youtubeId, second)
+                            val effectiveDur = if (videoDuration > 0f) videoDuration else (currentVideoState.durationSeconds ?: 0).toFloat()
+                            currentOnProgressUpdate(second, effectiveDur)
+                            if (com.kidcurate.app.data.PlaybackResumePolicy.shouldPersistProgress(second, effectiveDur, isVideoEnded)) {
+                                if (second - lastSavedProgressSecond >= 4f || second < lastSavedProgressSecond) {
+                                    lastSavedProgressSecond = second
+                                    parentPrefs.setVideoProgress(currentVideoState.youtubeId, second)
+                                }
+                            } else if (effectiveDur > 0f && second >= effectiveDur * 0.85f) {
+                                parentPrefs.clearVideoProgress(currentVideoState.youtubeId)
                             }
                         }
 
                         override fun onVideoDuration(youTubePlayer: YouTubePlayer, duration: Float) {
-                            videoDuration = duration
-                            currentOnProgressUpdate(currentSecond, duration)
+                            if (duration > 0f) {
+                                videoDuration = duration
+                                currentOnProgressUpdate(currentSecond, duration)
+                            }
                         }
 
                         override fun onStateChange(
@@ -1264,11 +1302,16 @@ fun OptimizedVideoPlayer(
                         ) {
                             playerState = state
                             if (state == PlayerConstants.PlayerState.PLAYING) {
+                                isVideoEnded = false
                                 applySubtitles(subtitlesEnabled)
                             }
                             if (state == PlayerConstants.PlayerState.ENDED) {
+                                isVideoEnded = true
+                                val finalSeconds = currentSecond.toInt().coerceAtLeast(1)
+                                currentSecond = 0f
+                                lastSavedProgressSecond = 0f
                                 parentPrefs.clearVideoProgress(currentVideoState.youtubeId)
-                                currentOnVideoEnded(currentSecond.toInt())
+                                currentOnVideoEnded(finalSeconds)
                             }
                         }
 
@@ -1470,13 +1513,7 @@ fun OptimizedVideoPlayer(
                 ) {
                     if (isFullscreen) {
                         IconButton(
-                            onClick = {
-                                if (currentIsChildLockActive) {
-                                    currentOnAttemptBack?.invoke()
-                                } else {
-                                    currentOnAttemptBack?.invoke() ?: currentOnToggleFullscreen()
-                                }
-                            },
+                            onClick = { currentOnAttemptBack?.invoke() ?: currentOnToggleFullscreen() },
                             modifier = Modifier
                                 .size(46.dp)
                                 .clip(CircleShape)
@@ -1525,8 +1562,25 @@ fun OptimizedVideoPlayer(
                 IconButton(
                     onClick = {
                         youTubePlayerRef?.let { player ->
+                            val effectiveDur = if (videoDuration > 0f) videoDuration else (currentVideoState.durationSeconds ?: 0).toFloat()
                             if (playerState == PlayerConstants.PlayerState.PLAYING) {
                                 player.pause()
+                            } else if (playerState == PlayerConstants.PlayerState.ENDED ||
+                                (effectiveDur > 0f && currentSecond >= effectiveDur - 3f)
+                            ) {
+                                isVideoEnded = false
+                                currentSecond = 0f
+                                parentPrefs.clearVideoProgress(currentVideoState.youtubeId)
+                                player.loadVideo(currentVideoState.youtubeId, 0f)
+                            } else if (playerState == PlayerConstants.PlayerState.UNKNOWN ||
+                                playerState == PlayerConstants.PlayerState.UNSTARTED
+                            ) {
+                                val startAt = com.kidcurate.app.data.PlaybackResumePolicy.safeResumeSeconds(
+                                    currentSecond,
+                                    currentVideoState.durationSeconds ?: 0,
+                                )
+                                currentSecond = startAt
+                                player.loadVideo(currentVideoState.youtubeId, startAt)
                             } else {
                                 player.play()
                             }

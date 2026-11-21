@@ -1953,6 +1953,36 @@ object CloudConnectionPolicy {
     }
 }
 
+object PlaybackResumePolicy {
+    /**
+     * Computes a safe resume timestamp for YouTube playback.
+     * Prevents resuming at or near the end of a completed video (which causes
+     * YouTube's IFrame Player to stall on a black frame with 00:00 duration).
+     */
+    fun safeResumeSeconds(savedSeconds: Float, knownDurationSeconds: Int): Float {
+        if (savedSeconds <= 1f || savedSeconds.isNaN() || savedSeconds.isInfinite()) return 0f
+        if (knownDurationSeconds > 0) {
+            val dur = knownDurationSeconds.toFloat()
+            val maxResume = minOf(dur - 10f, dur * 0.85f).coerceAtLeast(0f)
+            if (savedSeconds >= maxResume) return 0f
+        }
+        return savedSeconds
+    }
+
+    /**
+     * Returns true only when progress is worth persisting for later resume
+     * (past 1s and comfortably before the end/completion threshold).
+     */
+    fun shouldPersistProgress(currentSeconds: Float, knownDurationSeconds: Float, isEnded: Boolean): Boolean {
+        if (isEnded || currentSeconds <= 1f || currentSeconds.isNaN()) return false
+        if (knownDurationSeconds > 0f) {
+            val maxPersist = minOf(knownDurationSeconds - 10f, knownDurationSeconds * 0.85f).coerceAtLeast(0f)
+            if (currentSeconds >= maxPersist) return false
+        }
+        return true
+    }
+}
+
 ```
 
 ---
@@ -4425,14 +4455,11 @@ fun PlayerScreen(
     // Tablets in landscape get two-pane layout, NOT forced fullscreen
     val effectiveFullscreen = isFullscreen || (isWindowLandscape && !isTablet)
 
-    val currentIsChildLockActive by rememberUpdatedState(isChildLockActive)
-    val currentEffectiveFullscreen by rememberUpdatedState(effectiveFullscreen)
-
     fun attemptBack() {
-        if (currentIsChildLockActive) {
+        if (isChildLockActive) {
             isExitingPlayer = true
             showParentPasswordDialog = true
-        } else if (currentEffectiveFullscreen) {
+        } else if (effectiveFullscreen) {
             isFullscreen = false
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         } else {
@@ -5350,7 +5377,6 @@ fun OptimizedVideoPlayer(
     onToggleChildLock: (() -> Unit)? = null,
 ) {
     val currentVideoState by rememberUpdatedState(video)
-    val currentIsChildLockActive by rememberUpdatedState(isChildLockActive)
     val currentOnVideoEnded by rememberUpdatedState(onVideoEnded)
     val currentOnProgressUpdate by rememberUpdatedState(onProgressUpdate)
     val currentOnPlaybackError by rememberUpdatedState(onPlaybackError)
@@ -5367,8 +5393,19 @@ fun OptimizedVideoPlayer(
     var playerViewRef by remember { mutableStateOf<YouTubePlayerView?>(null) }
     var youTubePlayerRef by remember { mutableStateOf<YouTubePlayer?>(null) }
     var webViewRef by remember { mutableStateOf<android.webkit.WebView?>(null) }
-    var currentSecond by rememberSaveable(video.youtubeId) { mutableFloatStateOf(parentPrefs.getVideoProgress(video.youtubeId)) }
-    var videoDuration by rememberSaveable(video.youtubeId) { mutableFloatStateOf(0f) }
+    var loadedVideoId by remember { mutableStateOf<String?>(null) }
+    var currentSecond by rememberSaveable(video.youtubeId) {
+        mutableFloatStateOf(
+            com.kidcurate.app.data.PlaybackResumePolicy.safeResumeSeconds(
+                parentPrefs.getVideoProgress(video.youtubeId),
+                video.durationSeconds ?: 0,
+            )
+        )
+    }
+    var videoDuration by rememberSaveable(video.youtubeId) {
+        mutableFloatStateOf((video.durationSeconds ?: 0).toFloat().coerceAtLeast(0f))
+    }
+    var isVideoEnded by remember(video.youtubeId) { mutableStateOf(false) }
     var lastSavedProgressSecond by remember(video.youtubeId) { mutableFloatStateOf(0f) }
     var playerState by remember { mutableStateOf(PlayerConstants.PlayerState.UNKNOWN) }
     var showControls by remember { mutableStateOf(true) }
@@ -5441,15 +5478,21 @@ fun OptimizedVideoPlayer(
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE || event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
-                if (currentSecond > 1f) {
+                val effectiveDur = if (videoDuration > 0f) videoDuration else (currentVideoState.durationSeconds ?: 0).toFloat()
+                if (com.kidcurate.app.data.PlaybackResumePolicy.shouldPersistProgress(currentSecond, effectiveDur, isVideoEnded)) {
                     parentPrefs.setVideoProgress(currentVideoState.youtubeId, currentSecond)
+                } else if (isVideoEnded) {
+                    parentPrefs.clearVideoProgress(currentVideoState.youtubeId)
                 }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-            if (currentSecond > 1f) {
+            val effectiveDur = if (videoDuration > 0f) videoDuration else (currentVideoState.durationSeconds ?: 0).toFloat()
+            if (com.kidcurate.app.data.PlaybackResumePolicy.shouldPersistProgress(currentSecond, effectiveDur, isVideoEnded)) {
                 parentPrefs.setVideoProgress(currentVideoState.youtubeId, currentSecond)
+            } else if (isVideoEnded) {
+                parentPrefs.clearVideoProgress(currentVideoState.youtubeId)
             }
             lifecycleOwner.lifecycle.removeObserver(observer)
             playerViewRef?.let { pv ->
@@ -5466,10 +5509,19 @@ fun OptimizedVideoPlayer(
 
     LaunchedEffect(video.youtubeId) {
         playbackError = null
-        val savedProgress = parentPrefs.getVideoProgress(video.youtubeId)
-        currentSecond = savedProgress
-        videoDuration = 0f
-        youTubePlayerRef?.loadVideo(video.youtubeId, savedProgress)
+        isVideoEnded = false
+        val rawSaved = parentPrefs.getVideoProgress(video.youtubeId)
+        val knownDur = video.durationSeconds ?: 0
+        val safeResume = com.kidcurate.app.data.PlaybackResumePolicy.safeResumeSeconds(rawSaved, knownDur)
+        if (safeResume == 0f && rawSaved > 0f) {
+            parentPrefs.clearVideoProgress(video.youtubeId)
+        }
+        currentSecond = safeResume
+        videoDuration = knownDur.toFloat().coerceAtLeast(0f)
+        if (youTubePlayerRef != null && loadedVideoId != video.youtubeId) {
+            loadedVideoId = video.youtubeId
+            youTubePlayerRef?.loadVideo(video.youtubeId, safeResume)
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -5496,10 +5548,18 @@ fun OptimizedVideoPlayer(
                         override fun onReady(youTubePlayer: YouTubePlayer) {
                             youTubePlayerRef = youTubePlayer
                             playbackError = null
-                            val savedProgress = parentPrefs.getVideoProgress(currentVideoState.youtubeId)
-                            val resumeSeconds = if (currentSecond > 1f) currentSecond else if (savedProgress > 1f) savedProgress else 0f
+                            isVideoEnded = false
+                            val rawSaved = parentPrefs.getVideoProgress(currentVideoState.youtubeId)
+                            val candidate = if (currentSecond > 1f) currentSecond else rawSaved
+                            val resumeSeconds = com.kidcurate.app.data.PlaybackResumePolicy.safeResumeSeconds(
+                                candidate,
+                                currentVideoState.durationSeconds ?: 0,
+                            )
+                            if (resumeSeconds == 0f && rawSaved > 0f) {
+                                parentPrefs.clearVideoProgress(currentVideoState.youtubeId)
+                            }
                             currentSecond = resumeSeconds
-                            youTubePlayer.loadVideo(currentVideoState.youtubeId, resumeSeconds)
+                            loadedVideoId = currentVideoState.youtubeId
                             val wv = findWebView(this@apply)
                             wv?.settings?.apply {
                                 domStorageEnabled = true
@@ -5512,24 +5572,32 @@ fun OptimizedVideoPlayer(
                             try {
                                 val cm = android.webkit.CookieManager.getInstance()
                                 cm.setAcceptCookie(true)
-                                cm.setAcceptThirdPartyCookies(wv, false)
+                                cm.setAcceptThirdPartyCookies(wv, true)
                             } catch (_: Exception) {}
                             webViewRef = wv
+                            youTubePlayer.loadVideo(currentVideoState.youtubeId, resumeSeconds)
                             applySubtitles(subtitlesEnabled)
                         }
 
                         override fun onCurrentSecond(youTubePlayer: YouTubePlayer, second: Float) {
                             currentSecond = second
-                            currentOnProgressUpdate(second, videoDuration)
-                            if (second > 1f && (second - lastSavedProgressSecond >= 4f || second < lastSavedProgressSecond)) {
-                                lastSavedProgressSecond = second
-                                parentPrefs.setVideoProgress(currentVideoState.youtubeId, second)
+                            val effectiveDur = if (videoDuration > 0f) videoDuration else (currentVideoState.durationSeconds ?: 0).toFloat()
+                            currentOnProgressUpdate(second, effectiveDur)
+                            if (com.kidcurate.app.data.PlaybackResumePolicy.shouldPersistProgress(second, effectiveDur, isVideoEnded)) {
+                                if (second - lastSavedProgressSecond >= 4f || second < lastSavedProgressSecond) {
+                                    lastSavedProgressSecond = second
+                                    parentPrefs.setVideoProgress(currentVideoState.youtubeId, second)
+                                }
+                            } else if (effectiveDur > 0f && second >= effectiveDur * 0.85f) {
+                                parentPrefs.clearVideoProgress(currentVideoState.youtubeId)
                             }
                         }
 
                         override fun onVideoDuration(youTubePlayer: YouTubePlayer, duration: Float) {
-                            videoDuration = duration
-                            currentOnProgressUpdate(currentSecond, duration)
+                            if (duration > 0f) {
+                                videoDuration = duration
+                                currentOnProgressUpdate(currentSecond, duration)
+                            }
                         }
 
                         override fun onStateChange(
@@ -5538,11 +5606,16 @@ fun OptimizedVideoPlayer(
                         ) {
                             playerState = state
                             if (state == PlayerConstants.PlayerState.PLAYING) {
+                                isVideoEnded = false
                                 applySubtitles(subtitlesEnabled)
                             }
                             if (state == PlayerConstants.PlayerState.ENDED) {
+                                isVideoEnded = true
+                                val finalSeconds = currentSecond.toInt().coerceAtLeast(1)
+                                currentSecond = 0f
+                                lastSavedProgressSecond = 0f
                                 parentPrefs.clearVideoProgress(currentVideoState.youtubeId)
-                                currentOnVideoEnded(currentSecond.toInt())
+                                currentOnVideoEnded(finalSeconds)
                             }
                         }
 
@@ -5744,13 +5817,7 @@ fun OptimizedVideoPlayer(
                 ) {
                     if (isFullscreen) {
                         IconButton(
-                            onClick = {
-                                if (currentIsChildLockActive) {
-                                    currentOnAttemptBack?.invoke()
-                                } else {
-                                    currentOnAttemptBack?.invoke() ?: currentOnToggleFullscreen()
-                                }
-                            },
+                            onClick = { currentOnAttemptBack?.invoke() ?: currentOnToggleFullscreen() },
                             modifier = Modifier
                                 .size(46.dp)
                                 .clip(CircleShape)
@@ -5799,8 +5866,25 @@ fun OptimizedVideoPlayer(
                 IconButton(
                     onClick = {
                         youTubePlayerRef?.let { player ->
+                            val effectiveDur = if (videoDuration > 0f) videoDuration else (currentVideoState.durationSeconds ?: 0).toFloat()
                             if (playerState == PlayerConstants.PlayerState.PLAYING) {
                                 player.pause()
+                            } else if (playerState == PlayerConstants.PlayerState.ENDED ||
+                                (effectiveDur > 0f && currentSecond >= effectiveDur - 3f)
+                            ) {
+                                isVideoEnded = false
+                                currentSecond = 0f
+                                parentPrefs.clearVideoProgress(currentVideoState.youtubeId)
+                                player.loadVideo(currentVideoState.youtubeId, 0f)
+                            } else if (playerState == PlayerConstants.PlayerState.UNKNOWN ||
+                                playerState == PlayerConstants.PlayerState.UNSTARTED
+                            ) {
+                                val startAt = com.kidcurate.app.data.PlaybackResumePolicy.safeResumeSeconds(
+                                    currentSecond,
+                                    currentVideoState.durationSeconds ?: 0,
+                                )
+                                currentSecond = startAt
+                                player.loadVideo(currentVideoState.youtubeId, startAt)
                             } else {
                                 player.play()
                             }
@@ -12909,76 +12993,112 @@ fun ParentPasswordDialog(
                             }
                         }
 
-                        // Forgot Parent Lock recovery (Hardware Biometric or Google Account)
-                        if (isHardwareBiometricAvailable) {
-                            Spacer(Modifier.height(6.dp))
-                            TextButton(
-                                onClick = {
-                                    errorMessage = null
-                                    val fragmentActivity = appContext as? FragmentActivity
-                                    if (fragmentActivity != null) {
-                                        ParentBiometricAuth.authenticate(
-                                            activity = fragmentActivity,
-                                            title = "Verify Parent Identity",
-                                            subtitle = "Confirm fingerprint or face ID to reset your Parent Lock.",
-                                            negativeButtonText = "Cancel",
-                                            onSuccess = {
-                                                isResettingCredential = true
-                                                newPinInput = ""
-                                                confirmPinInput = ""
-                                                newPasswordInput = ""
-                                                confirmPasswordInput = ""
-                                                draftPattern = null
-                                                patternError = false
-                                                patternResetKey++
-                                                errorMessage = null
-                                                currentMode = ParentGateMode.SET_CREDENTIAL
-                                            },
-                                            onError = { err -> errorMessage = err },
-                                            onCancel = { errorMessage = null },
-                                        )
-                                    } else {
-                                        errorMessage = "Biometric authentication not supported."
-                                    }
-                                },
-                            ) {
-                                Icon(
-                                    Icons.Rounded.Fingerprint,
-                                    contentDescription = null,
-                                    tint = BrandPrimary,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = "Forgot? Reset with Fingerprint / Face ID",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = BrandPrimary,
-                                )
+                        // Collapsed single "Forgot ...?" recovery trigger to keep unlock screen uncluttered
+                        if (isHardwareBiometricAvailable || allowGoogleSignIn) {
+                            var showForgotOptions by remember { mutableStateOf(false) }
+                            val lockLabel = when (activeLockType) {
+                                ParentLockType.PIN -> "PIN"
+                                ParentLockType.PATTERN -> "Pattern"
+                                ParentLockType.PASSWORD -> "Password"
                             }
-                        }
 
-                        if (allowGoogleSignIn) {
+                            Spacer(Modifier.height(4.dp))
                             TextButton(
-                                onClick = {
-                                    errorMessage = null
-                                    isResettingCredential = true
-                                    currentMode = ParentGateMode.GOOGLE_LOGIN
-                                },
+                                onClick = { showForgotOptions = !showForgotOptions },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                             ) {
-                                Icon(
-                                    Icons.Rounded.AccountCircle,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                                Spacer(Modifier.width(6.dp))
                                 Text(
-                                    text = if (isHardwareBiometricAvailable) "Or reset with Google Account" else "Forgot? Reset with Google Account",
+                                    text = if (showForgotOptions) "Hide reset options" else "Forgot $lockLabel?",
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.Normal,
+                                    fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+                            }
+
+                            if (showForgotOptions) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        if (isHardwareBiometricAvailable) {
+                                            TextButton(
+                                                onClick = {
+                                                    errorMessage = null
+                                                    val fragmentActivity = appContext as? FragmentActivity
+                                                    if (fragmentActivity != null) {
+                                                        ParentBiometricAuth.authenticate(
+                                                            activity = fragmentActivity,
+                                                            title = "Verify Parent Identity",
+                                                            subtitle = "Confirm fingerprint or face ID to reset your Parent Lock.",
+                                                            negativeButtonText = "Cancel",
+                                                            onSuccess = {
+                                                                isResettingCredential = true
+                                                                newPinInput = ""
+                                                                confirmPinInput = ""
+                                                                newPasswordInput = ""
+                                                                confirmPasswordInput = ""
+                                                                draftPattern = null
+                                                                patternError = false
+                                                                patternResetKey++
+                                                                errorMessage = null
+                                                                currentMode = ParentGateMode.SET_CREDENTIAL
+                                                            },
+                                                            onError = { err -> errorMessage = err },
+                                                            onCancel = { errorMessage = null },
+                                                        )
+                                                    } else {
+                                                        errorMessage = "Biometric authentication not supported."
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxWidth(),
+                                            ) {
+                                                Icon(
+                                                    Icons.Rounded.Fingerprint,
+                                                    contentDescription = null,
+                                                    tint = BrandPrimary,
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                                Spacer(Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Reset with Fingerprint / Face ID",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = BrandPrimary,
+                                                )
+                                            }
+                                        }
+
+                                        if (allowGoogleSignIn) {
+                                            TextButton(
+                                                onClick = {
+                                                    errorMessage = null
+                                                    isResettingCredential = true
+                                                    currentMode = ParentGateMode.GOOGLE_LOGIN
+                                                },
+                                                modifier = Modifier.fillMaxWidth(),
+                                            ) {
+                                                Icon(
+                                                    Icons.Rounded.AccountCircle,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                                Spacer(Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Reset with Google Account",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -13903,6 +14023,21 @@ class AppPoliciesTest {
         val pwHash = ParentLockPolicy.hashSecretPbkdf2("KidCurate#99", saltA)
         assertTrue(ParentLockPolicy.verifySecretPbkdf2("KidCurate#99", pwHash))
         assertFalse(ParentLockPolicy.verifySecretPbkdf2("kidcurate#99", pwHash))
+    }
+
+    @Test
+    fun playbackResumePolicyPreventsResumingAtEndOfVideo() {
+        // Video is 375s (06:15). Saved progress at 375s or 340s (>= 85%) must reset to 0f.
+        assertEquals(0f, PlaybackResumePolicy.safeResumeSeconds(375f, 375), 0.01f)
+        assertEquals(0f, PlaybackResumePolicy.safeResumeSeconds(340f, 375), 0.01f)
+        // Mid-video progress (120s of 375s) resumes cleanly.
+        assertEquals(120f, PlaybackResumePolicy.safeResumeSeconds(120f, 375), 0.01f)
+        // Near-start progress (< 1s) starts cleanly at 0f.
+        assertEquals(0f, PlaybackResumePolicy.safeResumeSeconds(0.5f, 375), 0.01f)
+
+        assertFalse(PlaybackResumePolicy.shouldPersistProgress(375f, 375f, isEnded = true))
+        assertFalse(PlaybackResumePolicy.shouldPersistProgress(350f, 375f, isEnded = false))
+        assertTrue(PlaybackResumePolicy.shouldPersistProgress(120f, 375f, isEnded = false))
     }
 }
 
