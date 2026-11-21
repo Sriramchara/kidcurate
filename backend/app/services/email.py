@@ -9,11 +9,18 @@ logger = logging.getLogger("uvicorn.error")
 
 
 def is_smtp_configured() -> bool:
-    return bool(settings.SMTP_HOST and settings.SMTP_HOST.strip() and settings.SMTP_USER and settings.SMTP_PASSWORD)
+    host = (settings.SMTP_HOST or "").strip()
+    user = (settings.SMTP_USER or "").strip()
+    pw = (settings.SMTP_PASSWORD or "").replace(" ", "").strip()
+    if not host or not user or not pw:
+        return False
+    if "youraddress@" in user.lower() or "your_16_char_app_password" in pw.lower():
+        return False
+    return True
 
 
 def _send_smtp_sync(to_email: str, msg_string: str) -> None:
-    from_addr = (settings.SMTP_FROM or settings.SMTP_USER or "noreply@kidcurate.com").strip()
+    from_addr = (settings.SMTP_FROM or settings.SMTP_USER or "kidcurateservices@gmail.com").strip()
     if settings.SMTP_PORT == 465:
         server = smtplib.SMTP_SSL(settings.SMTP_HOST.strip(), settings.SMTP_PORT, timeout=12)
     else:
@@ -22,7 +29,8 @@ def _send_smtp_sync(to_email: str, msg_string: str) -> None:
         if settings.SMTP_PORT in (587, 25):
             server.starttls()
         if settings.SMTP_USER and settings.SMTP_PASSWORD:
-            server.login(settings.SMTP_USER.strip(), settings.SMTP_PASSWORD)
+            clean_pw = settings.SMTP_PASSWORD.replace(" ", "").strip()
+            server.login(settings.SMTP_USER.strip(), clean_pw)
         server.sendmail(from_addr, [to_email], msg_string)
     finally:
         try:
@@ -56,10 +64,10 @@ async def send_otp_verification_email(to_email: str, code: str, purpose: str = "
     )
 
     try:
-        from_addr = (settings.SMTP_FROM or settings.SMTP_USER or "noreply@kidcurate.com").strip()
+        from_addr = (settings.SMTP_FROM or settings.SMTP_USER or "kidcurateservices@gmail.com").strip()
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = f"KidCurate Security <{from_addr}>"
+        msg["From"] = f"Kid Curate <{from_addr}>"
         msg["To"] = to_email
 
         plain_body = (
@@ -112,10 +120,10 @@ async def send_password_reset_email(to_email: str, code: str) -> bool:
         return False
 
     try:
-        from_addr = (settings.SMTP_FROM or settings.SMTP_USER or "noreply@kidcurate.com").strip()
+        from_addr = (settings.SMTP_FROM or settings.SMTP_USER or "kidcurateservices@gmail.com").strip()
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "Your KidCurate Password Reset Code"
-        msg["From"] = f"KidCurate Security <{from_addr}>"
+        msg["From"] = f"Kid Curate <{from_addr}>"
         msg["To"] = to_email
 
         body = (
