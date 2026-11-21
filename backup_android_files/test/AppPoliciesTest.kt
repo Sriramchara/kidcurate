@@ -118,4 +118,67 @@ class AppPoliciesTest {
         val totalWindow = (attempts * probeTimeout) + ((attempts - 1) * backoff)
         assertTrue(totalWindow >= 45)
     }
+
+    @Test
+    fun parentLockTypeMapsStorageKeysSafely() {
+        assertEquals(ParentLockType.PIN, ParentLockType.fromStorageKey("pin"))
+        assertEquals(ParentLockType.PATTERN, ParentLockType.fromStorageKey("pattern"))
+        assertEquals(ParentLockType.PASSWORD, ParentLockType.fromStorageKey("PASSWORD"))
+        assertEquals(ParentLockType.PIN, ParentLockType.fromStorageKey(null))
+        assertEquals(ParentLockType.PIN, ParentLockType.fromStorageKey("unknown_type"))
+    }
+
+    @Test
+    fun parentLockPolicyValidatesPinPatternAndPassword() {
+        assertTrue(ParentLockPolicy.isValidPin("4829"))
+        assertFalse(ParentLockPolicy.isValidPin("123"))
+        assertFalse(ParentLockPolicy.isValidPin("12a4"))
+
+        assertTrue(ParentLockPolicy.isValidPattern(listOf(0, 1, 4, 7)))
+        assertFalse(ParentLockPolicy.isValidPattern(listOf(0, 1, 2)))
+        assertFalse(ParentLockPolicy.isValidPattern(listOf(0, 1, 1, 2)))
+        assertFalse(ParentLockPolicy.isValidPattern(listOf(0, 1, 2, 9)))
+
+        assertTrue(ParentLockPolicy.isValidPassword("Parent2026"))
+        assertFalse(ParentLockPolicy.isValidPassword("short"))
+
+        assertEquals("0-1-4-7-8", ParentLockPolicy.encodePattern(listOf(0, 1, 4, 7, 8)))
+        assertEquals(listOf(0, 1, 4, 7, 8), ParentLockPolicy.decodePattern("0-1-4-7-8"))
+        assertEquals(null, ParentLockPolicy.validateCredential(ParentLockType.PATTERN, "0-1-4-7"))
+        assertTrue(ParentLockPolicy.validateCredential(ParentLockType.PATTERN, "0-1-2") != null)
+    }
+
+    @Test
+    fun parentLockPolicyAutoConnectsSkippedCollinearMidpoints() {
+        // Dragging 0 -> 2 skips midpoint 1; must auto-insert 1
+        assertEquals(listOf(0, 1, 2), ParentLockPolicy.resolvePatternStep(listOf(0), 2))
+        // Dragging 0 -> 8 skips center 4; must auto-insert 4
+        assertEquals(listOf(0, 4, 8), ParentLockPolicy.resolvePatternStep(listOf(0), 8))
+        // Dragging 2 -> 6 skips center 4; must auto-insert 4
+        assertEquals(listOf(2, 4, 6), ParentLockPolicy.resolvePatternStep(listOf(2), 6))
+        // Knight move 0 -> 5 has no collinear midpoint; must not insert anything extra
+        assertEquals(listOf(0, 5), ParentLockPolicy.resolvePatternStep(listOf(0), 5))
+        // Already selected dot should be ignored
+        assertEquals(listOf(0, 1, 2), ParentLockPolicy.resolvePatternStep(listOf(0, 1, 2), 1))
+    }
+
+    @Test
+    fun parentLockPolicyHashesAndVerifiesWithPbkdf2AndRandomSalts() {
+        val saltA = ByteArray(16) { it.toByte() }
+        val saltB = ByteArray(16) { (it + 32).toByte() }
+
+        val patternEncoded = ParentLockPolicy.encodePattern(listOf(0, 3, 6, 7, 8))
+        val hashA = ParentLockPolicy.hashSecretPbkdf2(patternEncoded, saltA)
+        val hashB = ParentLockPolicy.hashSecretPbkdf2(patternEncoded, saltB)
+
+        assertTrue(hashA.startsWith("pbkdf2$100000$"))
+        assertTrue(hashA != hashB)
+        assertTrue(ParentLockPolicy.verifySecretPbkdf2(patternEncoded, hashA))
+        assertTrue(ParentLockPolicy.verifySecretPbkdf2(patternEncoded, hashB))
+        assertFalse(ParentLockPolicy.verifySecretPbkdf2("0-3-6-7-5", hashA))
+
+        val pwHash = ParentLockPolicy.hashSecretPbkdf2("KidCurate#99", saltA)
+        assertTrue(ParentLockPolicy.verifySecretPbkdf2("KidCurate#99", pwHash))
+        assertFalse(ParentLockPolicy.verifySecretPbkdf2("kidcurate#99", pwHash))
+    }
 }

@@ -46,6 +46,7 @@ files_manifest = [
     # 6. UI Components & Theme
     ("android/app/src/main/java/com/kidcurate/app/ui/components/ConfettiAnimation.kt", "ui/components/ConfettiAnimation.kt", "kotlin", "UI Component: Confetti Particle Celebration Canvas"),
     ("android/app/src/main/java/com/kidcurate/app/ui/components/OnboardingTourDialog.kt", "ui/components/OnboardingTourDialog.kt", "kotlin", "UI Component: Interactive Parent Guided Tour Dialog"),
+    ("android/app/src/main/java/com/kidcurate/app/ui/components/PatternLockView.kt", "ui/components/PatternLockView.kt", "kotlin", "UI Component: 3x3 Interactive Gesture Pattern Lock Canvas"),
     ("android/app/src/main/java/com/kidcurate/app/ui/components/SoundHaptics.kt", "ui/components/SoundHaptics.kt", "kotlin", "UI Component: Tactile Sound & Haptic Feedback"),
     ("android/app/src/main/java/com/kidcurate/app/ui/components/ThematicComponents.kt", "ui/components/ThematicComponents.kt", "kotlin", "UI Component: Parent Password Dialog & Theme Avatars"),
     ("android/app/src/main/java/com/kidcurate/app/ui/theme/Color.kt", "ui/theme/Color.kt", "kotlin", "Design System: Material3 Color Tokens"),

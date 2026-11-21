@@ -39,6 +39,14 @@ class ParentPreferences(context: Context) {
         get() = prefs.getBoolean(KEY_REQUIRE_CHILD_PIN, false)
         set(value) = prefs.edit().putBoolean(KEY_REQUIRE_CHILD_PIN, value).apply()
 
+    var parentLockType: ParentLockType
+        get() = ParentLockType.fromStorageKey(prefs.getString(KEY_PARENT_LOCK_TYPE, ParentLockType.PIN.storageKey))
+        set(value) = prefs.edit().putString(KEY_PARENT_LOCK_TYPE, value.storageKey).apply()
+
+    var parentBiometricEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PARENT_BIOMETRIC_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_PARENT_BIOMETRIC_ENABLED, value).apply()
+
     var parentPin: String
         get() = prefs.getString(KEY_PARENT_PIN, "") ?: ""
         set(value) {
@@ -46,38 +54,24 @@ class ParentPreferences(context: Context) {
             prefs.edit().putString(KEY_PARENT_PIN, toStore).apply()
         }
 
-    private fun getOrCreatePinSalt(): ByteArray {
-        val storedSaltHex = prefs.getString("parent_pin_salt", "") ?: ""
-        if (storedSaltHex.isNotBlank() && storedSaltHex.length == 32) {
-            return hexToBytes(storedSaltHex)
-        }
+    private fun generateFreshSalt(): ByteArray {
         val salt = ByteArray(16)
         java.security.SecureRandom().nextBytes(salt)
-        val saltHex = bytesToHex(salt)
-        prefs.edit().putString("parent_pin_salt", saltHex).apply()
+        prefs.edit().putString("parent_pin_salt", ParentLockPolicy.bytesToHex(salt)).apply()
         return salt
     }
 
-    private fun bytesToHex(bytes: ByteArray): String =
-        bytes.joinToString("") { "%02x".format(it) }
-
-    private fun hexToBytes(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        var i = 0
-        while (i < len) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-            i += 2
+    private fun getOrCreatePinSalt(): ByteArray {
+        val storedSaltHex = prefs.getString("parent_pin_salt", "") ?: ""
+        if (storedSaltHex.isNotBlank() && storedSaltHex.length == 32) {
+            val decoded = ParentLockPolicy.hexToBytes(storedSaltHex)
+            if (decoded.size == 16) return decoded
         }
-        return data
+        return generateFreshSalt()
     }
 
     fun hashPinPbkdf2(pin: String, salt: ByteArray = getOrCreatePinSalt()): String {
-        if (pin.isBlank()) return ""
-        val spec = javax.crypto.spec.PBEKeySpec(pin.toCharArray(), salt, 100_000, 256)
-        val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        val hash = factory.generateSecret(spec).encoded
-        return "pbkdf2$100000$${bytesToHex(salt)}$${bytesToHex(hash)}"
+        return ParentLockPolicy.hashSecretPbkdf2(pin, salt)
     }
 
     private fun hashPinLegacySha256(pin: String): String {
@@ -89,11 +83,38 @@ class ParentPreferences(context: Context) {
 
     fun hashPin(pin: String): String = hashPinPbkdf2(pin)
 
+    fun setParentCredential(type: ParentLockType, rawSecret: String) {
+        if (rawSecret.isBlank()) {
+            prefs.edit()
+                .putString(KEY_PARENT_PIN, "")
+                .putString(KEY_PARENT_LOCK_TYPE, ParentLockType.PIN.storageKey)
+                .apply()
+            return
+        }
+        val hashed = ParentLockPolicy.hashSecretPbkdf2(rawSecret, generateFreshSalt())
+        prefs.edit()
+            .putString(KEY_PARENT_LOCK_TYPE, type.storageKey)
+            .putString(KEY_PARENT_PIN, hashed)
+            .putInt("parent_pin_failed_attempts", 0)
+            .putLong("parent_pin_lockout_until", 0L)
+            .apply()
+    }
+
+    fun setParentPattern(patternIndices: List<Int>) {
+        setParentCredential(ParentLockType.PATTERN, ParentLockPolicy.encodePattern(patternIndices))
+    }
+
+    fun setParentPassword(password: String) {
+        setParentCredential(ParentLockType.PASSWORD, password)
+    }
+
     fun getPinLockoutRemainingSeconds(): Int {
         val lockoutUntil = prefs.getLong("parent_pin_lockout_until", 0L)
         val now = System.currentTimeMillis()
         return if (lockoutUntil > now) (((lockoutUntil - now) / 1000) + 1).toInt() else 0
     }
+
+    fun getFailedPinAttempts(): Int = prefs.getInt("parent_pin_failed_attempts", 0)
 
     fun isPinLockedOut(): Boolean = getPinLockoutRemainingSeconds() > 0
 
@@ -115,30 +136,22 @@ class ParentPreferences(context: Context) {
             .apply()
     }
 
-    fun verifyParentPin(candidatePin: String): Boolean {
-        if (candidatePin.isBlank() || isPinLockedOut()) return false
+    fun verifyParentCredential(candidateSecret: String): Boolean {
+        if (candidateSecret.isBlank() || isPinLockedOut()) return false
         val stored = parentPin
         if (stored.isBlank()) return false
 
         var matches = false
         if (stored.startsWith("pbkdf2$")) {
-            val parts = stored.split("$")
-            if (parts.size >= 4) {
-                val salt = hexToBytes(parts[2])
-                val expectedHashHex = parts[3]
-                val spec = javax.crypto.spec.PBEKeySpec(candidatePin.toCharArray(), salt, 100_000, 256)
-                val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-                val hash = factory.generateSecret(spec).encoded
-                matches = bytesToHex(hash) == expectedHashHex
-            }
+            matches = ParentLockPolicy.verifySecretPbkdf2(candidateSecret, stored)
         } else if (stored.startsWith("sha256$")) {
-            matches = (stored == hashPinLegacySha256(candidatePin))
+            matches = (stored == hashPinLegacySha256(candidateSecret))
             if (matches) {
-                parentPin = candidatePin
+                setParentCredential(parentLockType, candidateSecret)
             }
-        } else if (stored == candidatePin) {
+        } else if (stored == candidateSecret) {
             matches = true
-            parentPin = candidatePin
+            setParentCredential(parentLockType, candidateSecret)
         }
 
         if (matches) {
@@ -149,6 +162,13 @@ class ParentPreferences(context: Context) {
             return false
         }
     }
+
+    fun verifyParentPin(candidatePin: String): Boolean = verifyParentCredential(candidatePin)
+
+    fun verifyParentPattern(patternIndices: List<Int>): Boolean =
+        verifyParentCredential(ParentLockPolicy.encodePattern(patternIndices))
+
+    fun verifyParentPassword(password: String): Boolean = verifyParentCredential(password)
 
     var parentPinOwnerEmail: String
         get() = prefs.getString(KEY_PARENT_PIN_OWNER_EMAIL, "") ?: ""
@@ -192,6 +212,11 @@ class ParentPreferences(context: Context) {
             .remove(KEY_PARENT_EMAIL)
             .remove(KEY_PARENT_NAME)
             .remove(KEY_PARENT_PIN)
+            .remove(KEY_PARENT_LOCK_TYPE)
+            .remove(KEY_PARENT_BIOMETRIC_ENABLED)
+            .remove("parent_pin_salt")
+            .remove("parent_pin_failed_attempts")
+            .remove("parent_pin_lockout_until")
             .remove(KEY_PARENT_PIN_OWNER_EMAIL)
             .remove(KEY_CACHED_PROFILES)
             .remove(KEY_RECENT_SEARCHES)
@@ -399,6 +424,8 @@ class ParentPreferences(context: Context) {
         private const val KEY_VIDEO_QUALITY = "video_quality"
         private const val KEY_REQUIRE_CHILD_PIN = "require_child_pin"
         private const val KEY_PARENT_PIN = "parent_pin"
+        private const val KEY_PARENT_LOCK_TYPE = "parent_lock_type"
+        private const val KEY_PARENT_BIOMETRIC_ENABLED = "parent_biometric_enabled"
         private const val KEY_PARENT_PIN_OWNER_EMAIL = "parent_pin_owner_email"
         private const val KEY_APP_THEME = "app_theme"
         private const val KEY_SERVER_URL = "server_url"

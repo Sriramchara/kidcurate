@@ -32,16 +32,17 @@ This document contains the complete, unabbreviated source code of all 38 essenti
 26. [ui/screens/parent/SecurityTabContent.kt](#uiscreensparentsecuritytabcontentkt) - *Parent Tab: PIN Modification, Biometrics & Account Delete*
 27. [ui/components/ConfettiAnimation.kt](#uicomponentsconfettianimationkt) - *UI Component: Confetti Particle Celebration Canvas*
 28. [ui/components/OnboardingTourDialog.kt](#uicomponentsonboardingtourdialogkt) - *UI Component: Interactive Parent Guided Tour Dialog*
-29. [ui/components/SoundHaptics.kt](#uicomponentssoundhapticskt) - *UI Component: Tactile Sound & Haptic Feedback*
-30. [ui/components/ThematicComponents.kt](#uicomponentsthematiccomponentskt) - *UI Component: Parent Password Dialog & Theme Avatars*
-31. [ui/theme/Color.kt](#uithemecolorkt) - *Design System: Material3 Color Tokens*
-32. [ui/theme/Theme.kt](#uithemethemekt) - *Design System: KidCurate App Theme Composable*
-33. [res/values/strings.xml](#resvaluesstringsxml) - *Resource: App Strings & Accessibility Labels*
-34. [res/values/colors.xml](#resvaluescolorsxml) - *Resource: Core Brand Colors & Palette XML*
-35. [res/values/themes.xml](#resvaluesthemesxml) - *Resource: Android System Splash & Base Themes*
-36. [res/xml/network_security_config.xml](#resxmlnetwork_security_configxml) - *Security: Network Security Config for Local & HTTPS Traffic*
-37. [test/AppPoliciesTest.kt](#testapppoliciestestkt) - *Unit Test: Responsive Layout & Connection Policy Assertions*
-38. [test/PlaybackUsabilityTest.kt](#testplaybackusabilitytestkt) - *Unit Test: Playback Usability & Child Lock State Verifications*
+29. [ui/components/PatternLockView.kt](#uicomponentspatternlockviewkt) - *UI Component: 3x3 Interactive Gesture Pattern Lock Canvas*
+30. [ui/components/SoundHaptics.kt](#uicomponentssoundhapticskt) - *UI Component: Tactile Sound & Haptic Feedback*
+31. [ui/components/ThematicComponents.kt](#uicomponentsthematiccomponentskt) - *UI Component: Parent Password Dialog & Theme Avatars*
+32. [ui/theme/Color.kt](#uithemecolorkt) - *Design System: Material3 Color Tokens*
+33. [ui/theme/Theme.kt](#uithemethemekt) - *Design System: KidCurate App Theme Composable*
+34. [res/values/strings.xml](#resvaluesstringsxml) - *Resource: App Strings & Accessibility Labels*
+35. [res/values/colors.xml](#resvaluescolorsxml) - *Resource: Core Brand Colors & Palette XML*
+36. [res/values/themes.xml](#resvaluesthemesxml) - *Resource: Android System Splash & Base Themes*
+37. [res/xml/network_security_config.xml](#resxmlnetwork_security_configxml) - *Security: Network Security Config for Local & HTTPS Traffic*
+38. [test/AppPoliciesTest.kt](#testapppoliciestestkt) - *Unit Test: Responsive Layout & Connection Policy Assertions*
+39. [test/PlaybackUsabilityTest.kt](#testplaybackusabilitytestkt) - *Unit Test: Playback Usability & Child Lock State Verifications*
 
 ---
 
@@ -1754,6 +1755,126 @@ object ParentSessionPolicy {
     }
 }
 
+enum class ParentLockType(val storageKey: String, val displayName: String) {
+    PIN("pin", "4-Digit PIN"),
+    PATTERN("pattern", "3x3 Pattern"),
+    PASSWORD("password", "Password");
+
+    companion object {
+        fun fromStorageKey(key: String?): ParentLockType {
+            return entries.firstOrNull { it.storageKey.equals(key, ignoreCase = true) } ?: PIN
+        }
+    }
+}
+
+object ParentLockPolicy {
+    const val PIN_LENGTH = 4
+    const val MIN_PATTERN_DOTS = 4
+    const val MIN_PASSWORD_LENGTH = 6
+    const val PBKDF2_ITERATIONS = 100_000
+
+    fun encodePattern(dots: List<Int>): String {
+        return dots.filter { it in 0..8 }.distinct().joinToString("-")
+    }
+
+    fun decodePattern(encoded: String): List<Int> {
+        if (encoded.isBlank()) return emptyList()
+        return encoded.split("-").mapNotNull { it.toIntOrNull() }.filter { it in 0..8 }
+    }
+
+    fun isValidPin(pin: String): Boolean {
+        return pin.length == PIN_LENGTH && pin.all { it.isDigit() }
+    }
+
+    fun isValidPattern(dots: List<Int>): Boolean {
+        val valid = dots.filter { it in 0..8 }.distinct()
+        return valid.size >= MIN_PATTERN_DOTS && valid.size == dots.size
+    }
+
+    fun isValidPassword(password: String): Boolean {
+        return password.length >= MIN_PASSWORD_LENGTH
+    }
+
+    fun validateCredential(type: ParentLockType, rawValue: String): String? {
+        return when (type) {
+            ParentLockType.PIN ->
+                if (isValidPin(rawValue)) null else "PIN must be exactly $PIN_LENGTH digits."
+            ParentLockType.PATTERN -> {
+                val dots = decodePattern(rawValue)
+                if (isValidPattern(dots)) null else "Connect at least $MIN_PATTERN_DOTS dots to create a pattern."
+            }
+            ParentLockType.PASSWORD ->
+                if (isValidPassword(rawValue)) null else "Password must be at least $MIN_PASSWORD_LENGTH characters."
+        }
+    }
+
+    /**
+     * Resolves adding a dot to a 3x3 pattern grid (indices 0..8), automatically
+     * connecting any skipped collinear midpoint node (e.g., dragging 0 -> 2 includes 1).
+     */
+    fun resolvePatternStep(currentDots: List<Int>, nextDot: Int): List<Int> {
+        if (nextDot !in 0..8 || nextDot in currentDots) return currentDots
+        val result = currentDots.toMutableList()
+        val lastDot = currentDots.lastOrNull()
+        if (lastDot != null) {
+            val r1 = lastDot / 3
+            val c1 = lastDot % 3
+            val r2 = nextDot / 3
+            val c2 = nextDot % 3
+            if ((r1 + r2) % 2 == 0 && (c1 + c2) % 2 == 0) {
+                val midDot = ((r1 + r2) / 2) * 3 + ((c1 + c2) / 2)
+                if (midDot != lastDot && midDot != nextDot && midDot !in result) {
+                    result.add(midDot)
+                }
+            }
+        }
+        result.add(nextDot)
+        return result
+    }
+
+    fun hashSecretPbkdf2(secret: String, salt: ByteArray): String {
+        if (secret.isBlank()) return ""
+        val spec = javax.crypto.spec.PBEKeySpec(secret.toCharArray(), salt, PBKDF2_ITERATIONS, 256)
+        val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        val hash = factory.generateSecret(spec).encoded
+        return "pbkdf2$$PBKDF2_ITERATIONS$${bytesToHex(salt)}$${bytesToHex(hash)}"
+    }
+
+    fun verifySecretPbkdf2(candidate: String, storedHash: String): Boolean {
+        if (candidate.isBlank() || !storedHash.startsWith("pbkdf2$")) return false
+        val parts = storedHash.split("$")
+        if (parts.size < 4) return false
+        val iterations = parts[1].toIntOrNull() ?: PBKDF2_ITERATIONS
+        val salt = hexToBytes(parts[2])
+        if (salt.isEmpty()) return false
+        val expectedHashHex = parts[3]
+        val spec = javax.crypto.spec.PBEKeySpec(candidate.toCharArray(), salt, iterations, 256)
+        val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        val hash = factory.generateSecret(spec).encoded
+        val actualBytes = bytesToHex(hash).toByteArray(Charsets.UTF_8)
+        val expectedBytes = expectedHashHex.toByteArray(Charsets.UTF_8)
+        return java.security.MessageDigest.isEqual(actualBytes, expectedBytes)
+    }
+
+    fun bytesToHex(bytes: ByteArray): String =
+        bytes.joinToString("") { "%02x".format(it) }
+
+    fun hexToBytes(hex: String): ByteArray {
+        val len = hex.length
+        if (len == 0 || len % 2 != 0) return ByteArray(0)
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            val hi = Character.digit(hex[i], 16)
+            val lo = Character.digit(hex[i + 1], 16)
+            if (hi == -1 || lo == -1) return ByteArray(0)
+            data[i / 2] = ((hi shl 4) + lo).toByte()
+            i += 2
+        }
+        return data
+    }
+}
+
 object ResponsiveLayoutPolicy {
     fun isLandscape(widthDp: Int, heightDp: Int): Boolean = widthDp > heightDp
 
@@ -2131,9 +2252,10 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 
 /**
- * Hardware-backed Biometric and Device Credential Authenticator for Parent Gate.
- * Enforces hardware security (fingerprint, face unlock, or device screen lock PIN/pattern)
- * so that children cannot reset or bypass the Parent PIN.
+ * Hardware-only Biometric Authenticator for Parent Gate.
+ * Strictly permits hardware biometrics (fingerprint or face recognition) and
+ * explicitly excludes DEVICE_CREDENTIAL so the phone's lockscreen PIN/pattern/password
+ * can never be used to bypass KidCurate's independent Parent Lock.
  */
 object ParentBiometricAuth {
 
@@ -2143,27 +2265,28 @@ object ParentBiometricAuth {
         UNAVAILABLE,
     }
 
-    private const val AUTHENTICATORS =
-        BiometricManager.Authenticators.BIOMETRIC_WEAK or
-        BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    private const val HARDWARE_BIOMETRIC_AUTHENTICATORS =
+        BiometricManager.Authenticators.BIOMETRIC_STRONG or
+        BiometricManager.Authenticators.BIOMETRIC_WEAK
 
     fun getStatus(context: Context): BiometricStatus {
         val manager = BiometricManager.from(context)
-        return when (manager.canAuthenticate(AUTHENTICATORS)) {
+        return when (manager.canAuthenticate(HARDWARE_BIOMETRIC_AUTHENTICATORS)) {
             BiometricManager.BIOMETRIC_SUCCESS -> BiometricStatus.AVAILABLE
             BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> BiometricStatus.NOT_ENROLLED
             else -> BiometricStatus.UNAVAILABLE
         }
     }
 
-    fun isBiometricOrDeviceLockAvailable(context: Context): Boolean {
+    fun isHardwareBiometricAvailable(context: Context): Boolean {
         return getStatus(context) == BiometricStatus.AVAILABLE
     }
 
     fun authenticate(
         activity: FragmentActivity,
-        title: String = "Parent Identity Verification",
-        subtitle: String = "Confirm your fingerprint, face, or phone screen lock to verify you are the parent.",
+        title: String = "Parent Biometric Verification",
+        subtitle: String = "Confirm your fingerprint or face ID. Phone lockscreen password is not accepted.",
+        negativeButtonText: String = "Use Parent Lock",
         onSuccess: () -> Unit,
         onError: (String) -> Unit,
         onCancel: (() -> Unit)? = null,
@@ -2181,7 +2304,7 @@ object ParentBiometricAuth {
                     errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
                     errorCode == BiometricPrompt.ERROR_CANCELED
                 ) {
-                    onCancel?.invoke() ?: onError("Verification canceled.")
+                    onCancel?.invoke() ?: onError("Biometric verification canceled.")
                 } else {
                     onError(errString.toString())
                 }
@@ -2196,7 +2319,8 @@ object ParentBiometricAuth {
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle(title)
             .setSubtitle(subtitle)
-            .setAllowedAuthenticators(AUTHENTICATORS)
+            .setNegativeButtonText(negativeButtonText)
+            .setAllowedAuthenticators(HARDWARE_BIOMETRIC_AUTHENTICATORS)
             .build()
 
         val prompt = BiometricPrompt(activity, executor, callback)
@@ -2255,6 +2379,14 @@ class ParentPreferences(context: Context) {
         get() = prefs.getBoolean(KEY_REQUIRE_CHILD_PIN, false)
         set(value) = prefs.edit().putBoolean(KEY_REQUIRE_CHILD_PIN, value).apply()
 
+    var parentLockType: ParentLockType
+        get() = ParentLockType.fromStorageKey(prefs.getString(KEY_PARENT_LOCK_TYPE, ParentLockType.PIN.storageKey))
+        set(value) = prefs.edit().putString(KEY_PARENT_LOCK_TYPE, value.storageKey).apply()
+
+    var parentBiometricEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PARENT_BIOMETRIC_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_PARENT_BIOMETRIC_ENABLED, value).apply()
+
     var parentPin: String
         get() = prefs.getString(KEY_PARENT_PIN, "") ?: ""
         set(value) {
@@ -2262,38 +2394,24 @@ class ParentPreferences(context: Context) {
             prefs.edit().putString(KEY_PARENT_PIN, toStore).apply()
         }
 
-    private fun getOrCreatePinSalt(): ByteArray {
-        val storedSaltHex = prefs.getString("parent_pin_salt", "") ?: ""
-        if (storedSaltHex.isNotBlank() && storedSaltHex.length == 32) {
-            return hexToBytes(storedSaltHex)
-        }
+    private fun generateFreshSalt(): ByteArray {
         val salt = ByteArray(16)
         java.security.SecureRandom().nextBytes(salt)
-        val saltHex = bytesToHex(salt)
-        prefs.edit().putString("parent_pin_salt", saltHex).apply()
+        prefs.edit().putString("parent_pin_salt", ParentLockPolicy.bytesToHex(salt)).apply()
         return salt
     }
 
-    private fun bytesToHex(bytes: ByteArray): String =
-        bytes.joinToString("") { "%02x".format(it) }
-
-    private fun hexToBytes(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        var i = 0
-        while (i < len) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-            i += 2
+    private fun getOrCreatePinSalt(): ByteArray {
+        val storedSaltHex = prefs.getString("parent_pin_salt", "") ?: ""
+        if (storedSaltHex.isNotBlank() && storedSaltHex.length == 32) {
+            val decoded = ParentLockPolicy.hexToBytes(storedSaltHex)
+            if (decoded.size == 16) return decoded
         }
-        return data
+        return generateFreshSalt()
     }
 
     fun hashPinPbkdf2(pin: String, salt: ByteArray = getOrCreatePinSalt()): String {
-        if (pin.isBlank()) return ""
-        val spec = javax.crypto.spec.PBEKeySpec(pin.toCharArray(), salt, 100_000, 256)
-        val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        val hash = factory.generateSecret(spec).encoded
-        return "pbkdf2$100000$${bytesToHex(salt)}$${bytesToHex(hash)}"
+        return ParentLockPolicy.hashSecretPbkdf2(pin, salt)
     }
 
     private fun hashPinLegacySha256(pin: String): String {
@@ -2305,11 +2423,38 @@ class ParentPreferences(context: Context) {
 
     fun hashPin(pin: String): String = hashPinPbkdf2(pin)
 
+    fun setParentCredential(type: ParentLockType, rawSecret: String) {
+        if (rawSecret.isBlank()) {
+            prefs.edit()
+                .putString(KEY_PARENT_PIN, "")
+                .putString(KEY_PARENT_LOCK_TYPE, ParentLockType.PIN.storageKey)
+                .apply()
+            return
+        }
+        val hashed = ParentLockPolicy.hashSecretPbkdf2(rawSecret, generateFreshSalt())
+        prefs.edit()
+            .putString(KEY_PARENT_LOCK_TYPE, type.storageKey)
+            .putString(KEY_PARENT_PIN, hashed)
+            .putInt("parent_pin_failed_attempts", 0)
+            .putLong("parent_pin_lockout_until", 0L)
+            .apply()
+    }
+
+    fun setParentPattern(patternIndices: List<Int>) {
+        setParentCredential(ParentLockType.PATTERN, ParentLockPolicy.encodePattern(patternIndices))
+    }
+
+    fun setParentPassword(password: String) {
+        setParentCredential(ParentLockType.PASSWORD, password)
+    }
+
     fun getPinLockoutRemainingSeconds(): Int {
         val lockoutUntil = prefs.getLong("parent_pin_lockout_until", 0L)
         val now = System.currentTimeMillis()
         return if (lockoutUntil > now) (((lockoutUntil - now) / 1000) + 1).toInt() else 0
     }
+
+    fun getFailedPinAttempts(): Int = prefs.getInt("parent_pin_failed_attempts", 0)
 
     fun isPinLockedOut(): Boolean = getPinLockoutRemainingSeconds() > 0
 
@@ -2331,30 +2476,22 @@ class ParentPreferences(context: Context) {
             .apply()
     }
 
-    fun verifyParentPin(candidatePin: String): Boolean {
-        if (candidatePin.isBlank() || isPinLockedOut()) return false
+    fun verifyParentCredential(candidateSecret: String): Boolean {
+        if (candidateSecret.isBlank() || isPinLockedOut()) return false
         val stored = parentPin
         if (stored.isBlank()) return false
 
         var matches = false
         if (stored.startsWith("pbkdf2$")) {
-            val parts = stored.split("$")
-            if (parts.size >= 4) {
-                val salt = hexToBytes(parts[2])
-                val expectedHashHex = parts[3]
-                val spec = javax.crypto.spec.PBEKeySpec(candidatePin.toCharArray(), salt, 100_000, 256)
-                val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-                val hash = factory.generateSecret(spec).encoded
-                matches = bytesToHex(hash) == expectedHashHex
-            }
+            matches = ParentLockPolicy.verifySecretPbkdf2(candidateSecret, stored)
         } else if (stored.startsWith("sha256$")) {
-            matches = (stored == hashPinLegacySha256(candidatePin))
+            matches = (stored == hashPinLegacySha256(candidateSecret))
             if (matches) {
-                parentPin = candidatePin
+                setParentCredential(parentLockType, candidateSecret)
             }
-        } else if (stored == candidatePin) {
+        } else if (stored == candidateSecret) {
             matches = true
-            parentPin = candidatePin
+            setParentCredential(parentLockType, candidateSecret)
         }
 
         if (matches) {
@@ -2365,6 +2502,13 @@ class ParentPreferences(context: Context) {
             return false
         }
     }
+
+    fun verifyParentPin(candidatePin: String): Boolean = verifyParentCredential(candidatePin)
+
+    fun verifyParentPattern(patternIndices: List<Int>): Boolean =
+        verifyParentCredential(ParentLockPolicy.encodePattern(patternIndices))
+
+    fun verifyParentPassword(password: String): Boolean = verifyParentCredential(password)
 
     var parentPinOwnerEmail: String
         get() = prefs.getString(KEY_PARENT_PIN_OWNER_EMAIL, "") ?: ""
@@ -2408,6 +2552,11 @@ class ParentPreferences(context: Context) {
             .remove(KEY_PARENT_EMAIL)
             .remove(KEY_PARENT_NAME)
             .remove(KEY_PARENT_PIN)
+            .remove(KEY_PARENT_LOCK_TYPE)
+            .remove(KEY_PARENT_BIOMETRIC_ENABLED)
+            .remove("parent_pin_salt")
+            .remove("parent_pin_failed_attempts")
+            .remove("parent_pin_lockout_until")
             .remove(KEY_PARENT_PIN_OWNER_EMAIL)
             .remove(KEY_CACHED_PROFILES)
             .remove(KEY_RECENT_SEARCHES)
@@ -2615,6 +2764,8 @@ class ParentPreferences(context: Context) {
         private const val KEY_VIDEO_QUALITY = "video_quality"
         private const val KEY_REQUIRE_CHILD_PIN = "require_child_pin"
         private const val KEY_PARENT_PIN = "parent_pin"
+        private const val KEY_PARENT_LOCK_TYPE = "parent_lock_type"
+        private const val KEY_PARENT_BIOMETRIC_ENABLED = "parent_biometric_enabled"
         private const val KEY_PARENT_PIN_OWNER_EMAIL = "parent_pin_owner_email"
         private const val KEY_APP_THEME = "app_theme"
         private const val KEY_SERVER_URL = "server_url"
@@ -9235,11 +9386,14 @@ import androidx.compose.ui.window.Dialog
 import com.kidcurate.app.data.ApiClient
 import com.kidcurate.app.data.DbSummaryResponse
 import com.kidcurate.app.data.GoogleCredentialAuth
+import com.kidcurate.app.data.ParentLockPolicy
+import com.kidcurate.app.data.ParentLockType
 import com.kidcurate.app.data.ParentSessionPolicy
 import com.kidcurate.app.data.ParentPreferences
 import com.kidcurate.app.data.ParentBiometricAuth
 import androidx.fragment.app.FragmentActivity
 import com.kidcurate.app.ui.components.OnboardingTourDialog
+import com.kidcurate.app.ui.components.PatternLockView
 import com.kidcurate.app.ui.theme.*
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -9329,7 +9483,7 @@ fun SecurityTab(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("4.", fontWeight = FontWeight.Bold, color = BrandPrimary, fontSize = 13.sp)
                             Text(
-                                "Parent Master PIN: Set a 4-digit PIN for quick offline access or to bypass a forgotten child PIN.",
+                                "Independent Parent Lock: Choose a 3x3 Pattern, 4-digit PIN, or Password separate from your phone's lockscreen to protect Parent Zone and Child Lock.",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -10259,13 +10413,40 @@ fun SecurityTab(
             }
         }
 
-        // Parent Security & PIN Control Card
-        var currentPinInput by remember { mutableStateOf("") }
+        // Independent Parent Lock & Security Control Card
+        var activeParentLockType by remember { mutableStateOf(parentPrefs.parentLockType) }
+        var biometricEnabledState by remember { mutableStateOf(parentPrefs.parentBiometricEnabled) }
+        val isHardwareBiometricAvailable = remember {
+            ParentBiometricAuth.isHardwareBiometricAvailable(appContext)
+        }
+        var targetLockTypeForSetup by remember { mutableStateOf(parentPrefs.parentLockType) }
+        var currentCredentialInput by remember { mutableStateOf("") }
         var newPinInput by remember { mutableStateOf("") }
         var confirmPinInput by remember { mutableStateOf("") }
-        var isBiometricVerified by remember { mutableStateOf(false) }
+        var newPasswordInput by remember { mutableStateOf("") }
+        var confirmPasswordInput by remember { mutableStateOf("") }
+        var draftPattern by remember { mutableStateOf<List<Int>?>(null) }
+        var patternError by remember { mutableStateOf(false) }
+        var patternResetKey by remember { mutableIntStateOf(0) }
+        var isCurrentVerified by remember { mutableStateOf(false) }
         var pinErrorMessage by remember { mutableStateOf<String?>(null) }
         var pinSuccessMessage by remember { mutableStateOf<String?>(null) }
+
+        fun openLockSetupDialog(initialTargetType: ParentLockType) {
+            targetLockTypeForSetup = initialTargetType
+            currentCredentialInput = ""
+            newPinInput = ""
+            confirmPinInput = ""
+            newPasswordInput = ""
+            confirmPasswordInput = ""
+            draftPattern = null
+            patternError = false
+            patternResetKey++
+            isCurrentVerified = !parentPrefs.hasParentPin
+            pinErrorMessage = null
+            pinSuccessMessage = null
+            showChangeParentPinDialog = true
+        }
 
         Surface(
             shape = RoundedCornerShape(16.dp),
@@ -10279,13 +10460,13 @@ fun SecurityTab(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Icon(Icons.Rounded.Lock, contentDescription = null, tint = BrandPrimary)
-                    Text("Security & PIN Control", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("Parent Lock & Security", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(Modifier.height(8.dp))
 
                 Text(
-                    text = "KidCurate provides dual-layer security for parent controls and individual child profiles:",
+                    text = "Your KidCurate Parent Lock is completely separate from your mobile phone's lockscreen password. Choose the lock style you prefer:",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -10315,9 +10496,92 @@ fun SecurityTab(
                     }
                 }
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(10.dp))
 
-                // Parent Master PIN
+                // Independent Parent Lock Style Card
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Icon(
+                                    if (activeParentLockType == ParentLockType.PATTERN) Icons.Rounded.Pattern else Icons.Rounded.Shield,
+                                    contentDescription = null,
+                                    tint = BrandPrimary,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                                Column {
+                                    Text("Independent Parent Lock", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = "Active: ${activeParentLockType.displayName} (Device lockscreen disabled)",
+                                        fontSize = 11.sp,
+                                        color = BrandPrimary,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = { openLockSetupDialog(activeParentLockType) },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            ) {
+                                Text("Change", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+
+                        // Segmented Lock Style Selector: PIN | Pattern | Password
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            ParentLockType.entries.forEach { lockType ->
+                                val isSelected = activeParentLockType == lockType
+                                OutlinedButton(
+                                    onClick = { openLockSetupDialog(lockType) },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                    ),
+                                    border = BorderStroke(
+                                        1.5.dp,
+                                        if (isSelected) BrandPrimary else SurfaceCardBorder,
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                                ) {
+                                    Text(
+                                        text = when (lockType) {
+                                            ParentLockType.PIN -> "4-Digit PIN"
+                                            ParentLockType.PATTERN -> "Pattern"
+                                            ParentLockType.PASSWORD -> "Password"
+                                        },
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) BrandPrimary else TextSecondary,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+
+                // Hardware Biometric Unlock Toggle (Device PIN explicitly disabled)
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -10333,31 +10597,33 @@ fun SecurityTab(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.weight(1f),
                         ) {
-                            Icon(Icons.Rounded.Shield, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(24.dp))
+                            Icon(Icons.Rounded.Fingerprint, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(24.dp))
                             Column {
-                                Text("Parent Master PIN", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("Use Fingerprint / Face ID", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                 Text(
-                                    "Used for quick offline Parent Zone access: ••••",
+                                    text = if (isHardwareBiometricAvailable) {
+                                        "Allow quick hardware biometric unlock. Your phone's screen lock PIN is never accepted."
+                                    } else {
+                                        "No fingerprint or face ID enrolled on this device."
+                                    },
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
-                        OutlinedButton(
-                            onClick = {
-                                currentPinInput = ""
-                                newPinInput = ""
-                                confirmPinInput = ""
-                                isBiometricVerified = false
-                                pinErrorMessage = null
-                                pinSuccessMessage = null
-                                showChangeParentPinDialog = true
+                        Spacer(Modifier.width(8.dp))
+                        Switch(
+                            checked = biometricEnabledState && isHardwareBiometricAvailable,
+                            enabled = isHardwareBiometricAvailable,
+                            onCheckedChange = { enabled ->
+                                biometricEnabledState = enabled
+                                parentPrefs.parentBiometricEnabled = enabled
                             },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        ) {
-                            Text("Change PIN", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = BrandPrimary,
+                            ),
+                        )
                     }
                 }
 
@@ -10443,62 +10709,129 @@ fun SecurityTab(
             }
         }
 
-        // Change Parent PIN Dialog
+        // Configure / Change Independent Parent Lock Dialog
         if (showChangeParentPinDialog) {
             Dialog(onDismissRequest = { showChangeParentPinDialog = false }) {
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(22.dp),
                     color = MaterialTheme.colorScheme.surface,
                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
                 ) {
                     Column(
-                        modifier = Modifier.padding(20.dp),
+                        modifier = Modifier
+                            .verticalScroll(rememberScrollState())
+                            .padding(20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Icon(Icons.Rounded.LockReset, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(36.dp))
+                        val needsCurrentVerification = parentPrefs.hasParentPin && !isCurrentVerified
+                        Icon(
+                            if (targetLockTypeForSetup == ParentLockType.PATTERN) Icons.Rounded.Pattern else Icons.Rounded.LockReset,
+                            contentDescription = null,
+                            tint = BrandPrimary,
+                            modifier = Modifier.size(36.dp),
+                        )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "Change Parent Master PIN",
+                            text = if (needsCurrentVerification) "Verify Current Parent Lock" else "Set Independent Parent Lock",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "Set a 4-digit PIN for quick Parent Zone entry.",
+                            text = if (needsCurrentVerification) {
+                                "Confirm your current ${activeParentLockType.displayName} before choosing a new lock."
+                            } else {
+                                "Choose a Pattern, PIN, or Password separate from your mobile phone lockscreen."
+                            },
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )
                         Spacer(Modifier.height(14.dp))
 
-                        if (parentPrefs.hasParentPin && !isBiometricVerified) {
-                            OutlinedTextField(
-                                value = currentPinInput,
-                                onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) currentPinInput = it },
-                                label = { Text("Current 4-digit PIN") },
-                                visualTransformation = PasswordVisualTransformation(),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                        if (needsCurrentVerification) {
+                            // Step 1: Verify existing parent lock (supports PIN, Pattern, or Password)
+                            when (activeParentLockType) {
+                                ParentLockType.PATTERN -> {
+                                    PatternLockView(
+                                        maxSize = 216.dp,
+                                        isError = patternError,
+                                        resetKey = patternResetKey,
+                                        helperText = "Draw your current Parent Pattern",
+                                        onPatternStart = {
+                                            patternError = false
+                                            pinErrorMessage = null
+                                        },
+                                        onPatternComplete = { dots ->
+                                            if (parentPrefs.verifyParentPattern(dots)) {
+                                                isCurrentVerified = true
+                                                pinErrorMessage = null
+                                                patternError = false
+                                                patternResetKey++
+                                            } else {
+                                                patternError = true
+                                                pinErrorMessage = "Current Pattern is incorrect."
+                                            }
+                                        },
+                                    )
+                                }
 
-                            if (ParentBiometricAuth.isBiometricOrDeviceLockAvailable(appContext)) {
-                                Spacer(Modifier.height(8.dp))
+                                ParentLockType.PIN -> {
+                                    OutlinedTextField(
+                                        value = currentCredentialInput,
+                                        onValueChange = {
+                                            if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                                                currentCredentialInput = it
+                                                pinErrorMessage = null
+                                            }
+                                        },
+                                        label = { Text("Current 4-digit PIN") },
+                                        visualTransformation = PasswordVisualTransformation(),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+
+                                ParentLockType.PASSWORD -> {
+                                    OutlinedTextField(
+                                        value = currentCredentialInput,
+                                        onValueChange = {
+                                            currentCredentialInput = it
+                                            pinErrorMessage = null
+                                        },
+                                        label = { Text("Current Parent Password") },
+                                        visualTransformation = PasswordVisualTransformation(),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                            }
+
+                            if (isHardwareBiometricAvailable) {
+                                Spacer(Modifier.height(10.dp))
                                 FilledTonalButton(
                                     onClick = {
                                         pinErrorMessage = null
-                                        val fragmentActivity = appContext as? androidx.fragment.app.FragmentActivity
+                                        val fragmentActivity = appContext as? FragmentActivity
                                         if (fragmentActivity != null) {
                                             ParentBiometricAuth.authenticate(
                                                 activity = fragmentActivity,
                                                 title = "Verify Parent Identity",
-                                                subtitle = "Confirm fingerprint or phone lock to authorize PIN change.",
+                                                subtitle = "Confirm fingerprint or face ID to authorize Parent Lock change.",
+                                                negativeButtonText = "Cancel",
                                                 onSuccess = {
-                                                    isBiometricVerified = true
+                                                    isCurrentVerified = true
                                                     pinErrorMessage = null
+                                                    patternResetKey++
                                                 },
                                                 onError = { err -> pinErrorMessage = err },
+                                                onCancel = { pinErrorMessage = null },
                                             )
                                         }
                                     },
@@ -10507,91 +10840,290 @@ fun SecurityTab(
                                 ) {
                                     Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text("Verify with Fingerprint / Phone Lock", fontSize = 12.sp)
+                                    Text("Verify with Fingerprint / Face ID", fontSize = 12.sp)
                                 }
                             }
-                            Spacer(Modifier.height(12.dp))
-                        } else if (isBiometricVerified) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = BrandSuccess.copy(alpha = 0.12f),
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
+
+                            if (pinErrorMessage != null) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(pinErrorMessage!!, color = BrandCoral, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Spacer(Modifier.height(16.dp))
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(
+                                    onClick = { showChangeParentPinDialog = false },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
                                 ) {
-                                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = BrandSuccess, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Identity verified via device security.", fontSize = 12.sp, color = BrandSuccess, fontWeight = FontWeight.SemiBold)
+                                    Text("Cancel")
+                                }
+                                if (activeParentLockType != ParentLockType.PATTERN) {
+                                    Button(
+                                        onClick = {
+                                            if (parentPrefs.verifyParentCredential(currentCredentialInput)) {
+                                                isCurrentVerified = true
+                                                pinErrorMessage = null
+                                                patternResetKey++
+                                            } else {
+                                                pinErrorMessage = "Current ${activeParentLockType.displayName} is incorrect."
+                                            }
+                                        },
+                                        enabled = currentCredentialInput.isNotBlank(),
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                                    ) {
+                                        Text("Continue", fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
-                        }
-
-                        OutlinedTextField(
-                            value = newPinInput,
-                            onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) newPinInput = it },
-                            label = { Text("New 4-digit PIN") },
-                            visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-
-                        Spacer(Modifier.height(8.dp))
-
-                        OutlinedTextField(
-                            value = confirmPinInput,
-                            onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) confirmPinInput = it },
-                            label = { Text("Confirm New PIN") },
-                            visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-
-                        if (pinErrorMessage != null) {
-                            Spacer(Modifier.height(8.dp))
-                            Text(pinErrorMessage!!, color = BrandCoral, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            OutlinedButton(
-                                onClick = { showChangeParentPinDialog = false },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp),
-                            ) {
-                                Text("Cancel")
+                        } else {
+                            // Step 2: Choose new style and configure credential
+                            if (parentPrefs.hasParentPin) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = BrandSuccess.copy(alpha = 0.12f),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 12.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = BrandSuccess, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Parent identity verified.", fontSize = 12.sp, color = BrandSuccess, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
                             }
-                            Button(
-                                onClick = {
-                                    if (parentPrefs.hasParentPin && !isBiometricVerified) {
-                                        if (!parentPrefs.verifyParentPin(currentPinInput)) {
-                                            pinErrorMessage = "Current PIN is incorrect."
-                                            return@Button
+
+                            // Style Selector Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                ParentLockType.entries.forEach { lockType ->
+                                    val isSelected = targetLockTypeForSetup == lockType
+                                    OutlinedButton(
+                                        onClick = {
+                                            targetLockTypeForSetup = lockType
+                                            pinErrorMessage = null
+                                            draftPattern = null
+                                            patternError = false
+                                            patternResetKey++
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                        ),
+                                        border = BorderStroke(
+                                            1.5.dp,
+                                            if (isSelected) BrandPrimary else SurfaceCardBorder,
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                                    ) {
+                                        Text(
+                                            text = when (lockType) {
+                                                ParentLockType.PIN -> "PIN"
+                                                ParentLockType.PATTERN -> "Pattern"
+                                                ParentLockType.PASSWORD -> "Password"
+                                            },
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) BrandPrimary else TextSecondary,
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            when (targetLockTypeForSetup) {
+                                ParentLockType.PATTERN -> {
+                                    PatternLockView(
+                                        maxSize = 216.dp,
+                                        isError = patternError,
+                                        resetKey = patternResetKey,
+                                        helperText = if (draftPattern == null) {
+                                            "Step 1 of 2: Draw new pattern (min ${ParentLockPolicy.MIN_PATTERN_DOTS} dots)"
+                                        } else {
+                                            "Step 2 of 2: Draw the same pattern again to confirm"
+                                        },
+                                        onPatternStart = {
+                                            patternError = false
+                                            pinErrorMessage = null
+                                        },
+                                        onPatternComplete = { dots ->
+                                            if (draftPattern == null) {
+                                                if (!ParentLockPolicy.isValidPattern(dots)) {
+                                                    patternError = true
+                                                    pinErrorMessage = "Connect at least ${ParentLockPolicy.MIN_PATTERN_DOTS} dots."
+                                                } else {
+                                                    draftPattern = dots
+                                                    patternResetKey++
+                                                    pinErrorMessage = null
+                                                }
+                                            } else {
+                                                if (dots == draftPattern) {
+                                                    parentPrefs.setParentPattern(dots)
+                                                    parentPrefs.parentPinOwnerEmail = parentPrefs.parentEmail
+                                                    activeParentLockType = ParentLockType.PATTERN
+                                                    pinSuccessMessage = "Parent Lock updated to 3x3 Pattern!"
+                                                    showChangeParentPinDialog = false
+                                                    onPinUpdated()
+                                                } else {
+                                                    patternError = true
+                                                    pinErrorMessage = "Patterns did not match. Draw again to confirm."
+                                                }
+                                            }
+                                        },
+                                    )
+
+                                    if (draftPattern != null) {
+                                        TextButton(
+                                            onClick = {
+                                                draftPattern = null
+                                                patternError = false
+                                                pinErrorMessage = null
+                                                patternResetKey++
+                                            },
+                                        ) {
+                                            Text("Start Over / Redraw Pattern", fontSize = 12.sp, color = BrandPrimary)
                                         }
                                     }
-                                    if (newPinInput.length != 4) {
-                                        pinErrorMessage = "PIN must be exactly 4 digits."
-                                        return@Button
+                                }
+
+                                ParentLockType.PIN -> {
+                                    OutlinedTextField(
+                                        value = newPinInput,
+                                        onValueChange = {
+                                            if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                                                newPinInput = it
+                                                pinErrorMessage = null
+                                            }
+                                        },
+                                        label = { Text("New 4-digit PIN") },
+                                        visualTransformation = PasswordVisualTransformation(),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+
+                                    Spacer(Modifier.height(8.dp))
+
+                                    OutlinedTextField(
+                                        value = confirmPinInput,
+                                        onValueChange = {
+                                            if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                                                confirmPinInput = it
+                                                pinErrorMessage = null
+                                            }
+                                        },
+                                        label = { Text("Confirm New PIN") },
+                                        visualTransformation = PasswordVisualTransformation(),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+
+                                ParentLockType.PASSWORD -> {
+                                    OutlinedTextField(
+                                        value = newPasswordInput,
+                                        onValueChange = {
+                                            newPasswordInput = it
+                                            pinErrorMessage = null
+                                        },
+                                        label = { Text("New Password (min ${ParentLockPolicy.MIN_PASSWORD_LENGTH} chars)") },
+                                        visualTransformation = PasswordVisualTransformation(),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+
+                                    Spacer(Modifier.height(8.dp))
+
+                                    OutlinedTextField(
+                                        value = confirmPasswordInput,
+                                        onValueChange = {
+                                            confirmPasswordInput = it
+                                            pinErrorMessage = null
+                                        },
+                                        label = { Text("Confirm New Password") },
+                                        visualTransformation = PasswordVisualTransformation(),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                            }
+
+                            if (pinErrorMessage != null) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(pinErrorMessage!!, color = BrandCoral, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Spacer(Modifier.height(16.dp))
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(
+                                    onClick = { showChangeParentPinDialog = false },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                ) {
+                                    Text("Cancel")
+                                }
+                                if (targetLockTypeForSetup != ParentLockType.PATTERN) {
+                                    Button(
+                                        onClick = {
+                                            if (targetLockTypeForSetup == ParentLockType.PIN) {
+                                                val err = ParentLockPolicy.validateCredential(ParentLockType.PIN, newPinInput)
+                                                if (err != null) {
+                                                    pinErrorMessage = err
+                                                    return@Button
+                                                }
+                                                if (newPinInput != confirmPinInput) {
+                                                    pinErrorMessage = "PINs do not match."
+                                                    return@Button
+                                                }
+                                                parentPrefs.setParentCredential(ParentLockType.PIN, newPinInput)
+                                                parentPrefs.parentPinOwnerEmail = parentPrefs.parentEmail
+                                                activeParentLockType = ParentLockType.PIN
+                                                pinSuccessMessage = "Parent Lock updated to 4-Digit PIN!"
+                                                showChangeParentPinDialog = false
+                                                onPinUpdated()
+                                            } else {
+                                                val err = ParentLockPolicy.validateCredential(ParentLockType.PASSWORD, newPasswordInput)
+                                                if (err != null) {
+                                                    pinErrorMessage = err
+                                                    return@Button
+                                                }
+                                                if (newPasswordInput != confirmPasswordInput) {
+                                                    pinErrorMessage = "Passwords do not match."
+                                                    return@Button
+                                                }
+                                                parentPrefs.setParentPassword(newPasswordInput)
+                                                parentPrefs.parentPinOwnerEmail = parentPrefs.parentEmail
+                                                activeParentLockType = ParentLockType.PASSWORD
+                                                pinSuccessMessage = "Parent Lock updated to Password!"
+                                                showChangeParentPinDialog = false
+                                                onPinUpdated()
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                                    ) {
+                                        Text(
+                                            if (targetLockTypeForSetup == ParentLockType.PIN) "Save PIN" else "Save Password",
+                                            fontWeight = FontWeight.Bold,
+                                        )
                                     }
-                                    if (newPinInput != confirmPinInput) {
-                                        pinErrorMessage = "PINs do not match."
-                                        return@Button
-                                    }
-                                    parentPrefs.parentPin = newPinInput
-                                    parentPrefs.parentPinOwnerEmail = parentPrefs.parentEmail
-                                    pinSuccessMessage = "Parent Master PIN changed successfully!"
-                                    showChangeParentPinDialog = false
-                                    onPinUpdated()
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                            ) {
-                                Text("Save PIN", fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -11317,8 +11849,303 @@ fun OnboardingTourDialog(
 
 ---
 
+<a name="uicomponentspatternlockviewkt"></a>
+## 29. ui/components/PatternLockView.kt
+**Original Location:** `android/app/src/main/java/com/kidcurate/app/ui/components/PatternLockView.kt`
+**Description:** UI Component: 3x3 Interactive Gesture Pattern Lock Canvas
+
+```kotlin
+package com.kidcurate.app.ui.components
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.kidcurate.app.data.ParentLockPolicy
+import com.kidcurate.app.ui.theme.BrandCoral
+import com.kidcurate.app.ui.theme.BrandPrimary
+import com.kidcurate.app.ui.theme.BrandSuccess
+import kotlinx.coroutines.delay
+import kotlin.math.hypot
+
+/**
+ * Interactive 3x3 Gesture Pattern Lock component for independent parent verification.
+ * Captures touch-drag gestures cleanly inside scrollable dialogs, auto-connects skipped
+ * collinear midpoints, triggers tactile haptic pulses on each node, and outputs ordered
+ * dot indices (0..8) upon finger release.
+ */
+@Composable
+fun PatternLockView(
+    modifier: Modifier = Modifier,
+    maxSize: Dp = 236.dp,
+    enabled: Boolean = true,
+    isError: Boolean = false,
+    isSuccess: Boolean = false,
+    resetKey: Any? = null,
+    helperText: String = "Draw pattern (connect at least ${ParentLockPolicy.MIN_PATTERN_DOTS} dots)",
+    onPatternStart: () -> Unit = {},
+    onPatternComplete: (List<Int>) -> Unit,
+) {
+    val haptic = LocalHapticFeedback.current
+    val currentOnPatternStart by rememberUpdatedState(onPatternStart)
+    val currentOnPatternComplete by rememberUpdatedState(onPatternComplete)
+    val currentEnabled by rememberUpdatedState(enabled)
+
+    var selectedDots by remember(resetKey) { mutableStateOf<List<Int>>(emptyList()) }
+    var currentPointer by remember(resetKey) { mutableStateOf<Offset?>(null) }
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+
+    // Clear error trace automatically after a brief visual flash so the parent can retry smoothly
+    LaunchedEffect(isError, selectedDots) {
+        if (isError && selectedDots.isNotEmpty() && currentPointer == null) {
+            delay(750)
+            selectedDots = emptyList()
+        }
+    }
+
+    val activeColor = when {
+        isError -> BrandCoral
+        isSuccess -> BrandSuccess
+        else -> BrandPrimary
+    }
+    val idleDotColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+    val idleRingColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.55f)
+    val surfaceBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+    val borderColor = when {
+        isError -> BrandCoral.copy(alpha = 0.7f)
+        isSuccess -> BrandSuccess.copy(alpha = 0.7f)
+        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+    }
+
+    fun dotCenter(index: Int, width: Float, height: Float): Offset {
+        val cellW = width / 3f
+        val cellH = height / 3f
+        val row = index / 3
+        val col = index % 3
+        return Offset(
+            x = cellW * col + cellW / 2f,
+            y = cellH * row + cellH / 2f,
+        )
+    }
+
+    fun hitTestDot(pos: Offset, width: Float, height: Float): Int? {
+        if (width <= 0f || height <= 0f) return null
+        val cellMin = minOf(width, height) / 3f
+        val hitRadius = cellMin * 0.34f
+        for (idx in 0..8) {
+            val center = dotCenter(idx, width, height)
+            val dist = hypot((pos.x - center.x).toDouble(), (pos.y - center.y).toDouble()).toFloat()
+            if (dist <= hitRadius) {
+                return idx
+            }
+        }
+        return null
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .widthIn(max = maxSize)
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(20.dp))
+                .background(surfaceBg)
+                .border(1.5.dp, borderColor, RoundedCornerShape(20.dp))
+                .padding(8.dp),
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { canvasSize = it }
+                    .pointerInput(resetKey) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            if (!currentEnabled) return@awaitEachGesture
+                            down.consume()
+
+                            val w = canvasSize.width.toFloat()
+                            val h = canvasSize.height.toFloat()
+                            var activeSequence = emptyList<Int>()
+                            currentOnPatternStart()
+
+                            val startHit = hitTestDot(down.position, w, h)
+                            if (startHit != null) {
+                                activeSequence = listOf(startHit)
+                                selectedDots = activeSequence
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            } else {
+                                selectedDots = emptyList()
+                            }
+                            currentPointer = down.position
+
+                            val pointerId = down.id
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == pointerId }
+                                    ?: event.changes.firstOrNull()
+                                    ?: break
+
+                                if (!change.pressed) {
+                                    change.consume()
+                                    break
+                                }
+
+                                change.consume()
+                                currentPointer = change.position
+                                val hit = hitTestDot(change.position, w, h)
+                                if (hit != null && hit !in activeSequence) {
+                                    val updated = ParentLockPolicy.resolvePatternStep(activeSequence, hit)
+                                    if (updated.size > activeSequence.size) {
+                                        activeSequence = updated
+                                        selectedDots = activeSequence
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    }
+                                }
+                            }
+
+                            currentPointer = null
+                            if (activeSequence.isNotEmpty()) {
+                                currentOnPatternComplete(activeSequence)
+                            }
+                        }
+                    },
+            ) {
+                val w = size.width
+                val h = size.height
+                val cellMin = minOf(w, h) / 3f
+                val strokeWidthPx = 4.dp.toPx()
+                val outerRingRadius = cellMin * 0.24f
+                val haloRadius = cellMin * 0.30f
+                val innerDotRadius = cellMin * 0.085f
+                val selectedInnerRadius = cellMin * 0.115f
+
+                // 1. Connecting lines between selected dots
+                if (selectedDots.size >= 2) {
+                    for (i in 0 until selectedDots.size - 1) {
+                        val p1 = dotCenter(selectedDots[i], w, h)
+                        val p2 = dotCenter(selectedDots[i + 1], w, h)
+                        drawLine(
+                            color = activeColor.copy(alpha = 0.85f),
+                            start = p1,
+                            end = p2,
+                            strokeWidth = strokeWidthPx,
+                            cap = StrokeCap.Round,
+                        )
+                    }
+                }
+
+                // 2. Trailing line to active finger position
+                val lastDot = selectedDots.lastOrNull()
+                val pointer = currentPointer
+                if (lastDot != null && pointer != null) {
+                    val lastCenter = dotCenter(lastDot, w, h)
+                    val clampedPointer = Offset(
+                        x = pointer.x.coerceIn(0f, w),
+                        y = pointer.y.coerceIn(0f, h),
+                    )
+                    drawLine(
+                        color = activeColor.copy(alpha = 0.45f),
+                        start = lastCenter,
+                        end = clampedPointer,
+                        strokeWidth = strokeWidthPx * 0.85f,
+                        cap = StrokeCap.Round,
+                    )
+                }
+
+                // 3. Render 3x3 dot matrix
+                for (idx in 0..8) {
+                    val center = dotCenter(idx, w, h)
+                    val isSelected = idx in selectedDots
+                    if (isSelected) {
+                        drawCircle(
+                            color = activeColor.copy(alpha = 0.16f),
+                            radius = haloRadius,
+                            center = center,
+                        )
+                        drawCircle(
+                            color = activeColor.copy(alpha = 0.35f),
+                            radius = outerRingRadius,
+                            center = center,
+                        )
+                        drawCircle(
+                            color = activeColor,
+                            radius = selectedInnerRadius,
+                            center = center,
+                        )
+                    } else {
+                        drawCircle(
+                            color = idleRingColor.copy(alpha = 0.14f),
+                            radius = outerRingRadius * 0.72f,
+                            center = center,
+                        )
+                        drawCircle(
+                            color = idleDotColor,
+                            radius = innerDotRadius,
+                            center = center,
+                        )
+                    }
+                }
+            }
+        }
+
+        if (helperText.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = helperText,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (isError) BrandCoral else MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+```
+
+---
+
 <a name="uicomponentssoundhapticskt"></a>
-## 29. ui/components/SoundHaptics.kt
+## 30. ui/components/SoundHaptics.kt
 **Original Location:** `android/app/src/main/java/com/kidcurate/app/ui/components/SoundHaptics.kt`
 **Description:** UI Component: Tactile Sound & Haptic Feedback
 
@@ -11364,7 +12191,7 @@ object SoundHaptics {
 ---
 
 <a name="uicomponentsthematiccomponentskt"></a>
-## 30. ui/components/ThematicComponents.kt
+## 31. ui/components/ThematicComponents.kt
 **Original Location:** `android/app/src/main/java/com/kidcurate/app/ui/components/ThematicComponents.kt`
 **Description:** UI Component: Parent Password Dialog & Theme Avatars
 
@@ -11413,6 +12240,8 @@ import com.kidcurate.app.data.ApiClient
 import com.kidcurate.app.data.ParentBiometricAuth
 import androidx.fragment.app.FragmentActivity
 import com.kidcurate.app.data.GoogleCredentialAuth
+import com.kidcurate.app.data.ParentLockPolicy
+import com.kidcurate.app.data.ParentLockType
 import com.kidcurate.app.data.ParentSessionPolicy
 import com.kidcurate.app.data.ResponsiveLayoutPolicy
 import com.kidcurate.app.data.ParentPreferences
@@ -11658,20 +12487,21 @@ fun GlassCard(
 }
 
 /**
- * Parent Verification Dialog (Password Gate)
- * Allows parents to unlock child kiosk mode, exit, or manage playlists using their parent account password.
+ * Parent Verification Dialog (Independent Parent Lock Gate)
+ * Supports parent-chosen independent lock styles (4-Digit PIN, 3x3 Pattern, or Password)
+ * strictly decoupled from the mobile phone's device lockscreen credential.
  */
 enum class ParentGateMode {
-    PIN_UNLOCK,
+    CREDENTIAL_UNLOCK,
     GOOGLE_LOGIN,
     BIOMETRIC_VERIFY,
-    SET_PIN,
+    SET_CREDENTIAL,
 }
 
 /**
- * Parent Verification Dialog (Google-First Identity & PIN Gate)
- * Uses Google Sign-In and Hardware Biometrics for parent authentication and identity.
- * Uses 4-digit PIN for daily in-app unlock and child lock gates.
+ * Parent Verification Dialog (Google-First Identity & Independent Parent Lock Gate)
+ * Uses Google Sign-In and optional hardware-only biometrics (never device lockscreen PIN)
+ * for parent identity verification, and parent-chosen PIN / Pattern / Password for daily gates.
  */
 @Composable
 fun ParentPasswordDialog(
@@ -11685,8 +12515,23 @@ fun ParentPasswordDialog(
     val appContext = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val parentPrefs = remember { ParentPreferences.get(appContext) }
-    val isBiometricAvailable = remember {
-        ParentBiometricAuth.isBiometricOrDeviceLockAvailable(appContext)
+    val activeLockType = remember { parentPrefs.parentLockType }
+    val isHardwareBiometricAvailable = remember {
+        ParentBiometricAuth.isHardwareBiometricAvailable(appContext)
+    }
+
+    val effectiveUnlockSubtitle = remember(subtitle, activeLockType) {
+        when (activeLockType) {
+            ParentLockType.PIN -> subtitle
+            ParentLockType.PATTERN -> subtitle
+                .replace("Enter 4-digit Parent PIN", "Draw your Parent Pattern", ignoreCase = true)
+                .replace("4-digit Parent PIN", "Parent Pattern", ignoreCase = true)
+                .replace("Parent PIN", "Parent Pattern", ignoreCase = true)
+            ParentLockType.PASSWORD -> subtitle
+                .replace("Enter 4-digit Parent PIN", "Enter your Parent Password", ignoreCase = true)
+                .replace("4-digit Parent PIN", "Parent Password", ignoreCase = true)
+                .replace("Parent PIN", "Parent Password", ignoreCase = true)
+        }
     }
 
     val initialMode = remember {
@@ -11699,27 +12544,33 @@ fun ParentPasswordDialog(
                 currentAccountEmail = parentPrefs.parentEmail,
                 signingInEmail = parentPrefs.parentEmail,
             )) {
-            ParentGateMode.PIN_UNLOCK
-        } else if (isBiometricAvailable) {
-            // NEVER let unauthenticated children see SET_PIN directly!
-            // First require device biometric / lock screen authentication
+            ParentGateMode.CREDENTIAL_UNLOCK
+        } else if (isHardwareBiometricAvailable) {
+            // Never let unauthenticated children see SET_CREDENTIAL directly.
+            // Require hardware-only biometric (fingerprint/face) or Google sign-in first.
             ParentGateMode.BIOMETRIC_VERIFY
         } else if (effectiveAllowGoogle) {
             ParentGateMode.GOOGLE_LOGIN
         } else {
-            ParentGateMode.SET_PIN
+            ParentGateMode.SET_CREDENTIAL
         }
     }
 
     var currentMode by remember { mutableStateOf(initialMode) }
     var pinInput by remember { mutableStateOf("") }
+    var passwordInput by remember { mutableStateOf("") }
+    var selectedSetupType by remember { mutableStateOf(parentPrefs.parentLockType) }
     var newPinInput by remember { mutableStateOf("") }
     var confirmPinInput by remember { mutableStateOf("") }
-    var showPinText by remember { mutableStateOf(false) }
+    var newPasswordInput by remember { mutableStateOf("") }
+    var confirmPasswordInput by remember { mutableStateOf("") }
+    var draftPattern by remember { mutableStateOf<List<Int>?>(null) }
+    var patternError by remember { mutableStateOf(false) }
+    var patternResetKey by remember { mutableIntStateOf(0) }
+    var showSecretText by remember { mutableStateOf(false) }
     var isVerifying by remember { mutableStateOf(false) }
-    var isResettingPin by remember { mutableStateOf(false) }
+    var isResettingCredential by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var failedAttempts by remember { mutableIntStateOf(0) }
     var lockoutRemainingSeconds by remember { mutableIntStateOf(parentPrefs.getPinLockoutRemainingSeconds()) }
 
     LaunchedEffect(lockoutRemainingSeconds) {
@@ -11732,18 +12583,28 @@ fun ParentPasswordDialog(
         }
     }
 
+    fun handleFailedCredential(label: String) {
+        val remainingSec = parentPrefs.getPinLockoutRemainingSeconds()
+        if (remainingSec > 0) {
+            lockoutRemainingSeconds = remainingSec
+            errorMessage = "Too many failed attempts. Locked for ${remainingSec}s."
+        } else {
+            val attempts = parentPrefs.getFailedPinAttempts()
+            val rem = (5 - attempts).coerceAtLeast(0)
+            errorMessage = if (rem > 0) "Incorrect $label. $rem attempt(s) remaining." else "Incorrect $label."
+        }
+    }
+
     val hostActivity = appContext as? android.app.Activity
     if (com.kidcurate.app.BuildConfig.DEBUG) {
         val autoWalkthrough = hostActivity?.intent?.getStringExtra("test_auto_walkthrough")
-        if (autoWalkthrough == "child_lock_check" && currentMode == ParentGateMode.PIN_UNLOCK) {
+        if (autoWalkthrough == "child_lock_check" && currentMode == ParentGateMode.CREDENTIAL_UNLOCK) {
             LaunchedEffect(Unit) {
                 kotlinx.coroutines.delay(1200)
-                // First simulate entering wrong PIN
                 pinInput = "9999"
                 errorMessage = "Incorrect 4-digit PIN."
                 kotlinx.coroutines.delay(2200)
-                // Then simulate entering correct parent PIN
-                pinInput = parentPrefs.parentPin.ifBlank { "1234" }
+                pinInput = "1234"
                 errorMessage = null
                 kotlinx.coroutines.delay(800)
                 onSuccess()
@@ -11794,13 +12655,18 @@ fun ParentPasswordDialog(
                 parentPrefs.parentAuthToken = token
                 parentPrefs.parentRefreshToken = refreshToken
                 ApiClient.authToken = token
-                if (isResettingPin || !savedPinMatchesAccount) {
+                if (isResettingCredential || !savedPinMatchesAccount) {
                     parentPrefs.parentPin = ""
                     parentPrefs.parentPinOwnerEmail = ""
                     newPinInput = ""
                     confirmPinInput = ""
-                    isResettingPin = false
-                    currentMode = ParentGateMode.SET_PIN
+                    newPasswordInput = ""
+                    confirmPasswordInput = ""
+                    draftPattern = null
+                    patternError = false
+                    patternResetKey++
+                    isResettingCredential = false
+                    currentMode = ParentGateMode.SET_CREDENTIAL
                 } else {
                     parentPrefs.parentPinOwnerEmail = email
                     onSuccess()
@@ -11827,7 +12693,7 @@ fun ParentPasswordDialog(
         GlassCard(
             shape = RoundedCornerShape(28.dp),
             modifier = Modifier
-                .fillMaxWidth(if (isLandscape) 0.52f else 0.92f)
+                .fillMaxWidth(if (isLandscape) 0.56f else 0.92f)
                 .widthIn(max = 520.dp)
                 .padding(if (compactHeight) 8.dp else 16.dp),
         ) {
@@ -11849,8 +12715,9 @@ fun ParentPasswordDialog(
                 ) {
                     Icon(
                         when (currentMode) {
-                            ParentGateMode.PIN_UNLOCK -> Icons.Rounded.Lock
-                            ParentGateMode.SET_PIN -> Icons.Rounded.LockReset
+                            ParentGateMode.CREDENTIAL_UNLOCK ->
+                                if (activeLockType == ParentLockType.PATTERN) Icons.Rounded.Pattern else Icons.Rounded.Lock
+                            ParentGateMode.SET_CREDENTIAL -> Icons.Rounded.LockReset
                             ParentGateMode.BIOMETRIC_VERIFY -> Icons.Rounded.Fingerprint
                             ParentGateMode.GOOGLE_LOGIN -> Icons.Rounded.AccountCircle
                         },
@@ -11865,23 +12732,24 @@ fun ParentPasswordDialog(
                 // Title and Subtitle based on state
                 Text(
                     text = when (currentMode) {
-                        ParentGateMode.PIN_UNLOCK -> title
-                        ParentGateMode.SET_PIN -> "Create 4-Digit In-App PIN"
-                        ParentGateMode.BIOMETRIC_VERIFY -> "Parent Identity Verification"
-                        ParentGateMode.GOOGLE_LOGIN -> if (isResettingPin) "Reset Parent PIN" else "Parent Account Sign In"
+                        ParentGateMode.CREDENTIAL_UNLOCK -> title
+                        ParentGateMode.SET_CREDENTIAL -> "Create Independent Parent Lock"
+                        ParentGateMode.BIOMETRIC_VERIFY -> "Parent Biometric Verification"
+                        ParentGateMode.GOOGLE_LOGIN -> if (isResettingCredential) "Reset Parent Lock" else "Parent Account Sign In"
                     },
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
+                    textAlign = TextAlign.Center,
                 )
 
                 Text(
                     text = when (currentMode) {
-                        ParentGateMode.PIN_UNLOCK -> subtitle
-                        ParentGateMode.SET_PIN -> "Choose a 4-digit PIN for quick daily in-app unlock and child safety."
-                        ParentGateMode.BIOMETRIC_VERIFY -> "Confirm your fingerprint or phone screen lock to verify you are the parent."
-                        ParentGateMode.GOOGLE_LOGIN -> if (isResettingPin) {
-                            "Sign in with your Google account to verify your identity and reset your 4-digit PIN."
+                        ParentGateMode.CREDENTIAL_UNLOCK -> effectiveUnlockSubtitle
+                        ParentGateMode.SET_CREDENTIAL -> "Choose a Pattern, PIN, or Password separate from your phone's lockscreen."
+                        ParentGateMode.BIOMETRIC_VERIFY -> "Confirm your fingerprint or face ID to verify you are the parent."
+                        ParentGateMode.GOOGLE_LOGIN -> if (isResettingCredential) {
+                            "Sign in with your Google account to verify your identity and reset your Parent Lock."
                         } else {
                             "Sign in with your Google account to set up child profiles and safe playlists."
                         }
@@ -11897,79 +12765,129 @@ fun ParentPasswordDialog(
 
                 // Mode-specific content
                 when (currentMode) {
-                    ParentGateMode.PIN_UNLOCK -> {
-                        OutlinedTextField(
-                            value = pinInput,
-                            onValueChange = {
-                                if (lockoutRemainingSeconds > 0) return@OutlinedTextField
-                                if (it.length <= 4 && it.all { char -> char.isDigit() }) {
-                                    pinInput = it
-                                    errorMessage = null
-                                    if (it.length == 4) {
-                                        if (parentPrefs.verifyParentPin(it)) {
-                                            failedAttempts = 0
+                    ParentGateMode.CREDENTIAL_UNLOCK -> {
+                        when (activeLockType) {
+                            ParentLockType.PATTERN -> {
+                                PatternLockView(
+                                    maxSize = if (compactHeight) 180.dp else 230.dp,
+                                    enabled = !isVerifying && lockoutRemainingSeconds == 0,
+                                    isError = patternError,
+                                    resetKey = patternResetKey,
+                                    helperText = if (lockoutRemainingSeconds > 0) {
+                                        "Locked for ${lockoutRemainingSeconds}s"
+                                    } else {
+                                        "Draw your Parent Pattern to unlock"
+                                    },
+                                    onPatternStart = {
+                                        patternError = false
+                                        errorMessage = null
+                                    },
+                                    onPatternComplete = { dots ->
+                                        if (lockoutRemainingSeconds > 0) return@PatternLockView
+                                        if (dots.size < ParentLockPolicy.MIN_PATTERN_DOTS) {
+                                            patternError = true
+                                            errorMessage = "Connect at least ${ParentLockPolicy.MIN_PATTERN_DOTS} dots."
+                                        } else if (parentPrefs.verifyParentPattern(dots)) {
+                                            patternError = false
                                             lockoutRemainingSeconds = 0
                                             onSuccess()
                                         } else {
-                                            val remainingSec = parentPrefs.getPinLockoutRemainingSeconds()
-                                            if (remainingSec > 0) {
-                                                lockoutRemainingSeconds = remainingSec
-                                                errorMessage = "Too many failed attempts. Locked for ${remainingSec}s."
-                                            } else {
-                                                failedAttempts++
-                                                val rem = 5 - failedAttempts
-                                                errorMessage = if (rem > 0) "Incorrect PIN. $rem attempt(s) remaining." else "Incorrect PIN."
+                                            patternError = true
+                                            handleFailedCredential("Pattern")
+                                        }
+                                    },
+                                )
+                            }
+
+                            ParentLockType.PIN -> {
+                                OutlinedTextField(
+                                    value = pinInput,
+                                    onValueChange = {
+                                        if (lockoutRemainingSeconds > 0) return@OutlinedTextField
+                                        if (it.length <= 4 && it.all { char -> char.isDigit() }) {
+                                            pinInput = it
+                                            errorMessage = null
+                                            if (it.length == 4) {
+                                                if (parentPrefs.verifyParentPin(it)) {
+                                                    lockoutRemainingSeconds = 0
+                                                    onSuccess()
+                                                } else {
+                                                    handleFailedCredential("PIN")
+                                                }
                                             }
                                         }
-                                    }
-                                }
-                            },
-                            enabled = !isVerifying && lockoutRemainingSeconds == 0,
-                            label = { 
-                                Text(if (lockoutRemainingSeconds > 0) "Locked (${lockoutRemainingSeconds}s)" else "Parent PIN") 
-                            },
-                            placeholder = { Text("••••") },
-                            visualTransformation = if (showPinText) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
-                            trailingIcon = {
-                                IconButton(onClick = { showPinText = !showPinText }) {
-                                    Icon(
-                                        if (showPinText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                                        contentDescription = if (showPinText) "Hide PIN" else "Show PIN",
-                                        tint = if (showPinText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                        )
+                                    },
+                                    enabled = !isVerifying && lockoutRemainingSeconds == 0,
+                                    label = {
+                                        Text(if (lockoutRemainingSeconds > 0) "Locked (${lockoutRemainingSeconds}s)" else "Parent PIN")
+                                    },
+                                    placeholder = { Text("••••") },
+                                    visualTransformation = if (showSecretText) VisualTransformation.None else PasswordVisualTransformation(),
+                                    trailingIcon = {
+                                        IconButton(onClick = { showSecretText = !showSecretText }) {
+                                            Icon(
+                                                if (showSecretText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                                contentDescription = if (showSecretText) "Hide PIN" else "Show PIN",
+                                                tint = if (showSecretText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                    },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                )
+                            }
 
-                        if (isBiometricAvailable) {
+                            ParentLockType.PASSWORD -> {
+                                OutlinedTextField(
+                                    value = passwordInput,
+                                    onValueChange = {
+                                        if (lockoutRemainingSeconds > 0) return@OutlinedTextField
+                                        passwordInput = it
+                                        errorMessage = null
+                                    },
+                                    enabled = !isVerifying && lockoutRemainingSeconds == 0,
+                                    label = {
+                                        Text(if (lockoutRemainingSeconds > 0) "Locked (${lockoutRemainingSeconds}s)" else "Parent Password")
+                                    },
+                                    visualTransformation = if (showSecretText) VisualTransformation.None else PasswordVisualTransformation(),
+                                    trailingIcon = {
+                                        IconButton(onClick = { showSecretText = !showSecretText }) {
+                                            Icon(
+                                                if (showSecretText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                                contentDescription = if (showSecretText) "Hide Password" else "Show Password",
+                                                tint = if (showSecretText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                    },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                )
+                            }
+                        }
+
+                        // Optional direct hardware biometric unlock (never phone lockscreen PIN)
+                        if (parentPrefs.parentBiometricEnabled && isHardwareBiometricAvailable && lockoutRemainingSeconds == 0) {
                             Spacer(Modifier.height(10.dp))
                             FilledTonalButton(
                                 onClick = {
                                     errorMessage = null
-                                    val fragmentActivity = appContext as? androidx.fragment.app.FragmentActivity
+                                    val fragmentActivity = appContext as? FragmentActivity
                                     if (fragmentActivity != null) {
                                         ParentBiometricAuth.authenticate(
                                             activity = fragmentActivity,
-                                            title = "Verify Parent Identity",
-                                            subtitle = "Confirm fingerprint or screen lock to reset your Parent PIN.",
-                                            onSuccess = {
-                                                isResettingPin = true
-                                                newPinInput = ""
-                                                confirmPinInput = ""
-                                                errorMessage = null
-                                                currentMode = ParentGateMode.SET_PIN
-                                            },
-                                            onError = { err ->
-                                                errorMessage = err
-                                            },
+                                            title = title,
+                                            subtitle = "Confirm fingerprint or face ID to unlock.",
+                                            negativeButtonText = "Use ${activeLockType.displayName}",
+                                            onSuccess = { onSuccess() },
+                                            onError = { err -> errorMessage = err },
+                                            onCancel = { errorMessage = null },
                                         )
-                                    } else {
-                                        errorMessage = "Biometric authentication not supported."
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
@@ -11983,7 +12901,56 @@ fun ParentPasswordDialog(
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 Text(
-                                    text = "Forgot PIN? Verify with Fingerprint / Phone Lock",
+                                    text = "Unlock with Fingerprint / Face ID",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = BrandPrimary,
+                                )
+                            }
+                        }
+
+                        // Forgot Parent Lock recovery (Hardware Biometric or Google Account)
+                        if (isHardwareBiometricAvailable) {
+                            Spacer(Modifier.height(6.dp))
+                            TextButton(
+                                onClick = {
+                                    errorMessage = null
+                                    val fragmentActivity = appContext as? FragmentActivity
+                                    if (fragmentActivity != null) {
+                                        ParentBiometricAuth.authenticate(
+                                            activity = fragmentActivity,
+                                            title = "Verify Parent Identity",
+                                            subtitle = "Confirm fingerprint or face ID to reset your Parent Lock.",
+                                            negativeButtonText = "Cancel",
+                                            onSuccess = {
+                                                isResettingCredential = true
+                                                newPinInput = ""
+                                                confirmPinInput = ""
+                                                newPasswordInput = ""
+                                                confirmPasswordInput = ""
+                                                draftPattern = null
+                                                patternError = false
+                                                patternResetKey++
+                                                errorMessage = null
+                                                currentMode = ParentGateMode.SET_CREDENTIAL
+                                            },
+                                            onError = { err -> errorMessage = err },
+                                            onCancel = { errorMessage = null },
+                                        )
+                                    } else {
+                                        errorMessage = "Biometric authentication not supported."
+                                    }
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Fingerprint,
+                                    contentDescription = null,
+                                    tint = BrandPrimary,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = "Forgot? Reset with Fingerprint / Face ID",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = BrandPrimary,
@@ -11992,11 +12959,10 @@ fun ParentPasswordDialog(
                         }
 
                         if (allowGoogleSignIn) {
-                            Spacer(Modifier.height(6.dp))
                             TextButton(
                                 onClick = {
                                     errorMessage = null
-                                    isResettingPin = true
+                                    isResettingCredential = true
                                     currentMode = ParentGateMode.GOOGLE_LOGIN
                                 },
                             ) {
@@ -12008,7 +12974,7 @@ fun ParentPasswordDialog(
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
-                                    text = if (isBiometricAvailable) "Or verify with Google Account" else "Forgot PIN? Verify with Google",
+                                    text = if (isHardwareBiometricAvailable) "Or reset with Google Account" else "Forgot? Reset with Google Account",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Normal,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -12021,19 +12987,19 @@ fun ParentPasswordDialog(
                         Button(
                             onClick = {
                                 errorMessage = null
-                                val fragmentActivity = appContext as? androidx.fragment.app.FragmentActivity
+                                val fragmentActivity = appContext as? FragmentActivity
                                 if (fragmentActivity != null) {
                                     ParentBiometricAuth.authenticate(
                                         activity = fragmentActivity,
-                                        title = "Parent Identity Verification",
-                                        subtitle = "Confirm fingerprint, face, or device screen lock to create your Parent PIN.",
+                                        title = "Parent Biometric Verification",
+                                        subtitle = "Confirm fingerprint or face ID to create your independent Parent Lock.",
+                                        negativeButtonText = "Cancel",
                                         onSuccess = {
                                             errorMessage = null
-                                            currentMode = ParentGateMode.SET_PIN
+                                            currentMode = ParentGateMode.SET_CREDENTIAL
                                         },
-                                        onError = { err ->
-                                            errorMessage = err
-                                        },
+                                        onError = { err -> errorMessage = err },
+                                        onCancel = { errorMessage = null },
                                     )
                                 }
                             },
@@ -12045,7 +13011,7 @@ fun ParentPasswordDialog(
                         ) {
                             Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Verify Fingerprint / Phone Lock", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Verify Fingerprint / Face ID", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
 
                         if (allowGoogleSignIn) {
@@ -12065,62 +13031,212 @@ fun ParentPasswordDialog(
                         }
                     }
 
-                    ParentGateMode.SET_PIN -> {
-                        OutlinedTextField(
-                            value = newPinInput,
-                            onValueChange = {
-                                if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
-                                    newPinInput = it
-                                    errorMessage = null
-                                }
-                            },
-                            label = { Text("New 4-digit PIN") },
-                            placeholder = { Text("••••") },
-                            visualTransformation = if (showPinText) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
-                            trailingIcon = {
-                                IconButton(onClick = { showPinText = !showPinText }) {
-                                    Icon(
-                                        if (showPinText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                                        contentDescription = if (showPinText) "Hide PIN" else "Show PIN",
-                                        tint = if (showPinText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(20.dp)
+                    ParentGateMode.SET_CREDENTIAL -> {
+                        // Lock Style Selector Row: PIN | Pattern | Password
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            ParentLockType.entries.forEach { lockType ->
+                                val isSelected = selectedSetupType == lockType
+                                OutlinedButton(
+                                    onClick = {
+                                        selectedSetupType = lockType
+                                        errorMessage = null
+                                        draftPattern = null
+                                        patternError = false
+                                        patternResetKey++
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                    ),
+                                    border = BorderStroke(
+                                        1.5.dp,
+                                        if (isSelected) BrandPrimary else MaterialTheme.colorScheme.outline,
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                                ) {
+                                    Text(
+                                        text = when (lockType) {
+                                            ParentLockType.PIN -> "PIN"
+                                            ParentLockType.PATTERN -> "Pattern"
+                                            ParentLockType.PASSWORD -> "Password"
+                                        },
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
                                     )
                                 }
-                            },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                        )
+                            }
+                        }
 
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(14.dp))
 
-                        OutlinedTextField(
-                            value = confirmPinInput,
-                            onValueChange = {
-                                if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
-                                    confirmPinInput = it
-                                    errorMessage = null
+                        when (selectedSetupType) {
+                            ParentLockType.PATTERN -> {
+                                PatternLockView(
+                                    maxSize = if (compactHeight) 170.dp else 220.dp,
+                                    isError = patternError,
+                                    resetKey = patternResetKey,
+                                    helperText = if (draftPattern == null) {
+                                        "Step 1 of 2: Draw new pattern (min ${ParentLockPolicy.MIN_PATTERN_DOTS} dots)"
+                                    } else {
+                                        "Step 2 of 2: Draw the same pattern again to confirm"
+                                    },
+                                    onPatternStart = {
+                                        patternError = false
+                                        errorMessage = null
+                                    },
+                                    onPatternComplete = { dots ->
+                                        if (draftPattern == null) {
+                                            if (!ParentLockPolicy.isValidPattern(dots)) {
+                                                patternError = true
+                                                errorMessage = "Connect at least ${ParentLockPolicy.MIN_PATTERN_DOTS} dots."
+                                            } else {
+                                                draftPattern = dots
+                                                patternResetKey++
+                                                errorMessage = null
+                                            }
+                                        } else {
+                                            if (dots == draftPattern) {
+                                                parentPrefs.setParentPattern(dots)
+                                                parentPrefs.parentPinOwnerEmail = parentPrefs.parentEmail
+                                                onSuccess()
+                                            } else {
+                                                patternError = true
+                                                errorMessage = "Patterns did not match. Draw again to confirm."
+                                            }
+                                        }
+                                    },
+                                )
+
+                                if (draftPattern != null) {
+                                    TextButton(
+                                        onClick = {
+                                            draftPattern = null
+                                            patternError = false
+                                            errorMessage = null
+                                            patternResetKey++
+                                        },
+                                    ) {
+                                        Text("Start Over / Redraw Pattern", fontSize = 12.sp, color = BrandPrimary)
+                                    }
                                 }
-                            },
-                            label = { Text("Confirm 4-digit PIN") },
-                            placeholder = { Text("••••") },
-                            visualTransformation = if (showPinText) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
-                            trailingIcon = {
-                                IconButton(onClick = { showPinText = !showPinText }) {
-                                    Icon(
-                                        if (showPinText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                                        contentDescription = if (showPinText) "Hide PIN" else "Show PIN",
-                                        tint = if (showPinText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                        )
+                            }
+
+                            ParentLockType.PIN -> {
+                                OutlinedTextField(
+                                    value = newPinInput,
+                                    onValueChange = {
+                                        if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                                            newPinInput = it
+                                            errorMessage = null
+                                        }
+                                    },
+                                    label = { Text("New 4-digit PIN") },
+                                    placeholder = { Text("••••") },
+                                    visualTransformation = if (showSecretText) VisualTransformation.None else PasswordVisualTransformation(),
+                                    trailingIcon = {
+                                        IconButton(onClick = { showSecretText = !showSecretText }) {
+                                            Icon(
+                                                if (showSecretText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                                contentDescription = if (showSecretText) "Hide PIN" else "Show PIN",
+                                                tint = if (showSecretText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                    },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                )
+
+                                Spacer(Modifier.height(10.dp))
+
+                                OutlinedTextField(
+                                    value = confirmPinInput,
+                                    onValueChange = {
+                                        if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                                            confirmPinInput = it
+                                            errorMessage = null
+                                        }
+                                    },
+                                    label = { Text("Confirm 4-digit PIN") },
+                                    placeholder = { Text("••••") },
+                                    visualTransformation = if (showSecretText) VisualTransformation.None else PasswordVisualTransformation(),
+                                    trailingIcon = {
+                                        IconButton(onClick = { showSecretText = !showSecretText }) {
+                                            Icon(
+                                                if (showSecretText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                                contentDescription = if (showSecretText) "Hide PIN" else "Show PIN",
+                                                tint = if (showSecretText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                    },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                )
+                            }
+
+                            ParentLockType.PASSWORD -> {
+                                OutlinedTextField(
+                                    value = newPasswordInput,
+                                    onValueChange = {
+                                        newPasswordInput = it
+                                        errorMessage = null
+                                    },
+                                    label = { Text("New Password (min ${ParentLockPolicy.MIN_PASSWORD_LENGTH} chars)") },
+                                    visualTransformation = if (showSecretText) VisualTransformation.None else PasswordVisualTransformation(),
+                                    trailingIcon = {
+                                        IconButton(onClick = { showSecretText = !showSecretText }) {
+                                            Icon(
+                                                if (showSecretText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                                contentDescription = if (showSecretText) "Hide Password" else "Show Password",
+                                                tint = if (showSecretText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                    },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                )
+
+                                Spacer(Modifier.height(10.dp))
+
+                                OutlinedTextField(
+                                    value = confirmPasswordInput,
+                                    onValueChange = {
+                                        confirmPasswordInput = it
+                                        errorMessage = null
+                                    },
+                                    label = { Text("Confirm Password") },
+                                    visualTransformation = if (showSecretText) VisualTransformation.None else PasswordVisualTransformation(),
+                                    trailingIcon = {
+                                        IconButton(onClick = { showSecretText = !showSecretText }) {
+                                            Icon(
+                                                if (showSecretText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                                contentDescription = if (showSecretText) "Hide Password" else "Show Password",
+                                                tint = if (showSecretText) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                    },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                )
+                            }
+                        }
                     }
 
                     ParentGateMode.GOOGLE_LOGIN -> {
@@ -12171,17 +13287,17 @@ fun ParentPasswordDialog(
                             }
                         }
 
-                        if (isResettingPin) {
+                        if (isResettingCredential) {
                             Spacer(Modifier.height(8.dp))
                             TextButton(
                                 onClick = {
-                                    isResettingPin = false
+                                    isResettingCredential = false
                                     errorMessage = null
-                                    currentMode = ParentGateMode.PIN_UNLOCK
+                                    currentMode = ParentGateMode.CREDENTIAL_UNLOCK
                                 }
                             ) {
                                 Text(
-                                    text = "Back to PIN",
+                                    text = "Back to ${activeLockType.displayName}",
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -12195,7 +13311,7 @@ fun ParentPasswordDialog(
                                     parentPrefs.parentName = "Test Parent"
                                     parentPrefs.parentEmail = "cleanparent@test.com"
                                     parentPrefs.parentAuthToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2OGVlMDMyNi00Yzg2LTQwNmUtYmRmNi0wNjYxM2EwYmEyYmUiLCJlbWFpbCI6ImNsZWFucGFyZW50QHRlc3QuY29tIiwidHlwZSI6ImFjY2VzcyIsImV4cCI6MTc5NTY5NTA4N30.gsRcdYIUtjfDVQtUWdKQo3PWGIeb_GqmRvuV3KNwQss"
-                                    parentPrefs.parentPin = "1234"
+                                    parentPrefs.setParentCredential(ParentLockType.PIN, "1234")
                                     parentPrefs.parentPinOwnerEmail = "cleanparent@test.com"
                                     com.kidcurate.app.data.ApiClient.authToken = parentPrefs.parentAuthToken
                                     onSuccess()
@@ -12239,53 +13355,89 @@ fun ParentPasswordDialog(
                     }
 
                     when (currentMode) {
-                        ParentGateMode.PIN_UNLOCK -> {
-                            Button(
-                                onClick = {
-                                    if (lockoutRemainingSeconds > 0) return@Button
-                                    if (parentPrefs.verifyParentPin(pinInput)) {
-                                        failedAttempts = 0
-                                        lockoutRemainingSeconds = 0
-                                        onSuccess()
-                                    } else {
-                                        failedAttempts++
-                                        if (failedAttempts >= 5) {
-                                            lockoutRemainingSeconds = 30
-                                            errorMessage = "Too many failed attempts. Locked for 30s."
+                        ParentGateMode.CREDENTIAL_UNLOCK -> {
+                            if (activeLockType == ParentLockType.PIN) {
+                                Button(
+                                    onClick = {
+                                        if (lockoutRemainingSeconds > 0) return@Button
+                                        if (parentPrefs.verifyParentPin(pinInput)) {
+                                            lockoutRemainingSeconds = 0
+                                            onSuccess()
                                         } else {
-                                            val rem = 5 - failedAttempts
-                                            errorMessage = "Incorrect PIN. $rem attempt(s) remaining."
+                                            handleFailedCredential("PIN")
                                         }
-                                    }
-                                },
-                                enabled = pinInput.length == 4 && lockoutRemainingSeconds == 0,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                            ) {
-                                Text("Unlock")
+                                    },
+                                    enabled = pinInput.length == 4 && lockoutRemainingSeconds == 0,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                                ) {
+                                    Text("Unlock")
+                                }
+                            } else if (activeLockType == ParentLockType.PASSWORD) {
+                                Button(
+                                    onClick = {
+                                        if (lockoutRemainingSeconds > 0) return@Button
+                                        if (parentPrefs.verifyParentPassword(passwordInput)) {
+                                            lockoutRemainingSeconds = 0
+                                            onSuccess()
+                                        } else {
+                                            handleFailedCredential("Password")
+                                        }
+                                    },
+                                    enabled = passwordInput.isNotBlank() && lockoutRemainingSeconds == 0,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                                ) {
+                                    Text("Unlock")
+                                }
                             }
                         }
 
-                        ParentGateMode.SET_PIN -> {
-                            Button(
-                                onClick = {
-                                    if (newPinInput.length != 4) {
-                                        errorMessage = "PIN must be exactly 4 digits."
-                                    } else if (newPinInput != confirmPinInput) {
-                                        errorMessage = "PINs do not match."
-                                    } else {
-                                        parentPrefs.parentPin = newPinInput
-                                        parentPrefs.parentPinOwnerEmail = parentPrefs.parentEmail
-                                        onSuccess()
-                                    }
-                                },
-                                enabled = newPinInput.length == 4 && confirmPinInput.length == 4,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                            ) {
-                                Text("Save PIN")
+                        ParentGateMode.SET_CREDENTIAL -> {
+                            if (selectedSetupType == ParentLockType.PIN) {
+                                Button(
+                                    onClick = {
+                                        val validationErr = ParentLockPolicy.validateCredential(ParentLockType.PIN, newPinInput)
+                                        if (validationErr != null) {
+                                            errorMessage = validationErr
+                                        } else if (newPinInput != confirmPinInput) {
+                                            errorMessage = "PINs do not match."
+                                        } else {
+                                            parentPrefs.setParentCredential(ParentLockType.PIN, newPinInput)
+                                            parentPrefs.parentPinOwnerEmail = parentPrefs.parentEmail
+                                            onSuccess()
+                                        }
+                                    },
+                                    enabled = newPinInput.length == 4 && confirmPinInput.length == 4,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                                ) {
+                                    Text("Save PIN")
+                                }
+                            } else if (selectedSetupType == ParentLockType.PASSWORD) {
+                                Button(
+                                    onClick = {
+                                        val validationErr = ParentLockPolicy.validateCredential(ParentLockType.PASSWORD, newPasswordInput)
+                                        if (validationErr != null) {
+                                            errorMessage = validationErr
+                                        } else if (newPasswordInput != confirmPasswordInput) {
+                                            errorMessage = "Passwords do not match."
+                                        } else {
+                                            parentPrefs.setParentPassword(newPasswordInput)
+                                            parentPrefs.parentPinOwnerEmail = parentPrefs.parentEmail
+                                            onSuccess()
+                                        }
+                                    },
+                                    enabled = newPasswordInput.length >= ParentLockPolicy.MIN_PASSWORD_LENGTH && confirmPasswordInput.isNotEmpty(),
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                                ) {
+                                    Text("Save Password")
+                                }
                             }
                         }
 
@@ -12306,7 +13458,7 @@ fun ParentPasswordDialog(
 ---
 
 <a name="uithemecolorkt"></a>
-## 31. ui/theme/Color.kt
+## 32. ui/theme/Color.kt
 **Original Location:** `android/app/src/main/java/com/kidcurate/app/ui/theme/Color.kt`
 **Description:** Design System: Material3 Color Tokens
 
@@ -12417,7 +13569,7 @@ val TextMuted: Color
 ---
 
 <a name="uithemethemekt"></a>
-## 32. ui/theme/Theme.kt
+## 33. ui/theme/Theme.kt
 **Original Location:** `android/app/src/main/java/com/kidcurate/app/ui/theme/Theme.kt`
 **Description:** Design System: KidCurate App Theme Composable
 
@@ -12493,7 +13645,7 @@ fun KidCurateTheme(
 ---
 
 <a name="resvaluesstringsxml"></a>
-## 33. res/values/strings.xml
+## 34. res/values/strings.xml
 **Original Location:** `android/app/src/main/res/values/strings.xml`
 **Description:** Resource: App Strings & Accessibility Labels
 
@@ -12508,7 +13660,7 @@ fun KidCurateTheme(
 ---
 
 <a name="resvaluescolorsxml"></a>
-## 34. res/values/colors.xml
+## 35. res/values/colors.xml
 **Original Location:** `android/app/src/main/res/values/colors.xml`
 **Description:** Resource: Core Brand Colors & Palette XML
 
@@ -12523,7 +13675,7 @@ fun KidCurateTheme(
 ---
 
 <a name="resvaluesthemesxml"></a>
-## 35. res/values/themes.xml
+## 36. res/values/themes.xml
 **Original Location:** `android/app/src/main/res/values/themes.xml`
 **Description:** Resource: Android System Splash & Base Themes
 
@@ -12539,7 +13691,7 @@ fun KidCurateTheme(
 ---
 
 <a name="resxmlnetwork_security_configxml"></a>
-## 36. res/xml/network_security_config.xml
+## 37. res/xml/network_security_config.xml
 **Original Location:** `android/app/src/main/res/xml/network_security_config.xml`
 **Description:** Security: Network Security Config for Local & HTTPS Traffic
 
@@ -12564,7 +13716,7 @@ fun KidCurateTheme(
 ---
 
 <a name="testapppoliciestestkt"></a>
-## 37. test/AppPoliciesTest.kt
+## 38. test/AppPoliciesTest.kt
 **Original Location:** `android/app/src/test/java/com/kidcurate/app/data/AppPoliciesTest.kt`
 **Description:** Unit Test: Responsive Layout & Connection Policy Assertions
 
@@ -12689,6 +13841,69 @@ class AppPoliciesTest {
         val totalWindow = (attempts * probeTimeout) + ((attempts - 1) * backoff)
         assertTrue(totalWindow >= 45)
     }
+
+    @Test
+    fun parentLockTypeMapsStorageKeysSafely() {
+        assertEquals(ParentLockType.PIN, ParentLockType.fromStorageKey("pin"))
+        assertEquals(ParentLockType.PATTERN, ParentLockType.fromStorageKey("pattern"))
+        assertEquals(ParentLockType.PASSWORD, ParentLockType.fromStorageKey("PASSWORD"))
+        assertEquals(ParentLockType.PIN, ParentLockType.fromStorageKey(null))
+        assertEquals(ParentLockType.PIN, ParentLockType.fromStorageKey("unknown_type"))
+    }
+
+    @Test
+    fun parentLockPolicyValidatesPinPatternAndPassword() {
+        assertTrue(ParentLockPolicy.isValidPin("4829"))
+        assertFalse(ParentLockPolicy.isValidPin("123"))
+        assertFalse(ParentLockPolicy.isValidPin("12a4"))
+
+        assertTrue(ParentLockPolicy.isValidPattern(listOf(0, 1, 4, 7)))
+        assertFalse(ParentLockPolicy.isValidPattern(listOf(0, 1, 2)))
+        assertFalse(ParentLockPolicy.isValidPattern(listOf(0, 1, 1, 2)))
+        assertFalse(ParentLockPolicy.isValidPattern(listOf(0, 1, 2, 9)))
+
+        assertTrue(ParentLockPolicy.isValidPassword("Parent2026"))
+        assertFalse(ParentLockPolicy.isValidPassword("short"))
+
+        assertEquals("0-1-4-7-8", ParentLockPolicy.encodePattern(listOf(0, 1, 4, 7, 8)))
+        assertEquals(listOf(0, 1, 4, 7, 8), ParentLockPolicy.decodePattern("0-1-4-7-8"))
+        assertEquals(null, ParentLockPolicy.validateCredential(ParentLockType.PATTERN, "0-1-4-7"))
+        assertTrue(ParentLockPolicy.validateCredential(ParentLockType.PATTERN, "0-1-2") != null)
+    }
+
+    @Test
+    fun parentLockPolicyAutoConnectsSkippedCollinearMidpoints() {
+        // Dragging 0 -> 2 skips midpoint 1; must auto-insert 1
+        assertEquals(listOf(0, 1, 2), ParentLockPolicy.resolvePatternStep(listOf(0), 2))
+        // Dragging 0 -> 8 skips center 4; must auto-insert 4
+        assertEquals(listOf(0, 4, 8), ParentLockPolicy.resolvePatternStep(listOf(0), 8))
+        // Dragging 2 -> 6 skips center 4; must auto-insert 4
+        assertEquals(listOf(2, 4, 6), ParentLockPolicy.resolvePatternStep(listOf(2), 6))
+        // Knight move 0 -> 5 has no collinear midpoint; must not insert anything extra
+        assertEquals(listOf(0, 5), ParentLockPolicy.resolvePatternStep(listOf(0), 5))
+        // Already selected dot should be ignored
+        assertEquals(listOf(0, 1, 2), ParentLockPolicy.resolvePatternStep(listOf(0, 1, 2), 1))
+    }
+
+    @Test
+    fun parentLockPolicyHashesAndVerifiesWithPbkdf2AndRandomSalts() {
+        val saltA = ByteArray(16) { it.toByte() }
+        val saltB = ByteArray(16) { (it + 32).toByte() }
+
+        val patternEncoded = ParentLockPolicy.encodePattern(listOf(0, 3, 6, 7, 8))
+        val hashA = ParentLockPolicy.hashSecretPbkdf2(patternEncoded, saltA)
+        val hashB = ParentLockPolicy.hashSecretPbkdf2(patternEncoded, saltB)
+
+        assertTrue(hashA.startsWith("pbkdf2$100000$"))
+        assertTrue(hashA != hashB)
+        assertTrue(ParentLockPolicy.verifySecretPbkdf2(patternEncoded, hashA))
+        assertTrue(ParentLockPolicy.verifySecretPbkdf2(patternEncoded, hashB))
+        assertFalse(ParentLockPolicy.verifySecretPbkdf2("0-3-6-7-5", hashA))
+
+        val pwHash = ParentLockPolicy.hashSecretPbkdf2("KidCurate#99", saltA)
+        assertTrue(ParentLockPolicy.verifySecretPbkdf2("KidCurate#99", pwHash))
+        assertFalse(ParentLockPolicy.verifySecretPbkdf2("kidcurate#99", pwHash))
+    }
 }
 
 ```
@@ -12696,7 +13911,7 @@ class AppPoliciesTest {
 ---
 
 <a name="testplaybackusabilitytestkt"></a>
-## 38. test/PlaybackUsabilityTest.kt
+## 39. test/PlaybackUsabilityTest.kt
 **Original Location:** `android/app/src/test/java/com/kidcurate/app/ui/PlaybackUsabilityTest.kt`
 **Description:** Unit Test: Playback Usability & Child Lock State Verifications
 
